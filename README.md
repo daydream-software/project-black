@@ -1,9 +1,9 @@
 # Project Black
 
-A web game where you don't control your adventurers — you **program** them with
-FF12-style *gambits* (ordered `condition → action` rules), then watch them fight,
-and keep progressing while you're away. Designed to run as a static site on
-GitHub Pages.
+A web game where you don't control your adventurers — you **program** them with a
+**Procedure**: an ordered list of **Protocols**, each `WHEN <State> → <Maneuver>`
+(inspired by FF12's gambit system). Then you watch them fight, and keep progressing
+while you're away. Designed to run as a static site on GitHub Pages.
 
 > Pillars: automation **is** the combat · intense ↔ relaxed rhythm · AFK delivers
 > the reward but improving your program is what unlocks progress · grows over time.
@@ -26,7 +26,7 @@ npm run preview  # serve the production build locally
 ## How it works
 
 A **deterministic, pure** simulation (`src/sim.ts`) is decoupled from a **pure
-view** that renders state to a canvas (`src/render.ts`). The player's gambits
+view** that renders state to a canvas (`src/render.ts`). The player's Protocols
 drive a `decide()` function; an on-screen decision log shows *why* the adventurer
 acted. See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
 

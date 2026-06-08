@@ -3,13 +3,13 @@
 ## File map
 
 ```
-index.html            Entry point + page layout (canvas left, gambit editor right)
+index.html            Entry point + page layout (canvas left, rule editor right)
 src/
   sim.ts              PURE simulation: types, decide(), step(), conditions
   sim.test.ts         Vitest unit tests for the simulation (colocated)
   render.ts           PURE view: draws a GameState onto the canvas
   sprites.ts          Pixel-art sprites generated in code (hero, slime)
-  main.ts             Wiring: gambit editor (DOM), game loop, decision log
+  main.ts             Wiring: rule editor (DOM), game loop, decision log
   style.css           UI styling
 vite.config.ts        base: './' (GitHub Pages) + Vitest config
 docs/
@@ -25,9 +25,11 @@ All game logic lives in `src/sim.ts` as **pure functions** — no DOM, no canvas
 no timers, no randomness. Given the same inputs they always return the same
 outputs.
 
-- `decide(self, enemy, program)` — a **FF12 gambit engine**: scans gambits
-  top-to-bottom, the first whose condition holds wins. This is the heart of the
-  game; the player programs by ordering gambits.
+- `decide(self, enemy, program)` — the **rule engine** running a unit's Procedure:
+  it scans the Protocols top-to-bottom and the first whose State holds wins
+  (inspired by FF12 gambits). This is the heart of the game; the player programs by
+  ordering Protocols. (The composite State/Maneuver model lands in slice 3; the
+  shipped code still uses the flat `Condition`/`ActionKind` types.)
 - `step(state, program)` — advances one turn and returns a *new* state.
 
 Why this matters:
@@ -57,7 +59,7 @@ Run `npm test`.
 ## Conventions
 
 - **English everywhere** in code, comments, UI strings, docs, commits, issues.
-- **No `innerHTML` for anything a player can author.** The gambit editor is built
+- **No `innerHTML` for anything a player can author.** The rule editor is built
   with DOM APIs; the decision log escapes dynamic text (`esc()` in `main.ts`).
 - **GitHub Pages friendliness:** keep `base: './'` so asset paths stay relative;
   verify the *production build* (`npm run build`), not just the dev server.

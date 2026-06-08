@@ -2,9 +2,10 @@
 
 ## Vision
 
-You are not a hero — you are the one who **programs** the heroes. Using FF12-style
-*gambits* (ordered `condition → action` rules), you decide how your adventurers
-behave, then let them fight autonomously, including while you're away (AFK / idle).
+You are not a hero — you are the one who **programs** the heroes. Using a
+**Procedure** — ordered **Protocols** (`WHEN State → Maneuver`, inspired by FF12
+gambits) — you decide how your adventurers behave, then let them fight
+autonomously, including while you're away (AFK / idle).
 A blend of Satisfactory (build & optimise a system), Final Fantasy (party &
 progression) and D&D (emergent, dice-driven encounters).
 
@@ -16,7 +17,7 @@ progression) and D&D (emergent, dice-driven encounters).
 2. **Intense ↔ relaxed.** Calm tinkering with logic, punctuated by tense runs.
 3. **AFK delivers the reward; the program unlocks progress.**
    > **Design rule #1:** staying AFK must *never* beat a wall by waiting — only by
-   > improving the gambits. Waiting longer gives loot, not breakthroughs.
+   > improving the Procedure. Waiting longer gives loot, not breakthroughs.
 4. **Grows over time.** New conditions, actions, enemies, mechanics stack as
    modular content.
 5. **Static & tiny.** Ships on GitHub Pages, no server. Solo + local co-op first;
@@ -32,8 +33,8 @@ and deterministic. English codebase. See [ARCHITECTURE.md](ARCHITECTURE.md).
 
 | Slice | What | State |
 |---|---|---|
-| 1 | Adventurer follows a gambit program vs looping slimes; on-screen decision log | ✅ done & verified |
-| 2 | Interactive gambit editor (reorder, on/off, add/remove); live re-sim; Defend; death if non-viable | ✅ done & verified |
+| 1 | Adventurer follows a rule program vs looping slimes; on-screen decision log | ✅ done & verified |
+| 2 | Interactive rule editor (reorder, on/off, add/remove); live re-sim; Defend; death if non-viable | ✅ done & verified |
 
 Screenshots: [docs/progress/](progress/).
 
@@ -41,19 +42,25 @@ Screenshots: [docs/progress/](progress/).
 
 Order is a recommendation, not a contract — we can resequence.
 
-### Slice 3 — Party + FF12 targeting *(recommended next)*
-Multiple heroes and multiple enemies; targeting in conditions/actions:
-`Self` / `Ally: lowest HP` / `Foe: nearest` / `Foe: highest HP`, etc.
-*This is where gambits become genuinely rich, and it's the foundation most later
-content needs.*
-**Done when:** a 2-hero party with per-hero gambits clears a multi-enemy fight,
-and targeting is visibly correct in the decision log.
+### Slice 3 — Composite rules (State + Maneuver), party + targeting *(recommended next)*
+Adopt the composite model from [VOCABULARY.md](VOCABULARY.md): a rule becomes
+**WHEN `<State = Subject + Predicate>` → DO `<Maneuver = verb + which>`**, built
+from composed dropdowns rather than a flat menu. The **State's subject is the
+target** (no separate target picker); the Maneuver is `Use Skill · <skill>` or
+`Use Item · <item>`. Introduce multiple heroes and enemies so subject selection
+(`Self` / `Ally: lowest HP` / `Enemy: nearest` / `Enemy: lowest HP`) is meaningful.
+Rename the mechanic away from "gambit": **State** + **Maneuver** are a rule's two
+halves; one rule line is a **Protocol**; a unit's ordered list is its **Procedure**.
+*This is where the rule language becomes genuinely rich, and it's the foundation
+most later content needs.*
+**Done when:** a 2-hero party with per-unit Procedures clears a multi-enemy fight,
+and composed targeting is visibly correct in the decision log.
 
 ### Slice 4 — The first "wall"
 An enemy with a mechanic that a naive program cannot beat (e.g. *counters healing*,
-or *enrages below 50%*), solvable **only** by changing the gambits.
-**Done when:** the default program loses, and a specific gambit change wins — proven
-in-browser.
+or *enrages below 50%*), solvable **only** by changing the Procedure.
+**Done when:** the default Procedure loses, and a specific Protocol change wins —
+proven in-browser.
 
 ### Slice 5 — AFK offline progression + save
 `localStorage` save/load; on load, compute elapsed time and replay `step` to catch
@@ -68,8 +75,10 @@ build. *(Can be pulled earlier — it's motivating to play on the web.)*
 
 ## Later / long-term
 
-- **Progression & unlocks:** limited gambit slots; buy/unlock new conditions &
-  actions (FF12 shop feel) as the meta-progression.
+- **Progression & unlocks:** limited **Procedure capacity** (rule-list length) that
+  you unlock/grow; buy/unlock new Subjects, Predicates, Skills & Items (FF12 shop
+  feel) as the meta-progression. Encounters may also impose a slot budget as a
+  puzzle/optimization constraint. See [VOCABULARY.md](VOCABULARY.md#procedure-capacity-rule-list-length).
 - **Content growth:** more enemies, biomes/floors, status effects, items, jobs.
 - **D&D flavour:** seeded dice rolls, emergent encounter events.
 - **Co-op:** local (shared keyboard / screen) → online P2P via Trystero/PeerJS.
