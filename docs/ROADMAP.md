@@ -43,14 +43,20 @@ Screenshots: [docs/progress/](progress/).
 Order is a recommendation, not a contract — we can resequence.
 
 ### Tooling slice — Versioning, changelog & in-game "What's New"
-Adopt Conventional Commits (see [CONTRIBUTING.md](../CONTRIBUTING.md)). Generate a
-developer `CHANGELOG.md` and a player-facing `src/changelog.json` (only `feat` /
-`fix` / `perf`, grouped New / Fixes / Improvements, per version). Bake the build
-version into the app; on load, compare it to the player's last-seen version in
-`localStorage` and show a **"What's New"** panel listing the new entries. The
-changelog generator is decoupled from the game (the game just reads the JSON).
+Convention adopted up front (Conventional Commits, see [CONTRIBUTING.md](../CONTRIBUTING.md)) ✅ —
+the rest is deferred. When built: generate a developer `CHANGELOG.md` and a
+player-facing `src/changelog.json` (only `feat` / `fix` / `perf`, grouped New /
+Fixes / Improvements, per version). Bake the build version into the app.
+Show the **"What's New"** panel **both** ways:
+- **automatically** on version change (compare build version to `localStorage`
+  last-seen version, list only newer entries), and
+- via a manual **"Patch notes"** button that reopens the full changelog anytime.
+
+Generator tool is **TBD** (Node script or git-cliff) and is decoupled from the
+game — the game just reads `changelog.json`.
 **Done when:** bumping the version and rebuilding makes the panel appear in-browser
-with the right entries, and not appear on a second load.
+with the right entries, it doesn't reappear on a second load, and the Patch-notes
+button reopens it on demand.
 
 ### Slice 3 — Composite rules (State + Maneuver), party + targeting *(recommended next)*
 Adopt the composite model from [VOCABULARY.md](VOCABULARY.md): a rule becomes
