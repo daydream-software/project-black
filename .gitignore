@@ -1,0 +1,7 @@
+node_modules
+dist
+*.local
+.DS_Store
+
+# Playwright MCP scratch output (screenshots/snapshots from verification runs)
+.playwright-mcp/

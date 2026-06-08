@@ -1,0 +1,188 @@
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  font-family: system-ui, -apple-system, sans-serif;
+  background: #0c0c12;
+  color: #e6e9ef;
+}
+
+.app {
+  display: flex;
+  gap: 24px;
+  align-items: flex-start;
+  padding: 24px;
+  max-width: 1000px;
+  margin: 0 auto;
+}
+
+.left h1 {
+  font-size: 20px;
+  margin: 0 0 12px;
+}
+
+canvas {
+  display: block;
+  border: 1px solid #26263a;
+  border-radius: 8px;
+  background: #12121a;
+  image-rendering: pixelated;
+}
+
+.hint {
+  color: #8b90a0;
+  font-size: 13px;
+  max-width: 520px;
+}
+
+.right {
+  flex: 1;
+  min-width: 300px;
+}
+
+.right h2 {
+  font-size: 14px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: #8b90a0;
+  margin: 16px 0 8px;
+}
+
+.right h2 .sub {
+  text-transform: none;
+  letter-spacing: 0;
+  font-weight: 400;
+  font-size: 11px;
+  color: #62687a;
+}
+
+#editor {
+  list-style: none;
+  margin: 0 0 8px;
+  padding: 0;
+}
+
+.gambit {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 8px;
+  border: 1px solid #26263a;
+  border-radius: 6px;
+  margin-bottom: 6px;
+  background: #14141f;
+  transition: border-color 0.1s, background 0.1s;
+}
+
+.gambit.active {
+  border-color: #4fd1ff;
+  background: #15202b;
+}
+
+.gambit.disabled {
+  opacity: 0.45;
+}
+
+.gambit .prio {
+  width: 16px;
+  text-align: center;
+  font-size: 12px;
+  color: #62687a;
+}
+
+.gambit .arrow {
+  color: #8b90a0;
+}
+
+.gambit select {
+  flex: 1;
+  min-width: 0;
+  background: #0c0c12;
+  color: #e6e9ef;
+  border: 1px solid #2c2c40;
+  border-radius: 4px;
+  padding: 4px 6px;
+  font-size: 13px;
+}
+
+.gambit button {
+  background: #20202c;
+  color: #cfd6e0;
+  border: 1px solid #2c2c40;
+  border-radius: 4px;
+  width: 24px;
+  height: 24px;
+  font-size: 11px;
+  cursor: pointer;
+  padding: 0;
+}
+
+.gambit button:hover:not(:disabled) {
+  border-color: #4fd1ff;
+}
+
+.gambit button:disabled {
+  opacity: 0.3;
+  cursor: default;
+}
+
+.gambit button.del:hover {
+  border-color: #ff6b6b;
+  color: #ff6b6b;
+}
+
+#add-gambit {
+  background: #15202b;
+  color: #4fd1ff;
+  border: 1px dashed #2f4a5a;
+  border-radius: 6px;
+  padding: 8px 12px;
+  font-size: 13px;
+  cursor: pointer;
+  width: 100%;
+}
+
+#add-gambit:hover {
+  border-color: #4fd1ff;
+}
+
+#log {
+  font-family: ui-monospace, "SF Mono", Menlo, monospace;
+  font-size: 12.5px;
+}
+
+.entry {
+  padding: 6px 10px;
+  border-left: 3px solid #444;
+  margin-bottom: 4px;
+  background: #14141f;
+  border-radius: 0 4px 4px 0;
+}
+
+.entry.heal {
+  border-left-color: #6ee07f;
+}
+
+.entry.attack {
+  border-left-color: #ffb454;
+}
+
+.entry.defend {
+  border-left-color: #4fd1ff;
+}
+
+.entry .turn {
+  color: #8b90a0;
+}
+
+.entry .rule {
+  color: #e6e9ef;
+  font-weight: 600;
+}
+
+.entry .detail {
+  color: #aab0c0;
+  margin-top: 2px;
+}
