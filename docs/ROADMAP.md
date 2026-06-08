@@ -42,6 +42,16 @@ Screenshots: [docs/progress/](progress/).
 
 Order is a recommendation, not a contract — we can resequence.
 
+### Tooling slice — Versioning, changelog & in-game "What's New"
+Adopt Conventional Commits (see [CONTRIBUTING.md](../CONTRIBUTING.md)). Generate a
+developer `CHANGELOG.md` and a player-facing `src/changelog.json` (only `feat` /
+`fix` / `perf`, grouped New / Fixes / Improvements, per version). Bake the build
+version into the app; on load, compare it to the player's last-seen version in
+`localStorage` and show a **"What's New"** panel listing the new entries. The
+changelog generator is decoupled from the game (the game just reads the JSON).
+**Done when:** bumping the version and rebuilding makes the panel appear in-browser
+with the right entries, and not appear on a second load.
+
 ### Slice 3 — Composite rules (State + Maneuver), party + targeting *(recommended next)*
 Adopt the composite model from [VOCABULARY.md](VOCABULARY.md): a rule becomes
 **WHEN `<State = Subject + Predicate>` → DO `<Maneuver = verb + which>`**, built

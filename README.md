@@ -43,5 +43,6 @@ Once pushed to GitHub with Pages enabled, `.github/workflows/deploy.yml` publish
 
 ---
 
-**Language convention:** the codebase, docs, commits and issues are written in
+**Conventions:** commits follow [Conventional Commits](CONTRIBUTING.md) (and feed
+the in-game changelog). The codebase, docs, commits and issues are written in
 **English**. (Day-to-day development conversation may happen in another language.)
