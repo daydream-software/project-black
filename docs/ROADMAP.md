@@ -94,10 +94,18 @@ with the navigation choices visible in the journal. Built in sub-slices:
   entering rooms (reuse `sim`), guaranteed termination (cleared/dead/stuck + cap),
   JSON-serialisable, decision-logging journal. 8 tests incl. a discriminator that
   the protocol genuinely drives navigation. Headless — additive, nothing wires it.
-- **8b** *(recommended next)* — the **first-person "scrying" view** (starts simple:
-  the room/corridor ahead + exits, fog of war + minimap) and wiring: Town →
-  descend → Dungeon. The in-browser proof of the done-when lands here.
-- **8c** — the exploration-Protocol **editor** in Town (a second rule list).
+- **8b** ✅ *(done & verified)* — the stylized first-person **"scrying" view**
+  (the room ahead + exits, party-from-behind + HP, a fog-of-war minimap; reuses
+  the combat view during fights) and the **wiring**: the run/gauntlet is replaced
+  by the delve (Town → **Descend** → Dungeon → Cleared / Wiped / Stuck → Town).
+  `save.ts` migrated `RunState` → `DelveState` (version 3). Proven in-browser: a
+  party auto-delves a seeded dungeon, the journal shows the exploration decisions
+  + fights, it reaches the objective, and — with the cure rule disabled so the
+  Hex Warden's counter can't trap it — **kills the target (DELVE CLEARED)**
+  (`docs/progress/slice8b-*.png`). `run.ts` is now superseded (dead but still
+  tested) — to be removed in a cleanup.
+- **8c** *(recommended next)* — the exploration-Protocol **editor** in Town (a
+  second rule list, same composed-dropdown UI as the combat Procedure).
 
 ### Slice 9 — The shell: Title → Save slots → Town → Dungeon
 The screen frame: a **title** screen, **multiple save slots** (independent

@@ -2,6 +2,8 @@
 // it never mutates it. All game logic lives in sim.ts.
 
 import type { Combatant, GameState } from './sim'
+import { DX, DY, roomAt, type Dir } from './dungeon'
+import type { DelveState } from './delve'
 
 const SCALE = 5 // each sprite pixel becomes a 5x5 block (smaller — more units on screen)
 
@@ -151,4 +153,167 @@ export function renderRunHud(ctx: CanvasRenderingContext2D, depth: number, total
 export function renderRunEnd(ctx: CanvasRenderingContext2D, status: 'cleared' | 'dead'): void {
   if (status === 'cleared') drawBanner(ctx, 'RUN CLEARED', 'Your program survived the gauntlet', '#9fe0a8')
   else drawBanner(ctx, 'RUN OVER', 'Read the journal, fix your Procedures, run again', '#ff6b6b')
+}
+
+// ---------------------------------------------------------------------------
+// Delve view — a stylized first-person "scrying" viewport + a fog-of-war minimap
+// ---------------------------------------------------------------------------
+
+const DIR_LABEL = ['North', 'East', 'South', 'West']
+
+function neighbourCell(d: DelveState['dungeon'], cell: number, dir: Dir): number {
+  const x = (cell % d.width) + DX[dir]
+  const y = ((cell / d.width) | 0) + DY[dir]
+  if (x < 0 || y < 0 || x >= d.width || y >= d.height) return -1
+  return y * d.width + x
+}
+
+export function renderDelve(ctx: CanvasRenderingContext2D, delve: DelveState, sprites: Sprites): void {
+  const { width, height } = ctx.canvas
+  ctx.fillStyle = '#0e0e16'
+  ctx.fillRect(0, 0, width, height)
+
+  if (delve.battle !== null) {
+    render(ctx, delve.battle, sprites) // reuse the combat view during fights
+  } else {
+    drawDungeonView(ctx, delve, sprites)
+  }
+  drawMinimap(ctx, delve)
+
+  if (delve.status === 'cleared') drawBanner(ctx, 'DELVE CLEARED', 'The objective is slain', '#9fe0a8')
+  else if (delve.status === 'dead') drawBanner(ctx, 'PARTY WIPED', 'Read the journal, reprogram, delve again', '#ff6b6b')
+  else if (delve.status === 'stuck') drawBanner(ctx, 'STUCK', 'The party found no way forward', '#ffb454')
+}
+
+function drawDungeonView(ctx: CanvasRenderingContext2D, delve: DelveState, sprites: Sprites): void {
+  const { width, height } = ctx.canvas
+  const d = delve.dungeon
+  ctx.textAlign = 'left'
+  ctx.textBaseline = 'top'
+
+  // header
+  ctx.fillStyle = '#8b90a0'
+  ctx.font = '13px system-ui, sans-serif'
+  ctx.fillText(`Scrying · seed ${delve.seed} · turn ${delve.turn} · facing ${DIR_LABEL[delve.facing]}`, 16, 12)
+
+  // the "viewport" frame (left of the minimap)
+  const fx = 24
+  const fy = 44
+  const fw = width - 24 - 150 // leave room for the minimap on the right
+  const fh = 210
+  ctx.fillStyle = '#06060c'
+  ctx.fillRect(fx, fy, fw, fh)
+  ctx.strokeStyle = '#26263a'
+  ctx.strokeRect(fx + 0.5, fy + 0.5, fw, fh)
+  // faint converging lines for a hint of depth toward the centre
+  const vx = fx + fw / 2
+  const vy = fy + fh * 0.42
+  ctx.strokeStyle = '#161624'
+  for (const [cx, cy] of [
+    [fx, fy],
+    [fx + fw, fy],
+    [fx, fy + fh],
+    [fx + fw, fy + fh],
+  ] as const) {
+    ctx.beginPath()
+    ctx.moveTo(cx, cy)
+    ctx.lineTo(vx, vy)
+    ctx.stroke()
+  }
+
+  // what lies in the cell directly ahead
+  const ahead = neighbourCell(d, delve.pos, delve.facing)
+  const aheadFloor = ahead >= 0 && d.cells[ahead]
+  const aheadRoom = aheadFloor ? roomAt(d, ahead) : -1
+  const aheadSeen = aheadFloor && delve.explored[ahead]
+  let aheadLabel = 'a wall'
+  if (aheadFloor && !aheadSeen) aheadLabel = 'the unknown'
+  else if (aheadFloor && aheadRoom >= 0) {
+    const t = d.rooms[aheadRoom].type
+    const cleared = delve.clearedRooms[aheadRoom]
+    aheadLabel = t === 'target' && !cleared ? 'the OBJECTIVE' : t === 'monster' && !cleared ? 'monsters' : 'a room'
+  } else if (aheadFloor) aheadLabel = 'a passage'
+
+  // draw the "ahead" content as sprites toward the vanishing point
+  if (aheadSeen && aheadRoom >= 0 && !delve.clearedRooms[aheadRoom]) {
+    const t = d.rooms[aheadRoom].type
+    if (t === 'monster') {
+      drawSprite(ctx, sprites.slime, vx - 40, vy - 6, 4)
+      drawSprite(ctx, sprites.slime, vx + 8, vy - 2, 5)
+    } else if (t === 'target') {
+      drawSprite(ctx, sprites.slime, vx - 36, vy - 24, 9) // the boss, large
+    }
+  }
+  ctx.fillStyle = '#cfd6e0'
+  ctx.font = '14px system-ui, sans-serif'
+  ctx.textAlign = 'center'
+  ctx.fillText(`Ahead: ${aheadLabel}`, vx, fy + fh - 54)
+
+  // exits relative to facing
+  const exits: string[] = []
+  const fwd = delve.facing
+  for (const [dir, arrow] of [
+    [fwd, '↑ ahead'],
+    [((fwd + 3) % 4) as Dir, '← left'],
+    [((fwd + 1) % 4) as Dir, '→ right'],
+  ] as const) {
+    const c = neighbourCell(d, delve.pos, dir)
+    if (c >= 0 && d.cells[c]) exits.push(arrow)
+  }
+  ctx.fillStyle = '#9fe0a8'
+  ctx.fillText(`exits: ${exits.join('   ')}`, vx, fy + fh - 30)
+  ctx.textAlign = 'left'
+
+  // the party (seen from behind) + HP bars at the bottom
+  const heroes = delve.party
+  const startX = fx + 16
+  heroes.forEach((h, i) => {
+    const x = startX + i * 150
+    const y = height - 70
+    const dead = h.hp <= 0
+    ctx.save()
+    ctx.globalAlpha = dead ? 0.3 : 1
+    drawSprite(ctx, sprites.hero, x, y - 30, 4)
+    ctx.restore()
+    drawHpBar(ctx, { x: x + 70, y: y - 8, w: 70, frac: h.hp / h.maxHp, fill: dead ? '#5a5f70' : '#4fd1ff' })
+    ctx.fillStyle = dead ? '#5a5f70' : '#cfd6e0'
+    ctx.font = '12px system-ui, sans-serif'
+    ctx.fillText(`${h.name} ${Math.max(0, h.hp)}/${h.maxHp}`, x + 70, y + 6)
+  })
+}
+
+function drawMinimap(ctx: CanvasRenderingContext2D, delve: DelveState): void {
+  const d = delve.dungeon
+  const cs = 7
+  const mw = d.width * cs
+  const mh = d.height * cs
+  const x0 = ctx.canvas.width - mw - 14
+  const y0 = 44
+  ctx.fillStyle = '#000000'
+  ctx.fillRect(x0 - 2, y0 - 2, mw + 4, mh + 4)
+  for (let y = 0; y < d.height; y++) {
+    for (let x = 0; x < d.width; x++) {
+      const c = y * d.width + x
+      ctx.fillStyle = !delve.explored[c] ? '#0a0a12' : d.cells[c] ? '#3a3a52' : '#191926'
+      ctx.fillRect(x0 + x * cs, y0 + y * cs, cs - 1, cs - 1)
+    }
+  }
+  // objective, if discovered
+  const obj = d.rooms[d.objectiveRoomId]
+  let objKnown = false
+  for (let y = obj.y; y < obj.y + obj.h && !objKnown; y++) for (let x = obj.x; x < obj.x + obj.w; x++) if (delve.explored[y * d.width + x]) objKnown = true
+  if (objKnown) {
+    ctx.fillStyle = '#c78bff'
+    ctx.fillRect(x0 + (obj.x + (obj.w >> 1)) * cs, y0 + (obj.y + (obj.h >> 1)) * cs, cs - 1, cs - 1)
+  }
+  // party + facing
+  const px = delve.pos % d.width
+  const py = (delve.pos / d.width) | 0
+  ctx.fillStyle = '#4fd1ff'
+  ctx.fillRect(x0 + px * cs, y0 + py * cs, cs - 1, cs - 1)
+  ctx.fillStyle = '#cfd6e0'
+  ctx.font = '10px system-ui, sans-serif'
+  ctx.textAlign = 'center'
+  ctx.fillText(['↑', '→', '↓', '←'][delve.facing], x0 + px * cs + cs / 2 - 0.5, y0 + py * cs - 1)
+  ctx.textAlign = 'left'
 }

@@ -199,7 +199,7 @@ export function generateDungeon(seed: number): { dungeon: Dungeon; rngState: num
         ? 'entrance'
         : r.id === dungeon.objectiveRoomId
           ? 'target'
-          : int(rng, 2) === 0
+          : int(rng, 3) === 0 // ~1/3 of rooms hold a monster pack (keeps attrition fair)
             ? 'monster'
             : 'empty'
   }

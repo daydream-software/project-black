@@ -1,14 +1,14 @@
 // Save / load + offline catch-up wiring.
 //
-// localStorage persistence for the camp roster (the editor's rows) AND the
-// current run, stamped with a timestamp so that on the NEXT page load we can
-// fast-forward an in-progress run by the elapsed wall-clock (offline progress).
+// localStorage persistence for the town roster (the editor's rows) AND the
+// current delve, stamped with a timestamp so that on the NEXT page load we can
+// fast-forward an in-progress delve by the elapsed wall-clock (offline progress).
 //
-// This module owns all the time/storage I/O; the pure layers (sim.ts, run.ts)
+// This module owns all the time/storage I/O; the pure layers (sim.ts, delve.ts)
 // never see a clock. Loading is defensive: a stale-schema or corrupt blob is
 // ignored (start fresh), never throws — a bad save must not brick the game.
 
-import type { RunState } from './run'
+import type { DelveState } from './delve'
 import type { SkillId } from './sim'
 
 // --- Persisted shapes (also the editor's row types) ------------------------
@@ -27,7 +27,7 @@ export interface Hero {
   rows: ProtocolRow[]
 }
 
-export type Mode = 'camp' | 'run'
+export type Mode = 'camp' | 'delve'
 
 export interface SaveData {
   version: number
@@ -35,14 +35,14 @@ export interface SaveData {
   roster: Hero[]
   activeHero: number
   mode: Mode
-  run: RunState | null
+  delve: DelveState | null
 }
 
-/** Must match the run loop's tick interval in main.ts (offline replay uses it). */
+/** Must match the delve loop's tick interval in main.ts (offline replay uses it). */
 export const STEP_MS = 450
 
 const KEY = 'project-black/save'
-const VERSION = 2 // bumped: RunState gained `seed` (slice 7); older blobs are ignored
+const VERSION = 3 // bumped: run (gauntlet) replaced by delve (slice 8b); older blobs ignored
 
 /** Persist the current state, stamped with `version` and `savedAt = now`. */
 export function saveGame(snapshot: Omit<SaveData, 'version' | 'savedAt'>): void {
@@ -58,14 +58,16 @@ function isObj(x: unknown): x is Record<string, unknown> {
   return typeof x === 'object' && x !== null
 }
 
-function isRunState(x: unknown): x is RunState {
+function isDelveState(x: unknown): x is DelveState {
   return (
     isObj(x) &&
-    (x.status === 'fighting' || x.status === 'cleared' || x.status === 'dead') &&
-    typeof x.depth === 'number' &&
-    Array.isArray(x.gauntlet) &&
+    (x.status === 'delving' || x.status === 'cleared' || x.status === 'dead' || x.status === 'stuck') &&
+    typeof x.pos === 'number' &&
+    typeof x.turn === 'number' &&
+    isObj(x.dungeon) &&
     Array.isArray(x.party) &&
-    isObj(x.battle)
+    Array.isArray(x.explored) &&
+    Array.isArray(x.exploration)
   )
 }
 
@@ -76,8 +78,8 @@ function isSaveData(x: unknown): x is SaveData {
     typeof x.savedAt === 'number' &&
     Array.isArray(x.roster) &&
     typeof x.activeHero === 'number' &&
-    (x.mode === 'camp' || x.mode === 'run') &&
-    (x.run === null || isRunState(x.run))
+    (x.mode === 'camp' || x.mode === 'delve') &&
+    (x.delve === null || isDelveState(x.delve))
   )
 }
 

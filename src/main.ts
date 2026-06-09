@@ -10,11 +10,11 @@ import {
   type Maneuver,
   type SkillId,
 } from './sim'
-import { startRun, stepRun, catchUp, DEFAULT_GAUNTLET, type RunState } from './run'
+import { startDelve, stepDelve, catchUpDelve, type DelveState } from './delve'
 import { toggleMusic, setMusicState, type TrackId } from './music'
 import { saveGame, loadGame, elapsedSteps, type Hero, type ProtocolRow } from './save'
 import { makeHero, makeSlime } from './sprites'
-import { render, renderRunHud, renderRunEnd } from './render'
+import { render, renderDelve } from './render'
 import { requireElement, require2dContext } from './dom'
 
 // --- Rule catalog: the composed vocabulary the player picks from. -----------
@@ -141,26 +141,30 @@ musicBtn.addEventListener('click', () => {
 
 const sprites = { hero: makeHero(), slime: makeSlime() }
 
-type Mode = 'camp' | 'run'
+type Mode = 'camp' | 'delve'
 let mode: Mode = 'camp'
-let run: RunState | null = null
-// The GameState currently on screen (camp preview or the run's battle),
-// recomputed each frame so tabs / log / highlight read one consistent source.
-let view: GameState = campState()
+let delve: DelveState | null = null
 // Maps each enabled-row index of the ACTIVE hero -> its <li>, so we can highlight
 // the firing protocol without rebuilding the editor (which would clobber focus).
 let enabledLis: HTMLLIElement[] = []
 
-// Design rule #2: a launched run is autonomous — Procedures are authored at camp.
-const editingLocked = (): boolean => mode === 'run'
+// Design rule #2: a launched delve is autonomous — Procedures are authored in town.
+const editingLocked = (): boolean => mode !== 'camp'
 
 function party(): Combatant[] {
   return [makeWarrior(procedureFor(roster[0])), makeHealer(procedureFor(roster[1]))]
 }
 
-/** The camp screen is just the party with no enemies (render shows "Camp"). */
+/** The town screen is just the party with no enemies (render shows "Camp"). */
 function campState(): GameState {
   return { units: party(), turn: 0, round: 0, cursor: -1, log: [], outcome: 'ongoing' }
+}
+
+/** The hero units to show in the tabs: live combat units, else the delve party, else town. */
+function partyUnits(): Combatant[] {
+  if (delve === null) return campState().units
+  if (delve.battle !== null) return delve.battle.units.filter((u) => u.side === 'hero')
+  return delve.party
 }
 
 function esc(s: string): string {
@@ -169,22 +173,22 @@ function esc(s: string): string {
   )
 }
 
-/** A fresh 32-bit seed for a run (the impure shell may use Math.random). */
+/** A fresh 32-bit seed for a delve (the impure shell may use Math.random). */
 function newSeed(): number {
   return (Math.random() * 0x100000000) | 0
 }
 
-function launchRun(): void {
-  run = startRun(party(), DEFAULT_GAUNTLET, newSeed())
-  mode = 'run'
+function descend(): void {
+  delve = startDelve(party(), newSeed())
+  mode = 'delve'
   saveNow()
   renderRunBar()
   renderEditor() // re-render so inputs pick up the locked state
   frame()
 }
 
-function backToCamp(): void {
-  run = null
+function backToTown(): void {
+  delve = null
   mode = 'camp'
   saveNow()
   renderRunBar()
@@ -194,25 +198,25 @@ function backToCamp(): void {
 
 /** Persist the whole state, stamped with the current time (for offline catch-up). */
 function saveNow(): void {
-  saveGame({ roster, activeHero, mode, run })
+  saveGame({ roster, activeHero, mode, delve })
 }
 
 /**
- * Restore from localStorage on startup. If a run was in progress when we last
- * saved, fast-forward it by the elapsed wall-clock (offline progress) — a run
- * that finished while away lands on its RUN OVER / RUN CLEARED screen so the
- * player can read the journal (Design rule #1). A bad/missing save is ignored.
+ * Restore from localStorage on startup. If a delve was in progress when we last
+ * saved, fast-forward it by the elapsed wall-clock (offline progress) — a delve
+ * that ended while away lands on its CLEARED / WIPED screen so the player can
+ * read the journal (Design rule #1). A bad/missing save is ignored.
  */
 function restore(): void {
   const saved = loadGame()
   if (saved === null) return
   roster = saved.roster
   activeHero = Math.max(0, Math.min(saved.activeHero, roster.length - 1))
-  if (saved.run !== null) {
-    run = catchUp(saved.run, elapsedSteps(saved.savedAt, Date.now()))
-    mode = 'run'
+  if (saved.delve !== null) {
+    delve = catchUpDelve(saved.delve, elapsedSteps(saved.savedAt, Date.now()))
+    mode = 'delve'
   } else {
-    run = null
+    delve = null
     mode = 'camp'
   }
 }
@@ -363,31 +367,37 @@ function makeHint(text: string): HTMLSpanElement {
   return hint
 }
 
-// The run-control bar: launch at camp, abandon during a run, back-to-camp at the end.
+// The delve-control bar: descend in town, abandon mid-delve, back-to-town at the end.
 function renderRunBar(): void {
   runBarEl.replaceChildren()
-  if (mode === 'camp') {
-    const launch = makeButton('▶ Launch run', 'Send your party on an autonomous run', launchRun)
+  if (mode === 'camp' || delve === null) {
+    const launch = makeButton('▶ Descend', 'Send your party delving into a procedural dungeon', descend)
     launch.className = 'run-launch'
-    runBarEl.append(launch, makeHint('Gauntlet: Two Slimes → Slime Pack → Hex Warden'))
-  } else if (run !== null && run.status === 'fighting') {
-    const abandon = makeButton('✕ Abandon run', 'Give up and return to camp', backToCamp)
+    runBarEl.append(launch, makeHint('A seeded dungeon — they explore, fight and hunt the objective on their own'))
+  } else if (delve.status === 'delving') {
+    const abandon = makeButton('✕ Abandon delve', 'Give up and return to town', backToTown)
     abandon.className = 'run-abandon'
-    runBarEl.append(abandon, makeHint(`Run in progress — editing locked · seed ${run.seed}`))
+    runBarEl.append(abandon, makeHint(`Delving — editing locked · seed ${delve.seed}`))
   } else {
-    const back = makeButton('↩ Back to camp', 'Return to camp to revise your Procedures', backToCamp)
+    const back = makeButton('↩ Back to town', 'Return to town to revise your Procedures', backToTown)
     back.className = 'run-launch'
-    const msg = run?.status === 'cleared' ? 'Run cleared!' : 'Run over — read the journal below'
+    const msg =
+      delve.status === 'cleared'
+        ? 'Delve cleared!'
+        : delve.status === 'stuck'
+          ? 'The delve got stuck — read the journal'
+          : 'The party was wiped — read the journal'
     runBarEl.append(back, makeHint(msg))
   }
 }
 
 function renderTabs(): void {
   tabsEl.replaceChildren()
+  const units = partyUnits()
   roster.forEach((hero, i) => {
     const tab = document.createElement('button')
     tab.className = i === activeHero ? 'tab active' : 'tab'
-    const unit = view.units.find((u) => u.id === hero.simId)
+    const unit = units.find((u) => u.id === hero.simId)
     const hp = unit ? `${Math.max(0, unit.hp)}/${unit.maxHp}` : ''
     tab.textContent = `${hero.name}  ${hp}`
     tab.addEventListener('click', () => {
@@ -412,38 +422,38 @@ function renderEditor(): void {
   })
 }
 
+// Map a delve-log kind to one of the existing log-entry colour classes.
+const LOG_CLASS: Record<string, string> = { explore: 'defend', enter: 'flee', combat: 'attack', clear: 'heal', end: 'counter' }
+
 function renderLog(): void {
-  const recent = view.log.slice(-14).reverse()
-  logEl.innerHTML = recent
-    .map((e) => {
-      const target = e.targetName !== null ? ` <span class="tgt">→ ${esc(e.targetName)}</span>` : ''
-      return `<div class="entry ${e.kind}"><span class="turn">T${e.turn}</span> <span class="actor">${esc(e.actorName)}</span> <span class="rule">${esc(e.reason)}</span>${target}<div class="detail">${esc(e.detail)}</div></div>`
-    })
+  const entries = (delve?.log ?? []).slice(-14).reverse()
+  logEl.innerHTML = entries
+    .map(
+      (e) =>
+        `<div class="entry ${LOG_CLASS[e.kind] ?? 'defend'}"><span class="turn">T${e.turn}</span> <span class="rule">${esc(e.reason)}</span><div class="detail">${esc(e.detail)}</div></div>`,
+    )
     .join('')
 }
 
-/** Highlight the firing Protocol — but only when the ACTIVE hero just acted. */
+/** Highlight the firing combat Protocol — only when the ACTIVE hero just acted in a fight. */
 function highlightFiringProtocol(): void {
   for (const li of enabledLis) li.classList.remove('active')
-  const last = view.log.at(-1)
+  const last = delve?.battle?.log.at(-1)
   if (last === undefined || last.actorId !== roster[activeHero].simId) return
   const idx = last.protocolIndex
   if (idx >= 0 && idx < enabledLis.length) enabledLis[idx].classList.add('active')
 }
 
-/** Which theme the game wants right now: camp / run / boss (the Hex Warden). */
+/** Which theme the game wants right now: town / dungeon / boss (the objective fight). */
 function musicTrack(): TrackId {
-  if (mode === 'camp' || run === null) return 'camp'
-  return run.gauntlet[run.depth] === 'warden' ? 'boss' : 'run'
+  if (mode === 'camp' || delve === null) return 'camp'
+  if (delve.battle !== null && delve.battle.units.some((u) => u.side === 'enemy' && u.isBoss === true)) return 'boss'
+  return 'run'
 }
 
 function frame(): void {
-  view = mode === 'camp' ? campState() : (run?.battle ?? campState())
-  render(ctx, view, sprites)
-  if (mode === 'run' && run !== null) {
-    renderRunHud(ctx, run.depth, run.gauntlet.length)
-    if (run.status !== 'fighting') renderRunEnd(ctx, run.status)
-  }
+  if (mode === 'camp' || delve === null) render(ctx, campState(), sprites)
+  else renderDelve(ctx, delve, sprites)
   renderLog()
   renderTabs()
   highlightFiringProtocol()
@@ -462,7 +472,7 @@ addBtn.addEventListener('click', () => {
   commit()
 })
 
-restore() // load a saved game (and fast-forward an in-progress run) before first paint
+restore() // load a saved game (and fast-forward an in-progress delve) before first paint
 renderRunBar()
 renderTabs()
 renderEditor()
@@ -470,13 +480,13 @@ frame()
 
 let lastSaveMs = 0
 const ticker = setInterval(() => {
-  if (mode !== 'run' || run === null || run.status !== 'fighting') return
-  run = stepRun(run)
+  if (mode !== 'delve' || delve === null || delve.status !== 'delving') return
+  delve = stepDelve(delve)
   frame()
   const now = Date.now()
-  if (run.status !== 'fighting') {
-    renderRunBar() // surface "Back to camp"
-    saveNow() // persist the finished run
+  if (delve.status !== 'delving') {
+    renderRunBar() // surface "Back to town"
+    saveNow() // persist the finished delve
   } else if (now - lastSaveMs >= 1000) {
     saveNow() // heartbeat: keep savedAt fresh so offline catch-up is accurate
     lastSaveMs = now
