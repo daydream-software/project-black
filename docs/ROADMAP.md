@@ -74,17 +74,30 @@ tests pin determinism + resumability. **No sim consumer yet** — slice 8's dung
 generation is the first; the rng is mutable for ergonomics but its state is
 captured back into the immutable game state to keep the sim pure.
 
-### Slice 8 — The delve: exploration Protocol + a procedural dungeon *(the new core, recommended next)*
-Replace the fixed gauntlet with a tiny **seeded procedural dungeon** the party
+### Slice 8 — The delve: exploration Protocol + a procedural dungeon *(the new core)*
+Replace the fixed gauntlet with a **seeded procedural dungeon** the party
 **auto-delves** by an **exploration Protocol** — the same `WHEN <State> → DO <Move>`
-grammar, now over dungeon Subjects/Predicates (rooms, exits, loot, threat) and
-Moves (head toward / grab / rest / flee / descend). The party navigates room→room,
-the existing combat sim fires in monster rooms, and the delve ends at the **target**
-(win) or a wipe. Add a pure `dungeon.ts` (generation + delve step) + a fog-of-war
-dungeon view; reuse `sim.ts` for fights.
+grammar, now over dungeon Subjects/Predicates and Moves (head toward / retreat /
+rest). The party navigates the **spatial grid**, the existing combat sim fires in
+monster rooms, and the delve ends at the **target** (win) or a wipe. Locked
+direction: a **spatial grid** rendered **first-person ("scrying eye / drone")** —
+the diegetic frame for the "you watch, don't control" identity and the fog of war.
 **Done when:** a party with a trivial exploration Protocol auto-delves a generated
 dungeon, fights along the way, and reaches & kills the target — proven in-browser,
-with the navigation choices visible in the journal.
+with the navigation choices visible in the journal. Built in sub-slices:
+
+- **8a-1** ✅ *(done & verified)* — pure seeded generation (`dungeon.ts`): connected
+  grid, rooms, L-corridors, objective at the farthest room. 5 tests (determinism +
+  connectivity across 200 seeds).
+- **8a-2** ✅ *(done & verified)* — pure delve state machine (`delve.ts`): frontier
+  exploration (navigate only the seen; `target` gated by `known`), fights on
+  entering rooms (reuse `sim`), guaranteed termination (cleared/dead/stuck + cap),
+  JSON-serialisable, decision-logging journal. 8 tests incl. a discriminator that
+  the protocol genuinely drives navigation. Headless — additive, nothing wires it.
+- **8b** *(recommended next)* — the **first-person "scrying" view** (starts simple:
+  the room/corridor ahead + exits, fog of war + minimap) and wiring: Town →
+  descend → Dungeon. The in-browser proof of the done-when lands here.
+- **8c** — the exploration-Protocol **editor** in Town (a second rule list).
 
 ### Slice 9 — The shell: Title → Save slots → Town → Dungeon
 The screen frame: a **title** screen, **multiple save slots** (independent
