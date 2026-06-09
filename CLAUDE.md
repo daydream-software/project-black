@@ -14,7 +14,7 @@ See `docs/ROADMAP.md`, `docs/ARCHITECTURE.md`, `docs/VOCABULARY.md`.
 TypeScript · Vite · Canvas 2D · Vitest. No runtime dependencies; sprites are
 generated in code.
 
-- `npm run dev` — dev server (http://localhost:5173)
+- `npm run dev` — dev server; open **http://127.0.0.1.nip.io:5173** (Vite binds `0.0.0.0` and allows `.nip.io` hosts, so it's reachable from the Windows browser over WSL — plain `localhost` forwarding is flaky)
 - `npm test` — Vitest (unit tests on the pure simulation)
 - `npm run build` — typecheck (`tsc`) + production build into `dist/`
 - `npm run preview` — serve the production build

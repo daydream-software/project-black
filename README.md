@@ -17,7 +17,7 @@ sprites are generated in code (no asset files to break).
 
 ```bash
 npm install
-npm run dev      # dev server at http://localhost:5173
+npm run dev      # dev server — open http://127.0.0.1.nip.io:5173 (binds 0.0.0.0, allows .nip.io)
 npm test         # Vitest — unit tests on the pure simulation
 npm run build    # typecheck (tsc) + production build into dist/
 npm run preview  # serve the production build locally
