@@ -10,24 +10,21 @@ interface Sprites {
   slime: HTMLCanvasElement
 }
 
-function drawSprite(
-  ctx: CanvasRenderingContext2D,
-  sprite: HTMLCanvasElement,
-  x: number,
-  y: number,
-) {
+interface HpBar {
+  x: number
+  y: number
+  w: number
+  frac: number
+  fill: string
+}
+
+function drawSprite(ctx: CanvasRenderingContext2D, sprite: HTMLCanvasElement, x: number, y: number): void {
   ctx.imageSmoothingEnabled = false
   ctx.drawImage(sprite, x, y, sprite.width * SCALE, sprite.height * SCALE)
 }
 
-function drawHpBar(
-  ctx: CanvasRenderingContext2D,
-  x: number,
-  y: number,
-  w: number,
-  frac: number,
-  fill: string,
-) {
+function drawHpBar(ctx: CanvasRenderingContext2D, bar: HpBar): void {
+  const { x, y, w, frac, fill } = bar
   const h = 10
   ctx.fillStyle = '#000000'
   ctx.fillRect(x - 1, y - 1, w + 2, h + 2)
@@ -37,11 +34,7 @@ function drawHpBar(
   ctx.fillRect(x, y, Math.max(0, Math.round(w * frac)), h)
 }
 
-export function render(
-  ctx: CanvasRenderingContext2D,
-  state: GameState,
-  sprites: Sprites,
-) {
+export function render(ctx: CanvasRenderingContext2D, state: GameState, sprites: Sprites): void {
   const { width, height } = ctx.canvas
 
   // background
@@ -63,7 +56,13 @@ export function render(
 
   // hero (left)
   const heroX = 60
-  drawHpBar(ctx, heroX, baseY - 22, sprites.hero.width * SCALE, state.hero.hp / state.hero.maxHp, '#4fd1ff')
+  drawHpBar(ctx, {
+    x: heroX,
+    y: baseY - 22,
+    w: sprites.hero.width * SCALE,
+    frac: state.hero.hp / state.hero.maxHp,
+    fill: '#4fd1ff',
+  })
   drawSprite(ctx, sprites.hero, heroX, baseY)
   ctx.fillStyle = '#cfd6e0'
   ctx.font = '13px system-ui, sans-serif'
@@ -71,12 +70,18 @@ export function render(
 
   // enemy (right)
   const slimeX = width - 60 - sprites.slime.width * SCALE
-  drawHpBar(ctx, slimeX, baseY - 22, sprites.slime.width * SCALE, state.enemy.hp / state.enemy.maxHp, '#ff6b6b')
+  drawHpBar(ctx, {
+    x: slimeX,
+    y: baseY - 22,
+    w: sprites.slime.width * SCALE,
+    frac: state.enemy.hp / state.enemy.maxHp,
+    fill: '#ff6b6b',
+  })
   drawSprite(ctx, sprites.slime, slimeX, baseY)
   ctx.fillStyle = '#cfd6e0'
   ctx.fillText(`${state.enemy.name}  ${state.enemy.hp}/${state.enemy.maxHp}`, slimeX, baseY + spriteH + 6)
 
-  // defeat overlay — the program wasn't survivable
+  // defeat overlay — the procedure wasn't survivable
   if (state.hero.hp <= 0) {
     ctx.fillStyle = 'rgba(10, 10, 16, 0.72)'
     ctx.fillRect(0, 0, width, height)
@@ -87,7 +92,7 @@ export function render(
     ctx.fillText('DEFEATED', width / 2, height / 2 - 14)
     ctx.fillStyle = '#cfd6e0'
     ctx.font = '14px system-ui, sans-serif'
-    ctx.fillText('Adjust your gambits to survive', width / 2, height / 2 + 16)
+    ctx.fillText('Adjust your protocols to survive', width / 2, height / 2 + 16)
     ctx.textAlign = 'left'
     ctx.textBaseline = 'top'
   }

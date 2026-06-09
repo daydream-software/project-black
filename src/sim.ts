@@ -14,27 +14,28 @@ export interface Combatant {
   atk: number
 }
 
-// A gambit's condition (FF12-style). Conditions can inspect either the actor
-// itself or its current enemy.
+// A condition for a protocol (inspired by FF12 gambits). Conditions can inspect
+// either the actor itself or its current enemy.
 export type Condition =
   | { kind: 'selfHpPctBelow'; value: number }
   | { kind: 'enemyHpPctBelow'; value: number }
   | { kind: 'selfHpFull' }
   | { kind: 'always' }
 
-/** One gambit: "if <condition> then <action>". */
-export interface Rule {
+/** One protocol: "if <condition> then <action>". */
+export interface Protocol {
   condition: Condition
   action: ActionKind
   /** Human-readable text shown in the editor and the decision log. */
   label: string
 }
 
-export type Program = Rule[]
+/** A unit's ordered list of protocols. */
+export type Procedure = Protocol[]
 
 export interface Decision {
   action: ActionKind
-  /** Index of the gambit that fired, or -1 if none matched (default behaviour). */
+  /** Index of the protocol that fired, or -1 if none matched (default behaviour). */
   ruleIndex: number
   reason: string
 }
@@ -54,18 +55,18 @@ export function conditionHolds(cond: Condition, self: Combatant, enemy: Combatan
 }
 
 /**
- * THE core function (a FF12 gambit engine). Scan the gambits top-to-bottom; the
- * first whose condition holds wins. Priority order is the whole game: the player
- * programs by ordering gambits.
+ * THE core function: the rule engine running a unit's procedure (inspired by FF12
+ * gambits). Scan the protocols top-to-bottom; the first whose condition holds
+ * wins. Priority order is the whole game: the player programs by ordering protocols.
  */
-export function decide(self: Combatant, enemy: Combatant, program: Program): Decision {
-  for (let i = 0; i < program.length; i++) {
-    const rule = program[i]
-    if (conditionHolds(rule.condition, self, enemy)) {
-      return { action: rule.action, ruleIndex: i, reason: rule.label }
+export function decide(self: Combatant, enemy: Combatant, procedure: Procedure): Decision {
+  for (let i = 0; i < procedure.length; i++) {
+    const protocol = procedure[i]
+    if (conditionHolds(protocol.condition, self, enemy)) {
+      return { action: protocol.action, ruleIndex: i, reason: protocol.label }
     }
   }
-  return { action: 'attack', ruleIndex: -1, reason: 'no gambit matched — default attack' }
+  return { action: 'attack', ruleIndex: -1, reason: 'no protocol matched — default attack' }
 }
 
 // ---------------------------------------------------------------------------
@@ -106,11 +107,11 @@ export function initialState(): GameState {
 
 /**
  * Advance the simulation by one turn (pure: returns a new state).
- * Turn order: the hero acts per its gambits, then — if still alive — the enemy
+ * Turn order: the hero acts per its protocols, then — if still alive — the enemy
  * retaliates (halved if the hero defended). A defeated slime is replaced by a
  * fresh one (endless loop). Once the hero is dead, stepping is a no-op.
  */
-export function step(state: GameState, program: Program): GameState {
+export function step(state: GameState, procedure: Procedure): GameState {
   if (state.hero.hp <= 0) return state
 
   const turn = state.turn + 1
@@ -119,7 +120,7 @@ export function step(state: GameState, program: Program): GameState {
   let slimesDefeated = state.slimesDefeated
   const hpBefore = hero.hp
 
-  const decision = decide(hero, enemy, program)
+  const decision = decide(hero, enemy, procedure)
   let detail: string
   let defending = false
 

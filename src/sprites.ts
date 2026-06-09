@@ -2,6 +2,8 @@
 // load (and therefore none to break). Each sprite is a 16x16 canvas drawn at
 // native resolution; the renderer scales it up with smoothing disabled.
 
+import { require2dContext } from './dom'
+
 type Palette = Record<string, string>
 
 /** Build a 16x16 sprite canvas from a char grid + palette. '.' = transparent. */
@@ -11,7 +13,7 @@ function spriteFromGrid(rows: string[], palette: Palette): HTMLCanvasElement {
   const c = document.createElement('canvas')
   c.width = w
   c.height = h
-  const ctx = c.getContext('2d')!
+  const ctx = require2dContext(c)
   for (let y = 0; y < h; y++) {
     for (let x = 0; x < w; x++) {
       const col = palette[rows[y][x]]
@@ -31,7 +33,7 @@ export function makeSlime(): HTMLCanvasElement {
   const c = document.createElement('canvas')
   c.width = W
   c.height = H
-  const ctx = c.getContext('2d')!
+  const ctx = require2dContext(c)
 
   const cx = 7.5
   const cy = 9.0

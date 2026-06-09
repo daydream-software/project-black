@@ -5,12 +5,12 @@ import {
   step,
   initialState,
   HEAL_AMOUNT,
-  type Program,
+  type Procedure,
   type Combatant,
 } from './sim'
 
-// The same two-gambit program the game ships with.
-const PROGRAM: Program = [
+// The same two-protocol procedure the game ships with.
+const PROCEDURE: Procedure = [
   { condition: { kind: 'selfHpPctBelow', value: 30 }, action: 'heal', label: 'heal' },
   { condition: { kind: 'always' }, action: 'attack', label: 'attack' },
 ]
@@ -20,37 +20,37 @@ const slime = (hp = 24): Combatant => ({ name: 's', hp, maxHp: 24, atk: 7 })
 
 describe('decide — the core logic, checked against hand-computed answers', () => {
   it('heals when self HP is below the 30% threshold', () => {
-    const d = decide(hero(25), slime(), PROGRAM)
+    const d = decide(hero(25), slime(), PROCEDURE)
     expect(d.action).toBe('heal')
-    expect(d.ruleIndex).toBe(0) // the FIRST gambit fired
+    expect(d.ruleIndex).toBe(0) // the FIRST protocol fired
   })
 
   it('attacks at full HP', () => {
-    expect(decide(hero(100), slime(), PROGRAM).action).toBe('attack')
+    expect(decide(hero(100), slime(), PROCEDURE).action).toBe('attack')
   })
 
   // The test that catches a broken implementation: the boundary. 30/100 = exactly
   // 30%, which is NOT "below 30%", so it must attack. An off-by-one (<=) flips
   // this and the test fails loudly.
   it('boundary: exactly 30% attacks; 29% heals', () => {
-    expect(decide(hero(30), slime(), PROGRAM).action).toBe('attack')
-    expect(decide(hero(29), slime(), PROGRAM).action).toBe('heal')
+    expect(decide(hero(30), slime(), PROCEDURE).action).toBe('attack')
+    expect(decide(hero(29), slime(), PROCEDURE).action).toBe('heal')
   })
 
-  it('gambit order is priority order: first matching gambit wins', () => {
-    const reversed: Program = [PROGRAM[1], PROGRAM[0]]
+  it('protocol order is priority order: first matching protocol wins', () => {
+    const reversed: Procedure = [PROCEDURE[1], PROCEDURE[0]]
     expect(decide(hero(10), slime(), reversed).action).toBe('attack')
   })
 
-  it('falls back to attack when no gambit matches', () => {
-    const noMatch: Program = [{ condition: { kind: 'selfHpPctBelow', value: 0 }, action: 'heal', label: 'never' }]
+  it('falls back to attack when no protocol matches', () => {
+    const noMatch: Procedure = [{ condition: { kind: 'selfHpPctBelow', value: 0 }, action: 'heal', label: 'never' }]
     const d = decide(hero(50), slime(), noMatch)
     expect(d.action).toBe('attack')
     expect(d.ruleIndex).toBe(-1)
   })
 
-  it('an enemy-targeting gambit reads the enemy, not the actor', () => {
-    const finisher: Program = [
+  it('an enemy-targeting protocol reads the enemy, not the actor', () => {
+    const finisher: Procedure = [
       { condition: { kind: 'enemyHpPctBelow', value: 30 }, action: 'attack', label: 'finish' },
       { condition: { kind: 'always' }, action: 'defend', label: 'turtle' },
     ]
@@ -77,7 +77,7 @@ describe('conditionHolds', () => {
 
 describe('step — one turn of the simulation', () => {
   it('attacking reduces enemy HP by the hero attack value', () => {
-    const s1 = step(initialState(), PROGRAM) // hero at full HP -> attacks
+    const s1 = step(initialState(), PROCEDURE) // hero at full HP -> attacks
     expect(s1.enemy.hp).toBe(24 - 8)
     expect(s1.turn).toBe(1)
   })
@@ -86,13 +86,13 @@ describe('step — one turn of the simulation', () => {
     let s = initialState()
     s = { ...s, hero: { ...s.hero, hp: 20 } } // force a heal
     const before = s.enemy.hp
-    const s1 = step(s, PROGRAM)
+    const s1 = step(s, PROCEDURE)
     expect(s1.hero.hp).toBe(20 + HEAL_AMOUNT - s.enemy.atk)
     expect(s1.enemy.hp).toBe(before) // enemy was not attacked this turn
   })
 
   it('defending halves the incoming retaliation', () => {
-    const defendOnly: Program = [{ condition: { kind: 'always' }, action: 'defend', label: 'd' }]
+    const defendOnly: Procedure = [{ condition: { kind: 'always' }, action: 'defend', label: 'd' }]
     const s1 = step(initialState(), defendOnly)
     // slime atk 7 -> ceil(7/2) = 4 damage taken
     expect(s1.hero.hp).toBe(100 - Math.ceil(7 / 2))
@@ -101,17 +101,17 @@ describe('step — one turn of the simulation', () => {
   it('a defeated slime is replaced and the counter increments', () => {
     let s = initialState()
     s = { ...s, enemy: { ...s.enemy, hp: 4 } } // one hit from death (hero atk 8)
-    const s1 = step(s, PROGRAM)
+    const s1 = step(s, PROCEDURE)
     expect(s1.slimesDefeated).toBe(1)
     expect(s1.enemy.hp).toBe(s1.enemy.maxHp) // fresh slime
   })
 
   it('stepping a dead hero is a no-op', () => {
     const dead = { ...initialState(), hero: { ...initialState().hero, hp: 0 } }
-    expect(step(dead, PROGRAM)).toBe(dead)
+    expect(step(dead, PROCEDURE)).toBe(dead)
   })
 
   it('is deterministic: identical inputs produce identical outputs', () => {
-    expect(step(initialState(), PROGRAM)).toEqual(step(initialState(), PROGRAM))
+    expect(step(initialState(), PROCEDURE)).toEqual(step(initialState(), PROCEDURE))
   })
 })
