@@ -10,8 +10,9 @@ import {
   type Maneuver,
   type SkillId,
 } from './sim'
-import { startRun, stepRun, type RunState } from './run'
+import { startRun, stepRun, catchUp, type RunState } from './run'
 import { toggleMusic, setMusicState, type TrackId } from './music'
+import { saveGame, loadGame, elapsedSteps, type Hero, type ProtocolRow } from './save'
 import { makeHero, makeSlime } from './sprites'
 import { render, renderRunHud, renderRunEnd } from './render'
 import { requireElement, require2dContext } from './dom'
@@ -72,22 +73,10 @@ function skillLabel(id: SkillId): string {
 }
 
 // --- Editor state: per-hero rule lists (priority = order). ------------------
+// ProtocolRow / Hero are defined in save.ts (they're the persisted schema).
+// `roster` is `let` so a loaded save can replace it on startup.
 
-interface ProtocolRow {
-  subjectId: string
-  predId: string
-  command: 'attack' | 'useSkill' | 'flee'
-  skillId: SkillId // only used when command === 'useSkill'
-  enabled: boolean
-}
-
-interface Hero {
-  simId: string // matches the id sim.ts assigns (hero-1 = Warrior, hero-2 = Healer)
-  name: string
-  rows: ProtocolRow[]
-}
-
-const roster: Hero[] = [
+let roster: Hero[] = [
   {
     simId: 'hero-1',
     name: 'Warrior',
@@ -183,6 +172,7 @@ function esc(s: string): string {
 function launchRun(): void {
   run = startRun(party())
   mode = 'run'
+  saveNow()
   renderRunBar()
   renderEditor() // re-render so inputs pick up the locked state
   frame()
@@ -191,9 +181,35 @@ function launchRun(): void {
 function backToCamp(): void {
   run = null
   mode = 'camp'
+  saveNow()
   renderRunBar()
   renderEditor()
   frame()
+}
+
+/** Persist the whole state, stamped with the current time (for offline catch-up). */
+function saveNow(): void {
+  saveGame({ roster, activeHero, mode, run })
+}
+
+/**
+ * Restore from localStorage on startup. If a run was in progress when we last
+ * saved, fast-forward it by the elapsed wall-clock (offline progress) — a run
+ * that finished while away lands on its RUN OVER / RUN CLEARED screen so the
+ * player can read the journal (Design rule #1). A bad/missing save is ignored.
+ */
+function restore(): void {
+  const saved = loadGame()
+  if (saved === null) return
+  roster = saved.roster
+  activeHero = Math.max(0, Math.min(saved.activeHero, roster.length - 1))
+  if (saved.run !== null) {
+    run = catchUp(saved.run, elapsedSteps(saved.savedAt, Date.now()))
+    mode = 'run'
+  } else {
+    run = null
+    mode = 'camp'
+  }
 }
 
 /** Camp-only: editing rebuilds the editor (e.g. the contextual Object dropdown)
@@ -201,6 +217,7 @@ function backToCamp(): void {
 function commit(): void {
   renderEditor()
   frame()
+  saveNow()
 }
 
 function move(i: number, dir: number): void {
@@ -372,6 +389,7 @@ function renderTabs(): void {
       activeHero = i
       renderTabs()
       renderEditor()
+      saveNow()
     })
     tabsEl.appendChild(tab)
   })
@@ -439,17 +457,34 @@ addBtn.addEventListener('click', () => {
   commit()
 })
 
+restore() // load a saved game (and fast-forward an in-progress run) before first paint
 renderRunBar()
 renderTabs()
 renderEditor()
 frame()
 
+let lastSaveMs = 0
 const ticker = setInterval(() => {
   if (mode !== 'run' || run === null || run.status !== 'fighting') return
   run = stepRun(run)
   frame()
-  if (run.status !== 'fighting') renderRunBar() // surface "Back to camp"
+  const now = Date.now()
+  if (run.status !== 'fighting') {
+    renderRunBar() // surface "Back to camp"
+    saveNow() // persist the finished run
+  } else if (now - lastSaveMs >= 1000) {
+    saveNow() // heartbeat: keep savedAt fresh so offline catch-up is accurate
+    lastSaveMs = now
+  }
 }, 450)
+
+// Persist immediately when the tab is hidden or unloaded — this stamps `savedAt`
+// at the moment of leaving, which is what offline catch-up measures from.
+// (visibilitychange/pagehide are reliable where beforeunload is not.)
+document.addEventListener('visibilitychange', () => {
+  if (document.hidden) saveNow()
+})
+window.addEventListener('pagehide', () => saveNow())
 
 // Vite HMR re-runs this module on edit; without this, each hot update would stack
 // another interval and the fight would race. Clear ours when the module is replaced.

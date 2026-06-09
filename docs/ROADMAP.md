@@ -42,6 +42,7 @@ and deterministic. English codebase. See [ARCHITECTURE.md](ARCHITECTURE.md).
 | 3 | Composite rules (State = Subject+Predicate, Maneuver = Command+Object), 2-hero party w/ per-unit Procedures vs a 3-enemy group, filter-then-pick targeting, victory/defeat | ✅ done & verified |
 | 4 | The first "wall": Hex Warden counters every heal; naive cure-Procedure loses, disabling the cure rule wins. Encounter selector (Slime Pack / Hex Warden) | ✅ done & verified |
 | RL | **Run-loop POC** (the roguelite spine): pure `run.ts` layer above the encounter — camp → launch → auto-advance a gauntlet (party HP/deaths carry: attrition) → defeat ends the run → back to camp. Editor locked during a run (no rescue); stage HUD; journal. | ✅ done & verified |
+| 5 | **Save + offline catch-up:** `localStorage` persists the camp roster and an in-progress run; on load, an in-progress run fast-forwards by elapsed wall-clock (`catchUp`) — finishing offline lands on RUN OVER. Defensive load (versioned, never bricks). | ✅ done & verified |
 
 Screenshots: [docs/progress/](progress/).
 
@@ -95,13 +96,26 @@ pinned by two opposite-outcome tests. An **encounter selector** (Slime Pack /
 Hex Warden) keeps the player's Procedures and swaps only the enemy group, so the
 "same program, different wall" contrast is visible.
 
-### Slice 5 — AFK offline progression + save *(recommended next)*
+### Slice 5 — AFK offline progression + save ✅ *(done & verified)*
 `localStorage` save/load; on load, compute elapsed time and replay `step` to catch
 up. Introduce a seeded PRNG so catch-up is reproducible.
 **Done when:** closing and reopening the tab resumes correctly and credits offline
 progress.
 
-### Slice 6 — Ship it live (GitHub Pages)
+*Shipped:* `src/save.ts` persists the camp **roster** (editor rows) and the current
+**run** separately, stamped with `savedAt`; saved on edit/launch/back-to-camp, a
+~1 s heartbeat during a run, and `visibilitychange`/`pagehide`. On load, an
+in-progress run is fast-forwarded by `catchUp(run, elapsedSteps)` (pure, in
+`run.ts`); a run that finished while away lands on RUN OVER so the journal is read
+(Design rule #1). Catch-up is **load-only** (not on refocus — the throttled
+interval already advances an open tab). Load is defensive (versioned + try/catch →
+ignore corrupt/stale, never bricks). Verified in-browser: edit→reload persists; an
+injected old `savedAt`→reload fast-forwards the run to its end.
+**PRNG deferred:** the sim has zero randomness today, so catch-up is *already*
+reproducible — a seeded PRNG would be infra with no consumer. It lands with the
+first dice/randomness (D&D flavour), where the seed will live in `RunState`.
+
+### Slice 6 — Ship it live (GitHub Pages) *(recommended next)*
 Create the GitHub repo, enable Pages, confirm `deploy.yml` publishes a playable
 build. *(Can be pulled earlier — it's motivating to play on the web.)*
 **Done when:** the game is reachable at its Pages URL on any device.

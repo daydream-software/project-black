@@ -58,3 +58,16 @@ export function stepRun(run: RunState): RunState {
   if (next >= run.gauntlet.length) return { ...run, battle, party, status: 'cleared' }
   return { ...run, party, depth: next, battle: makeBattle(party, run.gauntlet[next]), status: 'fighting' }
 }
+
+/**
+ * Fast-forward a run by up to `steps` unit-actions (for offline catch-up: the
+ * caller turns elapsed wall-clock into a step count). Pure — no time, no clock.
+ * The `status === 'fighting'` guard stops the moment the run resolves, so a huge
+ * `steps` (reopening after a long absence) costs only as many iterations as the
+ * run actually had left, not `steps`.
+ */
+export function catchUp(run: RunState, steps: number): RunState {
+  let r = run
+  while (steps-- > 0 && r.status === 'fighting') r = stepRun(r)
+  return r
+}

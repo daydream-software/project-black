@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { startRun, stepRun, type RunState } from './run'
+import { startRun, stepRun, catchUp, type RunState } from './run'
 import { makeWarrior, makeHealer, type Combatant, type Procedure } from './sim'
 
 // Procedures spelled out so the tests read like the rule language.
@@ -61,5 +61,33 @@ describe('run — the gauntlet plays itself', () => {
     const a = runToEnd(startRun(mk(), ['duo', 'pack']))
     const b = runToEnd(startRun(mk(), ['duo', 'pack']))
     expect(a).toEqual(b)
+  })
+})
+
+describe('catchUp — offline fast-forward by N steps', () => {
+  const mk = (): RunState => startRun([makeWarrior(attackOnly), makeHealer(attackOnly)], ['duo', 'pack', 'warden'])
+
+  it('replaying N steps equals N live stepRun calls (deterministic catch-up)', () => {
+    let live = mk()
+    for (let i = 0; i < 25; i++) live = stepRun(live)
+    expect(catchUp(mk(), 25)).toEqual(live)
+  })
+
+  it('0 steps is a no-op', () => {
+    const r = mk()
+    expect(catchUp(r, 0)).toBe(r)
+  })
+
+  it('stops at resolution: a huge step count fast-forwards only to the run end', () => {
+    const ended = catchUp(mk(), 1_000_000) // "reopened a week later"
+    expect(ended.status === 'cleared' || ended.status === 'dead').toBe(true)
+    // and once resolved it stays put — catching up further changes nothing
+    expect(catchUp(ended, 1_000_000)).toBe(ended)
+  })
+
+  it('a partial catch-up that does not resolve leaves the run still fighting', () => {
+    const r = catchUp(mk(), 3)
+    expect(r.status).toBe('fighting')
+    expect(r.battle.turn).toBe(3) // 3 unit-actions happened in the first encounter
   })
 })

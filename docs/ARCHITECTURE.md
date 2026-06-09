@@ -7,12 +7,15 @@ index.html            Entry point + page layout (canvas left, rule editor right)
 src/
   sim.ts              PURE encounter sim: types, decide(), step() — one fight
   sim.test.ts         Vitest unit tests for the encounter sim (colocated)
-  run.ts              PURE run layer: RunState, stepRun() — a gauntlet of encounters
+  run.ts              PURE run layer: RunState, stepRun(), catchUp() — a gauntlet
   run.test.ts         Vitest unit tests for the run layer (colocated)
+  save.ts             localStorage save/load + offline catch-up math (owns the clock)
+  music.ts            Web Audio music director (3 themes, cross-faded by state)
   render.ts           PURE view: draws a GameState onto the canvas (+ run HUD)
   sprites.ts          Pixel-art sprites generated in code (hero, slime)
-  main.ts             Wiring: camp/run modes, rule editor (DOM), loop, journal
+  main.ts             Wiring: camp/run modes, rule editor (DOM), loop, journal, save
   style.css           UI styling
+  audio/              The three Suno theme OGGs (camp / run / boss)
 vite.config.ts        base: './' (GitHub Pages) + Vitest config
 docs/
   ROADMAP.md          Vision, design rules, planned slices
@@ -33,7 +36,11 @@ randomness — same inputs always give the same outputs):
   next encounter, or end it cleared/dead). The party (HP, deaths) persists across
   encounters — attrition is the run's pressure. See [VISION.md](VISION.md).
 
-`main.ts` owns the only mutable loop and the camp ↔ run UI.
+`main.ts` owns the only mutable loop and the camp ↔ run UI. **Offline catch-up**
+rides on this purity: `save.ts` stamps a snapshot with `savedAt`, and on the next
+load `catchUp(run, elapsedSteps)` simply replays `stepRun` for the elapsed
+wall-clock — deterministic replay *is* the AFK mechanic. All clock/storage I/O
+lives in `save.ts`/`main.ts`; `sim.ts`/`run.ts` never see time.
 
 - `decide(self, units)` — the **rule engine** running a unit's Procedure: it
   scans the Protocols top-to-bottom and the first whose composite State resolves
