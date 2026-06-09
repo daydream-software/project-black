@@ -55,10 +55,37 @@ export function roomAt(d: Dungeon, cell: number): number {
   return -1
 }
 
+/** Facing / step direction: 0=N, 1=E, 2=S, 3=W (indexes DX/DY). */
+export type Dir = 0 | 1 | 2 | 3
+
 // 4-neighbours in a FIXED order (N, E, S, W) so any nearest/tie-break that walks
 // them is deterministic.
-const DX = [0, 1, 0, -1]
-const DY = [-1, 0, 1, 0]
+export const DX = [0, 1, 0, -1]
+export const DY = [-1, 0, 1, 0]
+
+/** Floor-cell neighbours of `cell`, in fixed N,E,S,W order. */
+export function floorNeighbours(d: Dungeon, cell: number): number[] {
+  const x = cell % d.width
+  const y = (cell / d.width) | 0
+  const out: number[] = []
+  for (let k = 0; k < 4; k++) {
+    const nx = x + DX[k]
+    const ny = y + DY[k]
+    if (nx < 0 || ny < 0 || nx >= d.width || ny >= d.height) continue
+    const ni = ny * d.width + nx
+    if (d.cells[ni]) out.push(ni)
+  }
+  return out
+}
+
+/** Direction from `from` to an adjacent cell `to`. */
+export function dirBetween(width: number, from: number, to: number): Dir {
+  const d = to - from
+  if (d === -width) return 0
+  if (d === 1) return 1
+  if (d === width) return 2
+  return 3
+}
 
 /** BFS floor distances from `start` (cell index). Unreachable = Infinity. */
 export function bfsDistances(d: Dungeon, start: number): number[] {
