@@ -9,15 +9,19 @@ A unit's behaviour is an ordered list of rules. Each rule is:
 - The **Subject of the State is also the target** of the Maneuver. There is no
   separate target picker — the unit that matched the State is the unit acted upon
   (this is how FF12 gambits work).
-- **Maneuver** = `Verb` + `which` (a composite action):
-  `Use Skill · <skill>` or `Use Item · <item>`.
-  e.g. `Use Skill · Cure`, `Use Skill · Fire`, `Use Item · Potion`.
+- **Maneuver** = `Command` + `Object` (a composite action, mirroring the State).
+  Commands: `Attack`, `Use Skill`, `Use Item`, `Flee`. `Attack`/`Flee` take no
+  Object; `Use Skill`/`Use Item` name which one (the skill/item **is** the Object).
+  e.g. `Attack`, `Use Skill · Cure`, `Use Skill · Fire`, `Use Item · Potion`, `Flee`.
+- Grammar symmetry: the State's **Subject** is *who* is acted on; the Maneuver's
+  **Object** is *what* is wielded.
 - Rules are scanned top-to-bottom; the **first State that holds wins** (priority
   = order). This is the core engine (`decide()`).
 
-> Terms: **State** and **Maneuver** are the two halves of a rule. A single rule
-> line is a **Protocol**; the whole ordered list a unit carries is its
-> **Procedure**. (Inspired by FF12's gambit system.)
+> Terms: **State** (Subject + Predicate) and **Maneuver** (Command + Object) are
+> the two halves of a rule. A single rule line is a **Protocol**; the whole
+> ordered list a unit carries is its **Procedure**. (Inspired by FF12's gambit
+> system.)
 
 Status legend: ✅ implemented · 🔜 next (party/targeting slice) · ⏳ later.
 
@@ -28,15 +32,14 @@ Status legend: ✅ implemented · 🔜 next (party/targeting slice) · ⏳ later
 | Subject | Qualifier | Status |
 |---|---|---|
 | **Self** | — | ✅ |
-| **Ally** | any | 🔜 |
-| Ally | lowest HP % | 🔜 |
-| Ally | nearest | 🔜 |
+| **Ally** | any | ✅ |
+| Ally | lowest HP % | ✅ |
+| Ally | nearest | ✅ (= list order; no geometry yet) |
 | Ally | by role (Tank / Healer / DPS) | ⏳ |
 | Ally | specific member | ⏳ |
-| **Enemy** | any | ✅ (implicit "nearest") |
-| Enemy | nearest | 🔜 |
-| Enemy | lowest HP (to finish) | 🔜 |
-| Enemy | highest HP | 🔜 |
+| **Enemy** | any / nearest | ✅ (= list order; no geometry yet) |
+| Enemy | lowest HP (to finish) | ✅ |
+| Enemy | highest HP | ⏳ |
 | Enemy | strongest / by threat | ⏳ |
 | Enemy | of a specific type | ⏳ |
 | **Party** (aggregate) | — | ⏳ |
@@ -60,21 +63,27 @@ Status legend: ✅ implemented · 🔜 next (party/targeting slice) · ⏳ later
 | Start of battle (turn 1) | Battle subject | ⏳ |
 | Every Nth turn | Battle subject | ⏳ |
 
-## Maneuvers
+## Maneuvers — `Command` + `Object`
 
-A Maneuver is a verb plus a specific choice. It acts on the **State's subject**
-(the matched unit). The two verbs:
+A Maneuver is a **Command** plus (for some commands) an **Object**. It acts on
+the **State's subject** (the matched unit). The four commands:
+
+| Command | Object | Status |
+|---|---|---|
+| **Attack** | — (basic hit, no cost) | ✅ |
+| **Use Skill** | a skill (see below) | ✅ |
+| **Use Item** | a consumable item (see below) | ⏳ |
+| **Flee** | — (disengage) | ⏳ (modelled; no effect yet) |
 
 ### `Use Skill · <skill>`
 
 | Skill | Sensible target | Notes | Status |
 |---|---|---|---|
-| **Attack** | Enemy | basic, no cost | ✅ |
 | **Heavy Strike** | Enemy | more damage, slower / costs a charge | ⏳ |
 | **Fire / Ice / Lightning** | Enemy | elemental; weaknesses later | ⏳ |
 | **Finisher** | Enemy | bonus vs low-HP targets | ⏳ |
-| **Defend** | Self | halves incoming this turn | ✅ |
-| **Cure** | Self / Ally | heal | ✅ (self) |
+| **Defend** | Self | halves incoming until next turn | ✅ |
+| **Cure** | Self / Ally | heal | ✅ |
 | **Greater Cure** | Self / Ally | bigger heal | ⏳ |
 | **Revive** | Ally (downed) | | ⏳ |
 | **Cleanse** | Self / Ally | remove a status | ⏳ |
@@ -145,19 +154,32 @@ type Predicate =
 
 interface State { subject: Subject; predicate: Predicate } // subject == the target
 
+// Maneuver = Command + Object. Attack/Flee take no Object; Use Skill/Item name one.
 type Maneuver =
-  | { use: 'skill'; skill: SkillId }
-  | { use: 'item';  item: ItemId }
+  | { command: 'attack' }
+  | { command: 'flee' }
+  | { command: 'useSkill'; skill: SkillId } // skill IS the Object
+  | { command: 'useItem';  item: ItemId }   // item  IS the Object
 
-interface Protocol { state: State; maneuver: Maneuver; enabled: boolean }
+interface Protocol { state: State; maneuver: Maneuver }
 type Procedure = Protocol[] // ordered; first matching State wins; acts on State.subject
 ```
 
 The editor builds a State from two dropdowns (Subject, Predicate) and a Maneuver
-from two more (Verb = Skill/Item, then which one) — composition, no target picker.
+from a Command dropdown plus a **contextual** Object dropdown (shown only for
+`Use Skill` / `Use Item`) — composition, no target picker. **Target resolution is
+filter-then-pick:** candidates of the subject class are filtered by the predicate,
+*then* the pick (`any`/`nearest`/`lowestHp`) selects among those that pass; an
+empty result means the State does not hold.
 
-## Currently shipped subset (slices 1–2)
+## Currently shipped subset (slices 1–3)
 
-States: `Self · HP<30%`, `Self · HP<50%`, `Enemy · HP<30%`, `Self · HP=full`,
-`Battle · Always`. Maneuvers: `Use Skill · Attack`, `Use Skill · Cure` (self),
-`Use Skill · Defend` (self).
+A 2-hero party (Warrior, Healer) fights a group of three slimes; each unit runs
+its **own** Procedure, units act in turn order, and the fight resolves to
+victory/defeat.
+
+- **Subjects:** `Self`, `Ally · any`, `Ally · lowest HP`, `Enemy · nearest`,
+  `Enemy · lowest HP`.
+- **Predicates:** `Always`, `HP < 30%`, `HP < 50%`, `HP = 100%`.
+- **Maneuvers:** `Attack`, `Use Skill · Cure`, `Use Skill · Defend`, `Flee`
+  (modelled, no effect yet).

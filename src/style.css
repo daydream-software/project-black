@@ -58,6 +58,34 @@ canvas {
   color: #62687a;
 }
 
+.tabs {
+  display: flex;
+  gap: 6px;
+  margin-bottom: 10px;
+}
+
+.tab {
+  flex: 1;
+  background: #14141f;
+  color: #8b90a0;
+  border: 1px solid #26263a;
+  border-radius: 6px;
+  padding: 7px 10px;
+  font-size: 13px;
+  cursor: pointer;
+  transition: border-color 0.1s, color 0.1s, background 0.1s;
+}
+
+.tab:hover {
+  border-color: #2f4a5a;
+}
+
+.tab.active {
+  border-color: #4fd1ff;
+  color: #e6e9ef;
+  background: #15202b;
+}
+
 #editor {
   list-style: none;
   margin: 0 0 8px;
@@ -67,6 +95,7 @@ canvas {
 .protocol {
   display: flex;
   align-items: center;
+  flex-wrap: wrap;
   gap: 6px;
   padding: 6px 8px;
   border: 1px solid #26263a;
@@ -74,6 +103,10 @@ canvas {
   margin-bottom: 6px;
   background: #14141f;
   transition: border-color 0.1s, background 0.1s;
+}
+
+.protocol .dot {
+  color: #62687a;
 }
 
 .protocol.active {
@@ -97,8 +130,8 @@ canvas {
 }
 
 .protocol select {
-  flex: 1;
-  min-width: 0;
+  flex: 1 1 90px;
+  min-width: 80px;
   background: #0c0c12;
   color: #e6e9ef;
   border: 1px solid #2c2c40;
@@ -173,13 +206,25 @@ canvas {
   border-left-color: #4fd1ff;
 }
 
+.entry.flee {
+  border-left-color: #b48cff;
+}
+
 .entry .turn {
   color: #8b90a0;
 }
 
-.entry .rule {
-  color: #e6e9ef;
+.entry .actor {
+  color: #ffd479;
   font-weight: 600;
+}
+
+.entry .rule {
+  color: #cfd6e0;
+}
+
+.entry .tgt {
+  color: #9fe0a8;
 }
 
 .entry .detail {

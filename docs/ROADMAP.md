@@ -35,6 +35,7 @@ and deterministic. English codebase. See [ARCHITECTURE.md](ARCHITECTURE.md).
 |---|---|---|
 | 1 | Adventurer follows a rule program vs looping slimes; on-screen decision log | ✅ done & verified |
 | 2 | Interactive rule editor (reorder, on/off, add/remove); live re-sim; Defend; death if non-viable | ✅ done & verified |
+| 3 | Composite rules (State = Subject+Predicate, Maneuver = Command+Object), 2-hero party w/ per-unit Procedures vs a 3-enemy group, filter-then-pick targeting, victory/defeat | ✅ done & verified |
 
 Screenshots: [docs/progress/](progress/).
 
@@ -58,7 +59,7 @@ game — the game just reads `changelog.json`.
 with the right entries, it doesn't reappear on a second load, and the Patch-notes
 button reopens it on demand.
 
-### Slice 3 — Composite rules (State + Maneuver), party + targeting *(recommended next)*
+### Slice 3 — Composite rules (State + Maneuver), party + targeting ✅ *(done & verified)*
 Adopt the composite model from [VOCABULARY.md](VOCABULARY.md): a rule becomes
 **WHEN `<State = Subject + Predicate>` → DO `<Maneuver = verb + which>`**, built
 from composed dropdowns rather than a flat menu. The **State's subject is the
@@ -72,7 +73,7 @@ most later content needs.*
 **Done when:** a 2-hero party with per-unit Procedures clears a multi-enemy fight,
 and composed targeting is visibly correct in the decision log.
 
-### Slice 4 — The first "wall"
+### Slice 4 — The first "wall" *(recommended next)*
 An enemy with a mechanic that a naive program cannot beat (e.g. *counters healing*,
 or *enrages below 50%*), solvable **only** by changing the Procedure.
 **Done when:** the default Procedure loses, and a specific Protocol change wins —

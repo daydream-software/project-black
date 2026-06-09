@@ -1,117 +1,225 @@
 import { describe, it, expect } from 'vitest'
 import {
   decide,
-  conditionHolds,
+  resolveTarget,
+  predicateHolds,
   step,
   initialState,
-  HEAL_AMOUNT,
-  type Procedure,
+  makeWarrior,
+  makeHealer,
   type Combatant,
+  type Procedure,
+  type State,
 } from './sim'
 
-// The same two-protocol procedure the game ships with.
-const PROCEDURE: Procedure = [
-  { condition: { kind: 'selfHpPctBelow', value: 30 }, action: 'heal', label: 'heal' },
-  { condition: { kind: 'always' }, action: 'attack', label: 'attack' },
-]
+// --- Builders ---------------------------------------------------------------
 
-const hero = (hp: number): Combatant => ({ name: 'h', hp, maxHp: 100, atk: 8 })
-const slime = (hp = 24): Combatant => ({ name: 's', hp, maxHp: 24, atk: 7 })
+let counter = 0
+function unit(side: 'hero' | 'enemy', hp: number, maxHp: number, procedure: Procedure = []): Combatant {
+  counter += 1
+  return { id: `${side}-${counter}`, name: `${side}${counter}`, side, hp, maxHp, atk: 10, defending: false, procedure }
+}
 
-describe('decide — the core logic, checked against hand-computed answers', () => {
-  it('heals when self HP is below the 30% threshold', () => {
-    const d = decide(hero(25), slime(), PROCEDURE)
-    expect(d.action).toBe('heal')
-    expect(d.ruleIndex).toBe(0) // the FIRST protocol fired
+// Common Maneuvers / States, spelled out so tests read like the rule language.
+const ATTACK = { command: 'attack' } as const
+const CURE = { command: 'useSkill', skill: 'cure' } as const
+const DEFEND = { command: 'useSkill', skill: 'defend' } as const
+
+const enemyNearest: State = { subject: { who: 'enemy', pick: 'first' }, predicate: { p: 'always' } }
+const allyLowestHurt: State = { subject: { who: 'ally', pick: 'lowestHp' }, predicate: { p: 'hpPctBelow', value: 50 } }
+const selfLow: State = { subject: { who: 'self' }, predicate: { p: 'hpPctBelow', value: 30 } }
+
+describe('predicateHolds', () => {
+  it('always is unconditionally true', () => {
+    expect(predicateHolds({ p: 'always' }, unit('hero', 1, 100))).toBe(true)
+  })
+  it('hpFull only at max HP', () => {
+    expect(predicateHolds({ p: 'hpFull' }, unit('hero', 100, 100))).toBe(true)
+    expect(predicateHolds({ p: 'hpFull' }, unit('hero', 99, 100))).toBe(false)
+  })
+  it('hpPctBelow uses the ratio, not raw HP, and the boundary is strict', () => {
+    const tank = unit('hero', 40, 200) // 20%
+    expect(predicateHolds({ p: 'hpPctBelow', value: 30 }, tank)).toBe(true)
+    // Exactly 30% is NOT below 30% — an off-by-one (<=) flips this and fails.
+    expect(predicateHolds({ p: 'hpPctBelow', value: 30 }, unit('hero', 30, 100))).toBe(false)
+    expect(predicateHolds({ p: 'hpPctBelow', value: 30 }, unit('hero', 29, 100))).toBe(true)
+  })
+})
+
+describe('resolveTarget — the subject IS the target', () => {
+  it('Self resolves to the acting unit', () => {
+    const me = unit('hero', 100, 100)
+    expect(resolveTarget({ subject: { who: 'self' }, predicate: { p: 'always' } }, me, [me])?.id).toBe(me.id)
   })
 
-  it('attacks at full HP', () => {
-    expect(decide(hero(100), slime(), PROCEDURE).action).toBe('attack')
+  it('Enemy nearest = front of the list (lowest index)', () => {
+    const me = unit('hero', 100, 100)
+    const e1 = unit('enemy', 20, 30)
+    const e2 = unit('enemy', 5, 30)
+    expect(resolveTarget(enemyNearest, me, [me, e1, e2])?.id).toBe(e1.id)
   })
 
-  // The test that catches a broken implementation: the boundary. 30/100 = exactly
-  // 30%, which is NOT "below 30%", so it must attack. An off-by-one (<=) flips
-  // this and the test fails loudly.
-  it('boundary: exactly 30% attacks; 29% heals', () => {
-    expect(decide(hero(30), slime(), PROCEDURE).action).toBe('attack')
-    expect(decide(hero(29), slime(), PROCEDURE).action).toBe('heal')
+  it('Enemy lowest-HP picks the most-hurt by ratio, tie-broken by index', () => {
+    const me = unit('hero', 100, 100)
+    const e1 = unit('enemy', 9, 30) // 30%
+    const e2 = unit('enemy', 3, 30) // 10% — most hurt
+    const lowest: State = { subject: { who: 'enemy', pick: 'lowestHp' }, predicate: { p: 'always' } }
+    expect(resolveTarget(lowest, me, [me, e1, e2])?.id).toBe(e2.id)
+    // Tie at 10%: the earlier index wins.
+    const e3 = unit('enemy', 3, 30)
+    expect(resolveTarget(lowest, me, [me, e2, e3])?.id).toBe(e2.id)
   })
 
-  it('protocol order is priority order: first matching protocol wins', () => {
-    const reversed: Procedure = [PROCEDURE[1], PROCEDURE[0]]
-    expect(decide(hero(10), slime(), reversed).action).toBe('attack')
+  // The crux: FILTER then PICK. "lowest-HP ally that is ALSO below 50%" — not
+  // "the lowest-HP ally, only if it happens to be below 50%".
+  it('filter-then-pick: the most-hurt unit is ignored if it fails the predicate', () => {
+    const me = unit('hero', 100, 100)
+    const a1 = unit('hero', 90, 100) // 90% — above 50%, excluded
+    const a2 = unit('hero', 40, 100) // 40% — qualifies, and is the lowest that does
+    const a3 = unit('hero', 70, 100) // 70% — above 50%, excluded
+    // a1/a3 are NOT the lowest; a2 is the only one under 50% so it must win.
+    expect(resolveTarget(allyLowestHurt, me, [me, a1, a2, a3])?.id).toBe(a2.id)
   })
 
-  it('falls back to attack when no protocol matches', () => {
-    const noMatch: Procedure = [{ condition: { kind: 'selfHpPctBelow', value: 0 }, action: 'heal', label: 'never' }]
-    const d = decide(hero(50), slime(), noMatch)
-    expect(d.action).toBe('attack')
-    expect(d.ruleIndex).toBe(-1)
+  it('allies include self, and a State with no qualifying unit resolves to null', () => {
+    const me = unit('hero', 20, 100) // 20% — self qualifies as a hurt ally
+    const ally = unit('hero', 100, 100)
+    expect(resolveTarget(allyLowestHurt, me, [me, ally])?.id).toBe(me.id)
+    // Nobody hurt -> null (State does not hold).
+    const healthy = unit('hero', 100, 100)
+    expect(resolveTarget(allyLowestHurt, healthy, [healthy, ally])).toBeNull()
   })
 
-  it('an enemy-targeting protocol reads the enemy, not the actor', () => {
-    const finisher: Procedure = [
-      { condition: { kind: 'enemyHpPctBelow', value: 30 }, action: 'attack', label: 'finish' },
-      { condition: { kind: 'always' }, action: 'defend', label: 'turtle' },
+  it('dead units are never targeted', () => {
+    const me = unit('hero', 100, 100)
+    const corpse = unit('enemy', 0, 30)
+    const alive = unit('enemy', 30, 30)
+    expect(resolveTarget(enemyNearest, me, [me, corpse, alive])?.id).toBe(alive.id)
+  })
+})
+
+describe('decide — first State that holds wins, and order is priority', () => {
+  it('a higher protocol that does not resolve is skipped for the next that does', () => {
+    const proc: Procedure = [
+      { state: selfLow, maneuver: CURE, label: 'heal self when low' }, // self at full -> skipped
+      { state: enemyNearest, maneuver: ATTACK, label: 'attack' },
     ]
-    // Enemy at 6/24 = 25% -> finisher fires.
-    expect(decide(hero(100), slime(6), finisher).ruleIndex).toBe(0)
-    // Enemy healthy -> falls through to defend.
-    expect(decide(hero(100), slime(24), finisher).action).toBe('defend')
+    const me = { ...unit('hero', 100, 100, proc) }
+    const enemy = unit('enemy', 30, 30)
+    const d = decide(me, [me, enemy])
+    expect(d.protocolIndex).toBe(1)
+    expect(d.maneuver).toEqual(ATTACK)
+    expect(d.targetId).toBe(enemy.id)
+  })
+
+  it('reordering changes the outcome (priority = order)', () => {
+    const me = unit('hero', 20, 100) // low enough to heal
+    const enemy = unit('enemy', 30, 30)
+    const healFirst: Procedure = [
+      { state: selfLow, maneuver: CURE, label: 'heal' },
+      { state: enemyNearest, maneuver: ATTACK, label: 'attack' },
+    ]
+    const attackFirst: Procedure = [healFirst[1], healFirst[0]]
+    expect(decide({ ...me, procedure: healFirst }, [me, enemy]).maneuver).toEqual(CURE)
+    expect(decide({ ...me, procedure: attackFirst }, [me, enemy]).maneuver).toEqual(ATTACK)
+  })
+
+  it('falls back to attacking the nearest enemy when nothing matches', () => {
+    const me = unit('hero', 100, 100, []) // empty procedure
+    const enemy = unit('enemy', 30, 30)
+    const d = decide(me, [me, enemy])
+    expect(d.protocolIndex).toBe(-1)
+    expect(d.targetId).toBe(enemy.id)
   })
 })
 
-describe('conditionHolds', () => {
-  it('always is always true', () => {
-    expect(conditionHolds({ kind: 'always' }, hero(1), slime())).toBe(true)
-  })
-  it('selfHpFull is true only at max HP', () => {
-    expect(conditionHolds({ kind: 'selfHpFull' }, hero(100), slime())).toBe(true)
-    expect(conditionHolds({ kind: 'selfHpFull' }, hero(99), slime())).toBe(false)
-  })
-  it('hp percentage uses the ratio, not raw HP', () => {
-    const tank: Combatant = { name: 't', hp: 40, maxHp: 200, atk: 1 }
-    expect(conditionHolds({ kind: 'selfHpPctBelow', value: 30 }, tank, slime())).toBe(true)
-  })
-})
+describe('step — one unit-action of the simulation', () => {
+  function freshBattle(): ReturnType<typeof initialState> {
+    const warrior: Procedure = [{ state: enemyNearest, maneuver: ATTACK, label: 'attack nearest' }]
+    const healer: Procedure = [
+      { state: allyLowestHurt, maneuver: CURE, label: 'cure hurt ally' },
+      { state: enemyNearest, maneuver: ATTACK, label: 'attack nearest' },
+    ]
+    return initialState(warrior, healer)
+  }
 
-describe('step — one turn of the simulation', () => {
-  it('attacking reduces enemy HP by the hero attack value', () => {
-    const s1 = step(initialState(), PROCEDURE) // hero at full HP -> attacks
-    expect(s1.enemy.hp).toBe(24 - 8)
-    expect(s1.turn).toBe(1)
+  it('the Warrior acts first and attacks the first slime', () => {
+    const s = step(freshBattle())
+    expect(s.turn).toBe(1)
+    const slime1 = s.units.find((u) => u.id === 'enemy-1')
+    expect(slime1?.hp).toBe(26 - 11) // warrior atk 11
+    expect(s.log.at(-1)?.actorName).toBe('Warrior')
+    expect(s.log.at(-1)?.targetName).toBe('Slime #1')
   })
 
-  it('healing raises hero HP and lets the enemy retaliate at full', () => {
-    let s = initialState()
-    s = { ...s, hero: { ...s.hero, hp: 20 } } // force a heal
-    const before = s.enemy.hp
-    const s1 = step(s, PROCEDURE)
-    expect(s1.hero.hp).toBe(20 + HEAL_AMOUNT - s.enemy.atk)
-    expect(s1.enemy.hp).toBe(before) // enemy was not attacked this turn
+  it('turn order cycles heroes then enemies, then wraps to a new round', () => {
+    let s = freshBattle()
+    const actors: string[] = []
+    for (let i = 0; i < 6; i++) {
+      s = step(s)
+      actors.push(s.log.at(-1)?.actorName ?? '?')
+    }
+    expect(actors.slice(0, 5)).toEqual(['Warrior', 'Healer', 'Slime #1', 'Slime #2', 'Slime #3'])
+    expect(actors[5]).toBe('Warrior') // round 2 begins
+    expect(s.round).toBe(1) // 0-based: the wrap incremented it once
   })
 
-  it('defending halves the incoming retaliation', () => {
-    const defendOnly: Procedure = [{ condition: { kind: 'always' }, action: 'defend', label: 'd' }]
-    const s1 = step(initialState(), defendOnly)
-    // slime atk 7 -> ceil(7/2) = 4 damage taken
-    expect(s1.hero.hp).toBe(100 - Math.ceil(7 / 2))
+  it('Cure on an enemy is a dead rule: turn is consumed, nothing changes', () => {
+    // A procedure that tries to Cure the nearest enemy — invalid, but composition is free.
+    const bad: Procedure = [{ state: enemyNearest, maneuver: CURE, label: 'cure enemy (dead rule)' }]
+    const me = makeWarrior(bad)
+    const enemy = { ...makeHealer([]), side: 'enemy' as const, id: 'enemy-x', name: 'Foe' }
+    const state = { ...initialState(bad, []), units: [me, enemy] }
+    const s = step(state)
+    expect(s.units.find((u) => u.id === 'enemy-x')?.hp).toBe(enemy.hp) // unhealed
+    expect(s.log.at(-1)?.detail).toContain('no effect')
+    expect(s.turn).toBe(1) // the turn was still consumed
   })
 
-  it('a defeated slime is replaced and the counter increments', () => {
-    let s = initialState()
-    s = { ...s, enemy: { ...s.enemy, hp: 4 } } // one hit from death (hero atk 8)
-    const s1 = step(s, PROCEDURE)
-    expect(s1.slimesDefeated).toBe(1)
-    expect(s1.enemy.hp).toBe(s1.enemy.maxHp) // fresh slime
+  it('Defend halves the damage the unit takes before its next turn', () => {
+    // Warrior defends; a single slime then hits it for half.
+    const warrior: Procedure = [{ state: { subject: { who: 'self' }, predicate: { p: 'always' } }, maneuver: DEFEND, label: 'defend' }]
+    const w = makeWarrior(warrior)
+    const slime = { ...makeWarrior([]), side: 'enemy' as const, id: 'enemy-1', name: 'Slime', hp: 26, maxHp: 26, atk: 8 }
+    let s = { ...initialState(warrior, []), units: [w, slime] }
+    s = step(s) // warrior defends
+    expect(s.units[0].defending).toBe(true)
+    s = step(s) // slime hits the defending warrior
+    expect(s.units[0].hp).toBe(120 - Math.ceil(8 / 2)) // 8 -> 4
   })
 
-  it('stepping a dead hero is a no-op', () => {
-    const dead = { ...initialState(), hero: { ...initialState().hero, hp: 0 } }
-    expect(step(dead, PROCEDURE)).toBe(dead)
+  it('reaches victory when the party kills every enemy', () => {
+    const warrior: Procedure = [{ state: enemyNearest, maneuver: ATTACK, label: 'attack' }]
+    const w = { ...makeWarrior(warrior), atk: 100 } // one-shot
+    const slime = { ...makeWarrior([]), side: 'enemy' as const, id: 'enemy-1', name: 'Slime', hp: 10, maxHp: 10, atk: 1 }
+    let s = { ...initialState(warrior, []), units: [w, slime] }
+    s = step(s)
+    expect(s.outcome).toBe('victory')
+    expect(step(s)).toBe(s) // a finished battle is a no-op
+  })
+
+  it('reaches defeat when every hero dies', () => {
+    const w = { ...makeWarrior([]), hp: 5, maxHp: 100 }
+    const slime = { ...makeWarrior([{ state: enemyNearest, maneuver: ATTACK, label: 'a' }]), side: 'enemy' as const, id: 'enemy-1', name: 'Slime', atk: 99 }
+    // Enemy acts second; warrior (empty proc) attacks, then slime one-shots it.
+    let s = { ...initialState([], []), units: [w, slime] }
+    s = step(s) // warrior swings
+    s = step(s) // slime kills warrior
+    expect(s.outcome).toBe('defeat')
   })
 
   it('is deterministic: identical inputs produce identical outputs', () => {
-    expect(step(initialState(), PROCEDURE)).toEqual(step(initialState(), PROCEDURE))
+    const a = step(freshBattle())
+    const b = step(freshBattle())
+    expect(a).toEqual(b)
+  })
+
+  it('healing is capped at maxHp', () => {
+    const me = { ...makeHealer([]), hp: 70, maxHp: 80 }
+    const proc: Procedure = [{ state: { subject: { who: 'self' }, predicate: { p: 'always' } }, maneuver: CURE, label: 'cure self' }]
+    const healer = { ...me, procedure: proc }
+    const dummyEnemy = { ...makeWarrior([]), side: 'enemy' as const, id: 'enemy-1', name: 'E' }
+    const s = step({ ...initialState([], []), units: [healer, dummyEnemy] })
+    expect(s.units[0].hp).toBe(80) // 70 + 24 capped at 80, not 94
   })
 })

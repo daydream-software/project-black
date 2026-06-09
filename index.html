@@ -3,17 +3,18 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Project Black — slice 1</title>
+    <title>Project Black — slice 3</title>
   </head>
   <body>
     <main class="app">
       <section class="left">
-        <h1>The adventurer follows its program</h1>
-        <canvas id="game" width="520" height="320"></canvas>
-        <p class="hint">The fight runs on its own. What you see on the right is <em>why</em> it acts.</p>
+        <h1>Your party follows its program</h1>
+        <canvas id="game" width="520" height="360"></canvas>
+        <p class="hint">The fight runs on its own. Each unit acts on its own <em>Procedure</em>; the log on the right shows <em>who</em> acts, on <em>whom</em>, and <em>why</em>.</p>
       </section>
       <section class="right">
-        <h2>Procedure <span class="sub">priority: top → bottom</span></h2>
+        <h2>Procedure <span class="sub">per unit · priority: top → bottom</span></h2>
+        <div id="hero-tabs" class="tabs"></div>
         <ul id="editor"></ul>
         <button id="add-protocol">+ Add protocol</button>
         <h2>Decision log</h2>
