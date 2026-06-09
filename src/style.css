@@ -18,9 +18,40 @@ body {
   margin: 0 auto;
 }
 
+.title-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin: 0 0 12px;
+}
+
 .left h1 {
   font-size: 20px;
-  margin: 0 0 12px;
+  margin: 0;
+}
+
+.music-toggle {
+  flex: none;
+  background: #14141f;
+  color: #8b90a0;
+  border: 1px solid #26263a;
+  border-radius: 6px;
+  padding: 6px 10px;
+  font-size: 12px;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: border-color 0.1s, color 0.1s, background 0.1s;
+}
+
+.music-toggle:hover {
+  border-color: #2f4a5a;
+}
+
+.music-toggle.on {
+  border-color: #9fe0a8;
+  color: #9fe0a8;
+  background: #15231a;
 }
 
 canvas {

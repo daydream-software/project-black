@@ -11,6 +11,7 @@ import {
   type SkillId,
 } from './sim'
 import { startRun, stepRun, type RunState } from './run'
+import { toggleMusic, setMusicState, type TrackId } from './music'
 import { makeHero, makeSlime } from './sprites'
 import { render, renderRunHud, renderRunEnd } from './render'
 import { requireElement, require2dContext } from './dom'
@@ -140,6 +141,14 @@ const tabsEl = requireElement('hero-tabs', HTMLDivElement)
 const editorEl = requireElement('editor', HTMLUListElement)
 const addBtn = requireElement('add-protocol', HTMLButtonElement)
 const logEl = requireElement('log', HTMLDivElement)
+const musicBtn = requireElement('music-toggle', HTMLButtonElement)
+
+musicBtn.addEventListener('click', () => {
+  void toggleMusic().then((muted) => {
+    musicBtn.textContent = muted ? '♪ Music: off' : '♪ Music: on'
+    musicBtn.classList.toggle('on', !muted)
+  })
+})
 
 const sprites = { hero: makeHero(), slime: makeSlime() }
 
@@ -399,6 +408,12 @@ function highlightFiringProtocol(): void {
   if (idx >= 0 && idx < enabledLis.length) enabledLis[idx].classList.add('active')
 }
 
+/** Which theme the game wants right now: camp / run / boss (the Hex Warden). */
+function musicTrack(): TrackId {
+  if (mode === 'camp' || run === null) return 'camp'
+  return run.gauntlet[run.depth] === 'warden' ? 'boss' : 'run'
+}
+
 function frame(): void {
   view = mode === 'camp' ? campState() : (run?.battle ?? campState())
   render(ctx, view, sprites)
@@ -409,6 +424,7 @@ function frame(): void {
   renderLog()
   renderTabs()
   highlightFiringProtocol()
+  setMusicState(musicTrack()) // cheap no-op unless the track should change
 }
 
 addBtn.addEventListener('click', () => {
