@@ -1,147 +1,147 @@
 # Vision — what the game is
 
-> **You don't play the heroes. You _program_ them — then send them on
-> autonomous runs and live with the result.**
+> **You don't steer the adventurers. You _program_ their brains — how they fight
+> AND how they delve — then send them into a dungeon and watch them crawl it on
+> their own.**
 
-You assemble a party and write each unit's **Procedure** (ordered
-`WHEN <State> → DO <Maneuver>` rules). Then you launch a **run**: an escalating
-gauntlet of encounters that **plays itself**. You don't touch the fights — you
-authored the intelligence beforehand. The run either climbs or dies on a fight
-your program couldn't beat. You read the **journal** to see exactly why, revise
-your Protocols, and send a smarter program deeper next time.
+You assemble a party and author its behaviour as rule lists. Then you send it
+**delving** into a procedurally-generated dungeon: it navigates, fights the
+monster packs it meets, grabs loot, and hunts the dungeon's target — all on its
+own, by the rules you wrote. It returns victorious or it wipes. You read the
+**journal** of the delve, revise your rules, and send a smarter party back down.
 
-## Genre & nearest cousins
+## Genre & pacing reference
 
-A **programmable, AFK auto-battler roguelite.** Its three relatives, each
-proven fun on its own:
+A **programmable, AFK, procedurally-generated dungeon-crawler roguelite.** The
+moment-to-moment pacing is **Nevergrind Online's** — brisk, continuous delving:
+navigate, hit a monster pack, fight, chain kills, push on, find the target. The
+twist that makes it ours: in Nevergrind a *human party leader navigates the
+dungeon while the others relax* — **here that navigator is your code.** You write
+the leader's brain.
 
-- **Gladiabots** — you author rule-based bot AI, launch, watch it auto-fight,
-  lose, revise the AI, retry. This is our core verb.
-- **Slay the Spire** — run-based, _drafted_ builds, run-permadeath with
-  persistent **meta-progression**. This is our run structure.
-- **FF12 gambits** — the `State → Maneuver` rule language itself (our lexicon:
-  Procedure / Protocol / State / Maneuver — never "gambit"; see
-  [VOCABULARY.md](VOCABULARY.md)).
+Relatives: **Nevergrind Online** (the delve loop & pacing: town → procedural
+dungeon → find/kill the target → return), **Gladiabots** (you author the AI,
+launch, watch it lose, revise), **FF12 gambits** (the `WHEN-State → Maneuver`
+rule language).
 
-No existing game fuses all three **and** plays AFK. That gap is the game.
+## Two programmable brains, one grammar
+
+The whole game is "program your party." You author **two** rule lists, both in the
+same `WHEN <State> → DO <X>` grammar — learn it once, apply it twice:
+
+- **Combat Procedure** — `WHEN <State = Subject + Predicate> → Maneuver` (built).
+- **Exploration Protocol** — `WHEN <dungeon State> → Move` (new). Subjects = rooms,
+  exits, loot, stairs, monsters-in-view; Predicates = unexplored, distance,
+  estimated threat, chain-active; Moves = head toward / grab / rest / flee /
+  descend / push the chain.
+
+The exploration Protocol **is** the party leader. At a branch it doesn't stop and
+ask — it consults your rules and picks. That is why the delve is autonomous, and
+why AFK is natural here (it was awkward before): you didn't remove the navigator,
+you **automated** it.
 
 ## The core loop
 
 ```
-   CAMP ──launch──▶ RUN (auto) ──win──▶ deeper ──▶ … ──▶ cleared
-    ▲                  │  ▲                                  │
-    │                  │  └─ draft node: pick ONE reward     │
-  revise               │                                     │
-  Protocols            └─ lose a fight ──▶ BACK TO 0 ─────────┘
-  + spend meta            (no rescue; meta kept)
-    ▲                                     │
-    └────────── read the JOURNAL ◀────────┘
+   TOWN ──descend──▶ DUNGEON (autonomous delve) ──target killed──▶ back to TOWN
+    ▲  active: program the 2 protocols,              │  loot; meta persists
+    │  equip loot, buy/unlock, manage party          │
+    │                                                 └─ party wipes ──▶ back to 0
+    │                                                         (meta kept)
+    └──────────────── read the JOURNAL of the delve ◀──────────────────┘
 ```
 
-1. **Camp.** Assemble party + Procedures from the vocabulary you've unlocked.
-2. **Launch.** Combat is **fully automatic** — no mid-fight control. It runs
-   even while you're away (AFK).
-3. **Draft at nodes.** Between fights the run **waits for one choice** among
-   competing rewards (see below). This is the only place it pauses for you.
-4. **Win → advance. Lose → back to 0.** Defeat _anywhere_ ends the run; there is
-   **no rescue mid-run**. But — _roguelite, not roguelike_ — **meta persists**:
-   unlocked vocabulary, heroes, and relics carry to the next run; only the gains
-   of _this_ attempt are lost.
-5. **Journal.** The decision log is a **replay/debugger**: which unit did what,
-   on whom, why, at which turn — and where it went wrong.
-6. **Revise & relaunch.** A better program (and better drafts) reaches further.
+- **Town — active, you're present.** The *only* place you decide: edit both
+  protocols, equip what you found, buy/unlock new vocabulary & heroes, manage the
+  party. This is where build choices are made.
+- **Dungeon — autonomous, AFK-able.** The party delves a **seeded procedural**
+  dungeon by your protocols: navigates, fights packs (combat Procedure), chains
+  kills, auto-collects loot, hunts the **target**. No live input; it plays on even
+  while you're away (offline catch-up replays the delve deterministically).
+- **Outcome.** Target killed → return with the haul. Party wiped → back to 0.
+  Either way you read the **journal** (a replay/debugger) and reprogram.
 
-## Build diversity from one pick economy
+Build decisions live in **town** (active); the **delve** is pure autonomous (AFK).
+That split resolves the old "drafts need live input vs. AFK" tension — there are
+no mid-delve pauses; you choose your build between delves, in town.
 
-All growth inside a run flows through **a single drafting economy**: at each node
-you take _one_ reward among competing categories —
+## Pacing & the chain lever (from Nevergrind)
 
-- a **new party member**,
-- a **new Procedure slot**,
-- a **new Predicate** (a new condition you can program with),
-- a **new Skill / Item** (a new Maneuver Object),
-- **+attributes** on an existing member,
-- … (relics / passives later).
+Delving is brisk and continuous. **Chain combos** — clearing packs back-to-back
+without breaking — boost loot/XP but raise risk, which makes them a juicy thing to
+*program*: `WHEN chain active AND party HP > 60% → push the next pack` vs.
+`WHEN HP < 40% → break the chain and rest`. The dungeon's **target** gives each
+delve a goal and a natural length — not "explore until you die."
 
-There is no passive XP — **every pick is a trade-off.** Build identity _emerges_
-from your sequence of choices against what the seed offers: the "**one monster
-hero**" run (picks poured into a single deep unit) vs. the "**ten-member swarm**"
-run (picks spent on recruits) are the same economy spent differently. This is
-Slay the Spire's card/relic economy applied to a _programmable party_.
+## Build diversity & meta-progression
 
-## Center of gravity: the editor and the journal
+- **Within a delve:** the dungeon, its loot, and its packs are **seeded** — a new
+  problem each time, so your program must be *robust*, not tuned to one layout.
+- **In town:** spend the haul — equip gear, buy/level skills, and **unlock new
+  vocabulary** (Subjects / Predicates / Skills / Moves) and heroes. **The language
+  growing is the meta-progression** (pillar 4); it persists across delves
+  (roguelite). Tall-vs-wide and other build identities emerge from how you spend,
+  equip, and program.
 
-Combat is **not** the game — it's the **test bench**. The game, the place you
-actually _play_, is the **editor** (writing Procedures, spending drafts) and the
-**journal/replay** (diagnosing the last death). Consequences:
+## Center of gravity
 
-- The journal is a **first-class debugger**, not a side panel: filterable,
-  answering "why did unit X do Y at turn N" and "where did the run tip over."
-- The **deterministic, seeded simulation is load-bearing**: without it you can't
-  diagnose, reproduce, or trust that "my fix worked." (This is why the pure
-  `sim.ts` + seeded PRNG matter beyond AFK catch-up.)
+The game you actually *play* is the **town** — writing the two protocols and
+shaping the build. The dungeon is the **test bench**; the **journal/replay** is
+how you diagnose a wipe. The **deterministic, seeded simulation is load-bearing**:
+without it you can't reproduce a delve, diagnose it, or trust that a fix worked.
+(This is why `sim.ts`/`run.ts` stay pure; the seeded PRNG arrives with procedural
+dungeons.)
 
-## A session
+## The shell (screens)
 
-- **2-minute check-in:** glance at how far the auto-run got (or that it died),
-  read the journal, tweak a rule or queue a draft, relaunch. _Relaxed._
-- **30-minute sit-down:** a wall keeps killing your runs; you rethink the
-  Procedure, restructure the party, crack it. _Intense._
+**Title → Save-slot select → Town → Dungeon (the delve: fog-of-war map) → return
+or wipe → Town.** Save slots are independent roguelite profiles.
 
-AFK reconciliation: **combats auto-resolve even while you're gone** (you may
-return to a triumph _or_ a corpse + a lesson); the run only **holds at draft
-nodes** for your input; it **never pauses to save a losing fight.** The AFK
-delivers progress _and_ risk — but only intelligence goes deeper.
+## Pillars (carried, sharpened)
 
-## Pillars (carried from the ROADMAP, sharpened)
-
-1. **Automation is the gameplay.** Programming the party _is_ the combat.
-2. **Intense ↔ relaxed.** Calm authoring punctuated by tense walls.
-3. **AFK delivers the run; the program unlocks progress.**
-4. **The language grows.** New Subjects/Predicates/Commands/Objects, heroes,
-   enemies and mechanics stack as modular content — and expanding the language
-   is itself the meta-progression.
-5. **Static & tiny.** GitHub Pages, no server. Solo first; local then P2P co-op.
+1. **Programming is the gameplay** — now **two** brains (fight + delve), one grammar.
+2. **Intense ↔ relaxed** — calm authoring in town; tense delves you cannot rescue.
+3. **AFK delivers the delve; the program unlocks progress.** The delve runs itself
+   (the exploration Protocol is the navigator) and continues offline.
+4. **The language grows** — new vocabulary, heroes and gear unlock over time;
+   expanding what you can *express* is the meta-progression.
+5. **Static & tiny** — GitHub Pages, no server. Solo first; local then P2P co-op.
 
 ## Design rules
 
-> **#1 — Waiting never beats a wall.** Staying AFK longer gives loot and depth
-> already within reach, never a breakthrough. A wall falls only to a better
-> Procedure / build — never to time. (Avoids the shallow-idle trap.)
+> **#1 — Waiting never beats a wall.** Staying AFK gives loot and depth already
+> within reach, never a breakthrough. A wall falls only to a better program/build
+> — never to time.
 
-> **#2 — No rescue.** The run is an autonomous bet you place in advance. You
-> cannot intervene in a losing fight; you can only program _better next time_.
-> The journal is how you learn; the seed makes the lesson real.
+> **#2 — No rescue.** A delve is an autonomous bet placed in advance — you cannot
+> steer it live, not the fights and not the navigation. You program better *next*
+> time. The journal is how you learn; the seed makes the lesson real.
 
-## Open knobs (decide while building, not now)
+## Open knobs (decide while building)
 
-- **Procedure slots: per-unit or shared pool?** Leaning **per-unit, drafted** —
-  it's what makes _tall vs. wide_ genuinely different to program.
-- **Run structure:** node-map (Slay-the-Spire-like) vs. linear floors; run
-  length in real time given AFK.
-- **What meta-progression unlocks** beyond vocabulary (starting loadouts,
-  heroes, relic pool, ascension-style difficulty).
-- **Theme / fiction:** still placeholder. The "program your units" fiction suits
-  constructs / automatons / summoned familiars, but it's open.
-- **Front-load vs. in-run accrual** of drafts — current lean: **drafts at nodes**
-  (the pick economy above), light and automatic where possible.
+- **How punishing is a wipe?** Full roguelite reset (lose the delve's gains, keep
+  meta) vs. Nevergrind-style persistent characters (keep gear/levels, just return
+  to town). Leaning roguelite, tunable.
+- **Dungeon shape:** grid "blobber" vs. rooms-and-corridors; fog-of-war reveal;
+  delve length / number of floors.
+- **Exploration vocabulary:** the exact Subjects/Predicates/Moves, threat
+  estimation, how the chain lever is exposed.
+- **Loot:** auto-collected vs. a programmable "loot policy"; how the town shop and
+  unlocks gate progression.
+- **Theme / fiction:** still open (constructs/automatons, or a classic fantasy
+  party à la Nevergrind).
 
 ## POC ≠ game
 
-What exists today are **subsystem POCs**, not the game:
-
-- **Combat** (slices 1–4): the rule engine, multi-unit party, composite
-  State/Maneuver, the first counter-mechanic wall. Validates that programmed
-  auto-combat is legible and that walls fall to reprogramming.
-- **AFK + save** (planned slice 5): offline catch-up via deterministic replay,
-  seeded PRNG.
-
-They prove _mechanisms_ in isolation. **This document is the whole they serve.**
-Build each subsystem as a POC, but never mistake a POC for the game — the game
-is the loop above.
+Built today (and **live** on GitHub Pages): the combat engine (composite
+State/Maneuver, party, the first counter-mechanic wall — the "Hex Warden"), the
+**run-loop spine** (a fixed gauntlet — the forerunner of the dungeon), **save +
+offline catch-up**, a 3-track music director. These prove *mechanisms*. The
+**dungeon + exploration Protocol + town shell** are what turn them into the game
+above. Build them in tiny verified slices; never mistake a POC for the game.
 
 ## VISION vs ROADMAP
 
 **VISION = what & why** (this file, the north star). **ROADMAP = build order**
-(technical slices). When they conflict, VISION wins — update the ROADMAP to
-match. See [ROADMAP.md](ROADMAP.md).
+(technical slices). When they conflict, VISION wins — update the ROADMAP to match.
+See [ROADMAP.md](ROADMAP.md).

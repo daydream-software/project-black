@@ -4,11 +4,13 @@ Guidance for working in this repo. Keep it short — details live in `docs/`.
 
 ## What this is
 
-A web game where you don't control adventurers — you **program** them with a
-**Procedure** (an ordered list of **Protocols**, each `WHEN <State> → <Maneuver>`)
-and send them on **autonomous, AFK runs**. It's a **programmable auto-battler
-roguelite** (Gladiabots × Slay the Spire × FF12 gambits): runs play themselves,
-defeat sends you back to 0 (meta persists), and you iterate your program from the
+A web game where you don't steer adventurers — you **program** their brains, both
+how they **fight** (a combat **Procedure**) and how they **delve** (an exploration
+**Protocol**), in one `WHEN <State> → DO <X>` grammar. It's a **programmable, AFK,
+procedural dungeon-crawler roguelite** (Nevergrind Online's pacing × Gladiabots'
+AI-authoring × FF12 gambits): from **town** you program + manage, then **descend**;
+the party **auto-delves** a seeded dungeon (navigate, fight packs, loot, hunt the
+target); a wipe sends you back to 0 (meta persists); you iterate from the
 **journal**. Static site for GitHub Pages.
 See **`docs/VISION.md`** (north star — what & why), then `docs/ROADMAP.md`
 (build order), `docs/ARCHITECTURE.md`, `docs/VOCABULARY.md`.

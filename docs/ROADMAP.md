@@ -5,13 +5,14 @@
 
 ## Vision (summary — see [VISION.md](VISION.md))
 
-You are not a hero — you **program** the heroes. Using a **Procedure** — ordered
-**Protocols** (`WHEN State → Maneuver`, inspired by FF12 gambits) — you decide
-how your adventurers behave, then send them on **autonomous, AFK runs**. The game
-is a **programmable auto-battler roguelite** (Gladiabots × Slay the Spire ×
-gambits): runs play themselves, **defeat sends you back to 0** (meta persists),
-and you iterate your program from the **journal**. A wall falls only to a better
-program — never to waiting.
+You are not a hero — you **program** the heroes' brains: how they **fight** (a
+combat **Procedure**) and how they **delve** (an exploration **Protocol**), in one
+`WHEN State → DO X` grammar. The game is a **programmable, AFK, procedural
+dungeon-crawler roguelite** (Nevergrind Online's pacing × Gladiabots × FF12
+gambits): from **town** you program and manage, then **descend**; the party
+**auto-delves** a seeded dungeon (navigate, fight packs, loot, hunt the target);
+a **wipe sends you back to 0** (meta persists); you iterate from the **journal**.
+A wall falls only to a better program/build — never to waiting.
 
 ### Design pillars
 
@@ -46,25 +47,56 @@ and deterministic. English codebase. See [ARCHITECTURE.md](ARCHITECTURE.md).
 
 Screenshots: [docs/progress/](progress/).
 
-## Planned slices
+## Planned slices — toward the dungeon-crawler ([VISION.md](VISION.md))
 
-Order is a recommendation, not a contract — we can resequence.
+The vision pivoted (2026-06-09) to a **programmable, AFK, procedural
+dungeon-crawler roguelite**. Slices 1–6 + the run-loop POC built the combat brain,
+the autonomous-run spine, save/catch-up and a live deploy — the forerunners. These
+slices grow that into the game: a second **exploration** brain, a procedural
+**dungeon**, and the **town** shell. Order is a recommendation — resequence freely
+(the shell can be pulled earlier if you want the frame first).
 
-### Tooling slice — Versioning, changelog & in-game "What's New"
-Convention adopted up front (Conventional Commits, see [CONTRIBUTING.md](../CONTRIBUTING.md)) ✅ —
-the rest is deferred. When built: generate a developer `CHANGELOG.md` and a
-player-facing `src/changelog.json` (only `feat` / `fix` / `perf`, grouped New /
-Fixes / Improvements, per version). Bake the build version into the app.
-Show the **"What's New"** panel **both** ways:
-- **automatically** on version change (compare build version to `localStorage`
-  last-seen version, list only newer entries), and
-- via a manual **"Patch notes"** button that reopens the full changelog anytime.
+### Slice 7 — Seeded PRNG (foundation) *(recommended next)*
+A small deterministic, **seeded** PRNG threaded through run state — so procedural
+dungeons (and later dice) are reproducible and offline-catch-up-safe. Deferred in
+slice 5 for want of a consumer; the dungeon is that consumer.
+**Done when:** the same seed reproduces identical generation/rolls (pinned by a
+test), and the seed persists in the save.
 
-Generator tool is **TBD** (Node script or git-cliff) and is decoupled from the
-game — the game just reads `changelog.json`.
-**Done when:** bumping the version and rebuilding makes the panel appear in-browser
-with the right entries, it doesn't reappear on a second load, and the Patch-notes
-button reopens it on demand.
+### Slice 8 — The delve: exploration Protocol + a procedural dungeon *(the new core)*
+Replace the fixed gauntlet with a tiny **seeded procedural dungeon** the party
+**auto-delves** by an **exploration Protocol** — the same `WHEN <State> → DO <Move>`
+grammar, now over dungeon Subjects/Predicates (rooms, exits, loot, threat) and
+Moves (head toward / grab / rest / flee / descend). The party navigates room→room,
+the existing combat sim fires in monster rooms, and the delve ends at the **target**
+(win) or a wipe. Add a pure `dungeon.ts` (generation + delve step) + a fog-of-war
+dungeon view; reuse `sim.ts` for fights.
+**Done when:** a party with a trivial exploration Protocol auto-delves a generated
+dungeon, fights along the way, and reaches & kills the target — proven in-browser,
+with the navigation choices visible in the journal.
+
+### Slice 9 — The shell: Title → Save slots → Town → Dungeon
+The screen frame: a **title** screen, **multiple save slots** (independent
+roguelite profiles, extending `save.ts`), a **Town** (edit both protocols, manage
+the party — today's "camp" grows up), and the **Dungeon** delve view.
+**Done when:** pick a slot → Town → descend → Dungeon → return, and slots persist
+independently.
+
+### Slice 10 — Loot & the Town economy (build diversity + meta)
+Loot drops in the dungeon (auto-collected); in **Town** you **equip / spend /
+unlock** — the start of the pick economy and the "language grows" meta-progression.
+Gear and unlocked vocabulary persist across delves (roguelite).
+**Done when:** a delve yields loot, Town lets you spend it to change the build, and
+the changes persist into the next delve.
+
+### Slice 11 — Exploration depth + the chain lever + room variety
+Richer exploration vocabulary (threat estimation; loot / rest / elite / boss
+rooms) and the Nevergrind **chain-combo** as a *programmable* risk/reward lever
+(`WHEN chain active AND HP>60% → push` vs `WHEN HP<40% → break and rest`).
+**Done when:** the same dungeon, run with two exploration Protocols (greedy-chain
+vs. cautious), produces visibly different outcomes.
+
+## Shipped slices — detail
 
 ### Slice 3 — Composite rules (State + Maneuver), party + targeting ✅ *(done & verified)*
 Adopt the composite model from [VOCABULARY.md](VOCABULARY.md): a rule becomes
@@ -131,12 +163,24 @@ from that branch. Pushes to `main` auto-deploy.
 
 ## Later / long-term
 
-- **Progression & unlocks:** limited **Procedure capacity** (rule-list length) that
-  you unlock/grow; buy/unlock new Subjects, Predicates, Skills & Items (FF12 shop
-  feel) as the meta-progression. Encounters may also impose a slot budget as a
-  puzzle/optimization constraint. See [VOCABULARY.md](VOCABULARY.md#procedure-capacity-rule-list-length).
-- **Content growth:** more enemies, biomes/floors, status effects, items, jobs.
-- **D&D flavour:** seeded dice rolls, emergent encounter events.
-- **Co-op:** local (shared keyboard / screen) → online P2P via Trystero/PeerJS.
-- **Theme/setting:** to be decided (placeholder art for now; the "program your
-  units" fiction suits automatons/constructs, but unconstrained).
+- **Wipe model (decide during slice 10):** full roguelite reset (lose the delve's
+  gains, keep meta) vs. Nevergrind-style persistent characters (keep gear/levels,
+  return to town). Leaning roguelite.
+- **Progression depth:** limited **Procedure / Protocol capacity** (rule-list
+  length) you unlock/grow; buy/unlock new Subjects, Predicates, Skills, Moves,
+  Items & heroes (FF12 shop feel) as meta. Dungeons may impose a slot budget as a
+  puzzle constraint. See [VOCABULARY.md](VOCABULARY.md#procedure-capacity-rule-list-length).
+- **Content growth:** more monsters & packs, dungeon biomes/floors, status effects,
+  items, hero classes, more "walls" (mechanics a naive program can't beat).
+- **D&D flavour:** seeded dice rolls and emergent dungeon events (now that the
+  PRNG exists).
+- **Feel & polish:** an animated **boss splash** synced to the music on entering a
+  boss/target room; combat & exploration juice; the journal as a real, filterable
+  **replay/debugger**.
+- **Changelog / "What's New":** generate a dev `CHANGELOG.md` + a player-facing
+  `src/changelog.json` (`feat`/`fix`/`perf`); show a "What's New" panel on version
+  change and via a "Patch notes" button. (Conventional Commits already adopted.)
+- **Co-op:** local (shared screen) → online P2P via Trystero/PeerJS — never a
+  server we maintain.
+- **Theme/setting:** to be decided (the "program your party" fiction suits
+  constructs/automatons or a classic Nevergrind-style fantasy party).
