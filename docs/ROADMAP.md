@@ -1,13 +1,17 @@
 # Roadmap
 
-## Vision
+> **The canonical "what & why" now lives in [VISION.md](VISION.md).** This file
+> is the build order (technical slices). When the two conflict, VISION wins.
 
-You are not a hero — you are the one who **programs** the heroes. Using a
-**Procedure** — ordered **Protocols** (`WHEN State → Maneuver`, inspired by FF12
-gambits) — you decide how your adventurers behave, then let them fight
-autonomously, including while you're away (AFK / idle).
-A blend of Satisfactory (build & optimise a system), Final Fantasy (party &
-progression) and D&D (emergent, dice-driven encounters).
+## Vision (summary — see [VISION.md](VISION.md))
+
+You are not a hero — you **program** the heroes. Using a **Procedure** — ordered
+**Protocols** (`WHEN State → Maneuver`, inspired by FF12 gambits) — you decide
+how your adventurers behave, then send them on **autonomous, AFK runs**. The game
+is a **programmable auto-battler roguelite** (Gladiabots × Slay the Spire ×
+gambits): runs play themselves, **defeat sends you back to 0** (meta persists),
+and you iterate your program from the **journal**. A wall falls only to a better
+program — never to waiting.
 
 ### Design pillars
 

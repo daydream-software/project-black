@@ -6,8 +6,12 @@ Guidance for working in this repo. Keep it short — details live in `docs/`.
 
 A web game where you don't control adventurers — you **program** them with a
 **Procedure** (an ordered list of **Protocols**, each `WHEN <State> → <Maneuver>`)
-and watch them fight autonomously (AFK / idle). Static site for GitHub Pages.
-See `docs/ROADMAP.md`, `docs/ARCHITECTURE.md`, `docs/VOCABULARY.md`.
+and send them on **autonomous, AFK runs**. It's a **programmable auto-battler
+roguelite** (Gladiabots × Slay the Spire × FF12 gambits): runs play themselves,
+defeat sends you back to 0 (meta persists), and you iterate your program from the
+**journal**. Static site for GitHub Pages.
+See **`docs/VISION.md`** (north star — what & why), then `docs/ROADMAP.md`
+(build order), `docs/ARCHITECTURE.md`, `docs/VOCABULARY.md`.
 
 ## Stack & commands
 
