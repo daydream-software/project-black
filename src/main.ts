@@ -10,7 +10,7 @@ import {
   type Maneuver,
   type SkillId,
 } from './sim'
-import { startRun, stepRun, catchUp, type RunState } from './run'
+import { startRun, stepRun, catchUp, DEFAULT_GAUNTLET, type RunState } from './run'
 import { toggleMusic, setMusicState, type TrackId } from './music'
 import { saveGame, loadGame, elapsedSteps, type Hero, type ProtocolRow } from './save'
 import { makeHero, makeSlime } from './sprites'
@@ -169,8 +169,13 @@ function esc(s: string): string {
   )
 }
 
+/** A fresh 32-bit seed for a run (the impure shell may use Math.random). */
+function newSeed(): number {
+  return (Math.random() * 0x100000000) | 0
+}
+
 function launchRun(): void {
-  run = startRun(party())
+  run = startRun(party(), DEFAULT_GAUNTLET, newSeed())
   mode = 'run'
   saveNow()
   renderRunBar()
@@ -368,7 +373,7 @@ function renderRunBar(): void {
   } else if (run !== null && run.status === 'fighting') {
     const abandon = makeButton('✕ Abandon run', 'Give up and return to camp', backToCamp)
     abandon.className = 'run-abandon'
-    runBarEl.append(abandon, makeHint('Run in progress — editing locked (no rescue)'))
+    runBarEl.append(abandon, makeHint(`Run in progress — editing locked · seed ${run.seed}`))
   } else {
     const back = makeButton('↩ Back to camp', 'Return to camp to revise your Procedures', backToCamp)
     back.className = 'run-launch'

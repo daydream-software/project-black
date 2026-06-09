@@ -44,6 +44,8 @@ and deterministic. English codebase. See [ARCHITECTURE.md](ARCHITECTURE.md).
 | 4 | The first "wall": Hex Warden counters every heal; naive cure-Procedure loses, disabling the cure rule wins. Encounter selector (Slime Pack / Hex Warden) | ✅ done & verified |
 | RL | **Run-loop POC** (the roguelite spine): pure `run.ts` layer above the encounter — camp → launch → auto-advance a gauntlet (party HP/deaths carry: attrition) → defeat ends the run → back to camp. Editor locked during a run (no rescue); stage HUD; journal. | ✅ done & verified |
 | 5 | **Save + offline catch-up:** `localStorage` persists the camp roster and an in-progress run; on load, an in-progress run fast-forwards by elapsed wall-clock (`catchUp`) — finishing offline lands on RUN OVER. Defensive load (versioned, never bricks). | ✅ done & verified |
+| 6 | **Ship it live (GitHub Pages):** `gh-pages`-branch deploy (org bans nested unpinned actions); the game is playable on the web | ✅ done & verified |
+| 7 | **Seeded PRNG foundation:** `rng.ts` (resumable mulberry32) + tests; `RunState.seed` set per launch, shown in the run bar, persisted (save v2) | ✅ done & verified |
 
 Screenshots: [docs/progress/](progress/).
 
@@ -56,14 +58,23 @@ slices grow that into the game: a second **exploration** brain, a procedural
 **dungeon**, and the **town** shell. Order is a recommendation — resequence freely
 (the shell can be pulled earlier if you want the frame first).
 
-### Slice 7 — Seeded PRNG (foundation) *(recommended next)*
+### Slice 7 — Seeded PRNG (foundation) ✅ *(done & verified)*
 A small deterministic, **seeded** PRNG threaded through run state — so procedural
 dungeons (and later dice) are reproducible and offline-catch-up-safe. Deferred in
 slice 5 for want of a consumer; the dungeon is that consumer.
 **Done when:** the same seed reproduces identical generation/rolls (pinned by a
 test), and the seed persists in the save.
 
-### Slice 8 — The delve: exploration Protocol + a procedural dungeon *(the new core)*
+*Shipped:* `src/rng.ts` — a mulberry32 PRNG that is **resumable from a stored
+state** (store `rng.s` in game state, `makeRng(state)` continues the exact
+sequence — this is what keeps rolls reproducible across save/load and offline
+replay). `RunState` gained a `seed` (set per launch in `main.ts`, shown in the
+run bar, persisted; save `VERSION` bumped to 2 so older blobs are ignored). 8 rng
+tests pin determinism + resumability. **No sim consumer yet** — slice 8's dungeon
+generation is the first; the rng is mutable for ergonomics but its state is
+captured back into the immutable game state to keep the sim pure.
+
+### Slice 8 — The delve: exploration Protocol + a procedural dungeon *(the new core, recommended next)*
 Replace the fixed gauntlet with a tiny **seeded procedural dungeon** the party
 **auto-delves** by an **exploration Protocol** — the same `WHEN <State> → DO <Move>`
 grammar, now over dungeon Subjects/Predicates (rooms, exits, loot, threat) and

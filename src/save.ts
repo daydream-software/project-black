@@ -42,7 +42,7 @@ export interface SaveData {
 export const STEP_MS = 450
 
 const KEY = 'project-black/save'
-const VERSION = 1
+const VERSION = 2 // bumped: RunState gained `seed` (slice 7); older blobs are ignored
 
 /** Persist the current state, stamped with `version` and `savedAt = now`. */
 export function saveGame(snapshot: Omit<SaveData, 'version' | 'savedAt'>): void {

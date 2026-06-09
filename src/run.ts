@@ -15,6 +15,9 @@ import { makeBattle, step, type Combatant, type EncounterId, type GameState } fr
 export type RunStatus = 'fighting' | 'cleared' | 'dead'
 
 export interface RunState {
+  /** Seed this run was started from — makes the run reproducible (slice 8 will
+   *  use it to generate the dungeon and roll dice; persisted in the save). */
+  seed: number
   /** Hero units carried across encounters (HP and deaths persist within a run). */
   party: Combatant[]
   /** The ordered encounters this run must clear. */
@@ -29,8 +32,8 @@ export interface RunState {
 /** The default gauntlet: a gentle opener, a pack, then the first wall. */
 export const DEFAULT_GAUNTLET: EncounterId[] = ['duo', 'pack', 'warden']
 
-export function startRun(party: Combatant[], gauntlet: EncounterId[] = DEFAULT_GAUNTLET): RunState {
-  return { party, gauntlet, depth: 0, battle: makeBattle(party, gauntlet[0]), status: 'fighting' }
+export function startRun(party: Combatant[], gauntlet: EncounterId[] = DEFAULT_GAUNTLET, seed = 1): RunState {
+  return { seed, party, gauntlet, depth: 0, battle: makeBattle(party, gauntlet[0]), status: 'fighting' }
 }
 
 /** Snapshot the hero units (winners and corpses) coming out of an encounter. */
