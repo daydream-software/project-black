@@ -36,7 +36,11 @@ generated in code.
   / `Use Item` + which one (no separate target picker).
 - **No `innerHTML`** for anything a player can author — escape it, or build via DOM
   APIs (the rule editor does).
-- **GitHub Pages:** keep `base: './'` so asset paths stay relative.
+- **GitHub Pages:** keep `base: './'` so asset paths stay relative. **Live at
+  https://daydream-software.github.io/project-black/** — `deploy.yml` builds and
+  pushes `dist/` to the **`gh-pages` branch** (the org enforces SHA-pinned
+  actions, which breaks the standard Pages-Actions pipeline; actions are pinned
+  to SHAs). Pushes to `main` auto-deploy.
 
 ## How we work
 

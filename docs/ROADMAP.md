@@ -115,10 +115,19 @@ injected old `savedAt`→reload fast-forwards the run to its end.
 reproducible — a seeded PRNG would be infra with no consumer. It lands with the
 first dice/randomness (D&D flavour), where the seed will live in `RunState`.
 
-### Slice 6 — Ship it live (GitHub Pages) *(recommended next)*
+### Slice 6 — Ship it live (GitHub Pages) ✅ *(done & verified)*
 Create the GitHub repo, enable Pages, confirm `deploy.yml` publishes a playable
 build. *(Can be pulled earlier — it's motivating to play on the web.)*
 **Done when:** the game is reachable at its Pages URL on any device.
+
+**🔴 LIVE: https://daydream-software.github.io/project-black/** — verified in a
+browser (app renders, relative-base JS/CSS load on the `/project-black/`
+subpath). The deploy deviates from the standard Pages-Actions pipeline: the org
+enforces **SHA-pinned actions**, and GitHub's `upload-pages-artifact` pulls in a
+tag-pinned nested action the policy rejects. So `deploy.yml` builds and publishes
+`dist/` to the **`gh-pages` branch with plain git** (only SHA-pinned
+checkout + setup-node; the write-enabled `GITHUB_TOKEN` pushes), and Pages serves
+from that branch. Pushes to `main` auto-deploy.
 
 ## Later / long-term
 

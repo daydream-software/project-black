@@ -21,7 +21,7 @@ docs/
   ROADMAP.md          Vision, design rules, planned slices
   progress/           Verification screenshots, one per slice
 .github/workflows/
-  deploy.yml          Build + publish dist/ to GitHub Pages
+  deploy.yml          Build + publish dist/ to the gh-pages branch (Pages serves it)
 ```
 
 ## Two pure layers: encounter and run
