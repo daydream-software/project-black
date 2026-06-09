@@ -7,6 +7,8 @@ import {
   initialState,
   makeWarrior,
   makeHealer,
+  makeWarden,
+  makeEnemy,
   type Combatant,
   type Procedure,
   type State,
@@ -221,5 +223,91 @@ describe('step — one unit-action of the simulation', () => {
     const dummyEnemy = { ...makeWarrior([]), side: 'enemy' as const, id: 'enemy-1', name: 'E' }
     const s = step({ ...initialState([], []), units: [healer, dummyEnemy] })
     expect(s.units[0].hp).toBe(80) // 70 + 24 capped at 80, not 94
+  })
+})
+
+// --- Slice 4: the counter-heal wall ----------------------------------------
+
+describe('counter-heal — the wall reacts to restorative magic', () => {
+  const cureSelf: Procedure = [
+    { state: { subject: { who: 'self' }, predicate: { p: 'always' } }, maneuver: CURE, label: 'cure self' },
+  ]
+
+  function healerVsWarden(healerProc: Procedure, warden: Partial<Combatant> = {}) {
+    const h = { ...makeHealer(healerProc), hp: 40 } // hurt, so a self-cure restores HP
+    const boss = { ...makeWarden(), ...warden }
+    return { ...initialState([], healerProc, 'warden'), units: [h, boss] }
+  }
+
+  it('a heal that restores HP draws a counter on the SAME turn (no extra turn taken)', () => {
+    const s = step(healerVsWarden(cureSelf))
+    const log = s.log
+    expect(log.at(-2)?.kind).toBe('heal') // the cure
+    expect(log.at(-1)?.kind).toBe('counter') // the punish, same turn
+    expect(log.at(-1)?.turn).toBe(log.at(-2)?.turn)
+    expect(s.turn).toBe(1) // the reaction did not consume a turn
+    // 40 + 24 (cure) − 30 (counter) = 34
+    expect(s.units[0].hp).toBe(34)
+  })
+
+  it('no counter when the heal restored nothing (a full-HP cure is a dead heal)', () => {
+    const s = step(healerVsWarden(cureSelf, {}))
+    // Re-run with a full-HP healer: cure restores 0, so the Warden must not react.
+    const full = { ...makeHealer(cureSelf), hp: 80, maxHp: 80 }
+    const boss = makeWarden()
+    const s2 = step({ ...initialState([], cureSelf, 'warden'), units: [full, boss] })
+    expect(s2.log.some((e) => e.kind === 'counter')).toBe(false)
+    expect(s.log.some((e) => e.kind === 'counter')).toBe(true) // (the hurt-healer case still counters)
+  })
+
+  it('an Attack never draws a counter — only healing does', () => {
+    const attackProc: Procedure = [{ state: { subject: { who: 'enemy', pick: 'first' }, predicate: { p: 'always' } }, maneuver: ATTACK, label: 'attack' }]
+    const s = step(healerVsWarden(attackProc))
+    expect(s.log.some((e) => e.kind === 'counter')).toBe(false)
+  })
+
+  it('the counter is applied before the outcome check — a lethal counter ends the battle this step', () => {
+    const fragile: Combatant = { ...makeHealer(cureSelf), hp: 5, maxHp: 200 } // low; cure 5→29 (+24), counter 29→0 (−30) -> dies
+    const boss = makeWarden()
+    const s = step({ ...initialState([], cureSelf, 'warden'), units: [fragile, boss] })
+    expect(s.units[0].hp).toBe(0)
+    expect(s.outcome).toBe('defeat') // judged AFTER the counter, same step
+  })
+
+  it('the counter is side-relative: a normal slime never punishes a heal', () => {
+    const slime = makeEnemy(1)
+    const h = { ...makeHealer(cureSelf), hp: 40 }
+    const s = step({ ...initialState([], cureSelf, 'pack'), units: [h, slime] })
+    expect(s.log.some((e) => e.kind === 'counter')).toBe(false)
+    expect(s.units[0].hp).toBe(64) // 40 + 24, no counter
+  })
+
+  // The done-when, encoded: SAME boss, the discriminating edit on the HEALER.
+  function runToEnd(start: ReturnType<typeof initialState>, cap = 400): ReturnType<typeof initialState> {
+    let s = start
+    for (let i = 0; i < cap && s.outcome === 'ongoing'; i++) s = step(s)
+    return s
+  }
+
+  const warriorTank: Procedure = [
+    { state: { subject: { who: 'self' }, predicate: { p: 'hpPctBelow', value: 30 } }, maneuver: DEFEND, label: 'defend when low' },
+    { state: { subject: { who: 'enemy', pick: 'first' }, predicate: { p: 'always' } }, maneuver: ATTACK, label: 'attack' },
+  ]
+  const healerCures: Procedure = [
+    { state: { subject: { who: 'ally', pick: 'lowestHp' }, predicate: { p: 'hpPctBelow', value: 50 } }, maneuver: CURE, label: 'cure hurt ally' },
+    { state: { subject: { who: 'enemy', pick: 'first' }, predicate: { p: 'always' } }, maneuver: ATTACK, label: 'attack' },
+  ]
+  const healerAttacks: Procedure = [
+    { state: { subject: { who: 'enemy', pick: 'first' }, predicate: { p: 'always' } }, maneuver: ATTACK, label: 'attack' },
+  ]
+
+  it('the naive cure-when-low Procedure LOSES to the Warden', () => {
+    const s = runToEnd(initialState(warriorTank, healerCures, 'warden'))
+    expect(s.outcome).toBe('defeat')
+  })
+
+  it('the SAME party WINS once the Healer stops curing and joins the race', () => {
+    const s = runToEnd(initialState(warriorTank, healerAttacks, 'warden'))
+    expect(s.outcome).toBe('victory')
   })
 })

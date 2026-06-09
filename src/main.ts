@@ -2,12 +2,14 @@ import './style.css'
 import {
   initialState,
   step,
+  ENCOUNTERS,
   type GameState,
   type Procedure,
   type Protocol,
   type State,
   type Maneuver,
   type SkillId,
+  type EncounterId,
 } from './sim'
 import { makeHero, makeSlime } from './sprites'
 import { render } from './render'
@@ -133,6 +135,7 @@ function procedureFor(hero: Hero): Procedure {
 // --- DOM + simulation wiring ------------------------------------------------
 const canvas = requireElement('game', HTMLCanvasElement)
 const ctx = require2dContext(canvas)
+const encountersEl = requireElement('encounters', HTMLDivElement)
 const tabsEl = requireElement('hero-tabs', HTMLDivElement)
 const editorEl = requireElement('editor', HTMLUListElement)
 const addBtn = requireElement('add-protocol', HTMLButtonElement)
@@ -140,13 +143,14 @@ const logEl = requireElement('log', HTMLDivElement)
 
 const sprites = { hero: makeHero(), slime: makeSlime() }
 
+let currentEncounter: EncounterId = 'warden'
 let state: GameState = buildState()
 // Maps each enabled-row index of the ACTIVE hero -> its <li>, so we can highlight
 // the firing protocol without rebuilding the editor (which would clobber focus).
 let enabledLis: HTMLLIElement[] = []
 
 function buildState(): GameState {
-  return initialState(procedureFor(roster[0]), procedureFor(roster[1]))
+  return initialState(procedureFor(roster[0]), procedureFor(roster[1]), currentEncounter)
 }
 
 function esc(s: string): string {
@@ -286,6 +290,30 @@ function createRow(row: ProtocolRow, i: number): HTMLLIElement {
   return li
 }
 
+function renderEncounters(): void {
+  encountersEl.replaceChildren()
+  const label = document.createElement('span')
+  label.className = 'enc-label'
+  label.textContent = 'Encounter:'
+  encountersEl.appendChild(label)
+  for (const enc of ENCOUNTERS) {
+    const btn = document.createElement('button')
+    btn.className = enc.id === currentEncounter ? 'enc active' : 'enc'
+    btn.textContent = enc.name
+    btn.title = enc.hint
+    btn.addEventListener('click', () => {
+      if (enc.id === currentEncounter) return
+      currentEncounter = enc.id
+      // Restart the fight against the new enemy group — the player's Procedures
+      // are untouched (this is the "same program, different wall" comparison).
+      state = buildState()
+      renderEncounters()
+      renderEditor()
+    })
+    encountersEl.appendChild(btn)
+  }
+}
+
 function renderTabs(): void {
   tabsEl.replaceChildren()
   roster.forEach((hero, i) => {
@@ -351,6 +379,7 @@ addBtn.addEventListener('click', () => {
   commit()
 })
 
+renderEncounters()
 renderTabs()
 renderEditor()
 frame()

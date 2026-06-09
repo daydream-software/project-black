@@ -29,6 +29,14 @@ export interface Combatant {
   defending: boolean
   /** This unit's own ordered rule list. */
   procedure: Procedure
+  /**
+   * Wall trait: when an enemy of this unit is healed, this unit strikes the
+   * healed target for this much (it feeds on / punishes restorative magic).
+   * Undefined / 0 = no counter. Drives the slice-4 "counter-heal" wall.
+   */
+  counterHeal?: number
+  /** Render hint: draw larger / mark as a boss. */
+  isBoss?: boolean
 }
 
 // --- State = Subject + Predicate -------------------------------------------
@@ -180,13 +188,15 @@ export function maneuverKind(m: Maneuver): 'attack' | 'heal' | 'defend' | 'flee'
 
 export type Outcome = 'ongoing' | 'victory' | 'defeat'
 
+/** Log/CSS family. `counter` is the enemy's reactive punish, not a maneuver. */
+export type LogKind = 'attack' | 'heal' | 'defend' | 'flee' | 'counter'
+
 export interface LogEntry {
   turn: number
   round: number
   actorId: string
   actorName: string
-  /** Maneuver family, for log colouring. */
-  kind: 'attack' | 'heal' | 'defend' | 'flee'
+  kind: LogKind
   targetName: string | null
   protocolIndex: number
   reason: string
@@ -229,6 +239,29 @@ export function makeEnemy(index: number): Combatant {
   }
 }
 
+/**
+ * The slice-4 "wall": a single boss that punishes restorative magic. Every time
+ * a hero is healed, the Warden strikes the healed unit for `counterHeal`, which
+ * more than undoes the Cure — so the naive "Cure when an ally is low" Procedure
+ * is a trap. The only fix in the shipped vocabulary is for the Healer to STOP
+ * curing and add its damage to the race instead (the Warrior tanks on its own
+ * Self·HP<30%→Defend rule). Tuned so the cure-spam default genuinely wipes.
+ */
+export function makeWarden(): Combatant {
+  return {
+    id: 'enemy-1',
+    name: 'Hex Warden',
+    side: 'enemy',
+    hp: 120,
+    maxHp: 120,
+    atk: 14,
+    defending: false,
+    procedure: ENEMY_PROCEDURE,
+    counterHeal: 30,
+    isBoss: true,
+  }
+}
+
 /** Default party: a Warrior (tanky, hits hard) and a Healer (fragile, cures). */
 export function makeWarrior(procedure: Procedure): Combatant {
   return { id: 'hero-1', name: 'Warrior', side: 'hero', hp: 120, maxHp: 120, atk: 11, defending: false, procedure }
@@ -238,10 +271,27 @@ export function makeHealer(procedure: Procedure): Combatant {
   return { id: 'hero-2', name: 'Healer', side: 'hero', hp: 80, maxHp: 80, atk: 6, defending: false, procedure }
 }
 
-/** Build a fresh encounter: the 2-hero party vs three slimes. */
-export function initialState(warriorProc: Procedure, healerProc: Procedure): GameState {
+export type EncounterId = 'pack' | 'warden'
+
+export interface Encounter {
+  id: EncounterId
+  name: string
+  hint: string
+}
+
+export const ENCOUNTERS: Encounter[] = [
+  { id: 'pack', name: 'Slime Pack', hint: 'A naive Procedure clears it.' },
+  { id: 'warden', name: 'Hex Warden', hint: 'Punishes healing — the first wall.' },
+]
+
+function encounterEnemies(id: EncounterId): Combatant[] {
+  return id === 'warden' ? [makeWarden()] : [makeEnemy(1), makeEnemy(2), makeEnemy(3)]
+}
+
+/** Build a fresh encounter: the 2-hero party vs the chosen enemy group. */
+export function initialState(warriorProc: Procedure, healerProc: Procedure, encounter: EncounterId = 'pack'): GameState {
   return {
-    units: [makeWarrior(warriorProc), makeHealer(healerProc), makeEnemy(1), makeEnemy(2), makeEnemy(3)],
+    units: [makeWarrior(warriorProc), makeHealer(healerProc), ...encounterEnemies(encounter)],
     turn: 0,
     round: 0,
     cursor: -1,
@@ -309,32 +359,65 @@ export function step(state: GameState): GameState {
   const actor = units[next.idx]
   actor.defending = false // its protection window closes as it gets to act again
 
+  const turn = state.turn + 1
+  const round = state.round + (next.wrapped ? 1 : 0)
+
   const decision = decide(actor, units)
   const target = decision.targetId !== null ? (units.find((u) => u.id === decision.targetId) ?? null) : null
+  const hpBefore = target?.hp ?? 0
   const detail = applyManeuver(actor, target, decision.maneuver)
+
+  const entries: LogEntry[] = [
+    {
+      turn,
+      round,
+      actorId: actor.id,
+      actorName: actor.name,
+      kind: maneuverKind(decision.maneuver),
+      targetName: target?.name ?? null,
+      protocolIndex: decision.protocolIndex,
+      reason: decision.reason,
+      detail,
+    },
+  ]
+
+  // The wall: if this action actually healed a unit, every opposing unit with a
+  // counter-heal trait punishes the healed target — a REACTION, so it shares the
+  // turn (does not advance turn/cursor) and lands before we judge the outcome.
+  const healed = target !== null && maneuverKind(decision.maneuver) === 'heal' && target.hp > hpBefore ? target : null
+  if (healed !== null) {
+    for (const c of units) {
+      if (healed.hp <= 0) break
+      const counter = c.counterHeal ?? 0
+      if (c.hp <= 0 || c.side === healed.side || counter <= 0) continue
+      const before = healed.hp
+      healed.hp = Math.max(0, healed.hp - counter)
+      let punish = `COUNTER −${counter} → ${healed.name} (HP ${before} → ${healed.hp})`
+      if (healed.hp <= 0) punish += ` • ${healed.name} defeated!`
+      entries.push({
+        turn,
+        round,
+        actorId: c.id,
+        actorName: c.name,
+        kind: 'counter',
+        targetName: healed.name,
+        protocolIndex: -1,
+        reason: 'punishes the heal',
+        detail: punish,
+      })
+    }
+  }
 
   const heroesAlive = units.some((u) => u.side === 'hero' && u.hp > 0)
   const enemiesAlive = units.some((u) => u.side === 'enemy' && u.hp > 0)
   const outcome: Outcome = !heroesAlive ? 'defeat' : !enemiesAlive ? 'victory' : 'ongoing'
 
-  const entry: LogEntry = {
-    turn: state.turn + 1,
-    round: state.round + (next.wrapped ? 1 : 0),
-    actorId: actor.id,
-    actorName: actor.name,
-    kind: maneuverKind(decision.maneuver),
-    targetName: target?.name ?? null,
-    protocolIndex: decision.protocolIndex,
-    reason: decision.reason,
-    detail,
-  }
-
   return {
     units,
-    turn: entry.turn,
-    round: entry.round,
+    turn,
+    round,
     cursor: next.idx,
-    log: [...state.log, entry].slice(-50),
+    log: [...state.log, ...entries].slice(-50),
     outcome,
   }
 }

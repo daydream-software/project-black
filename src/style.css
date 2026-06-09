@@ -37,6 +37,40 @@ canvas {
   max-width: 520px;
 }
 
+.encounters {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 10px 0 4px;
+}
+
+.encounters .enc-label {
+  color: #62687a;
+  font-size: 12px;
+  margin-right: 2px;
+}
+
+.enc {
+  background: #14141f;
+  color: #8b90a0;
+  border: 1px solid #26263a;
+  border-radius: 6px;
+  padding: 5px 10px;
+  font-size: 12.5px;
+  cursor: pointer;
+  transition: border-color 0.1s, color 0.1s, background 0.1s;
+}
+
+.enc:hover {
+  border-color: #2f4a5a;
+}
+
+.enc.active {
+  border-color: #c78bff;
+  color: #e6e9ef;
+  background: #1d1630;
+}
+
 .right {
   flex: 1;
   min-width: 300px;
@@ -208,6 +242,15 @@ canvas {
 
 .entry.flee {
   border-left-color: #b48cff;
+}
+
+.entry.counter {
+  border-left-color: #ff3b54;
+  background: #1f1417;
+}
+
+.entry.counter .actor {
+  color: #ff6b6b;
 }
 
 .entry .turn {

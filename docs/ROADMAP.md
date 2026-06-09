@@ -36,6 +36,7 @@ and deterministic. English codebase. See [ARCHITECTURE.md](ARCHITECTURE.md).
 | 1 | Adventurer follows a rule program vs looping slimes; on-screen decision log | ✅ done & verified |
 | 2 | Interactive rule editor (reorder, on/off, add/remove); live re-sim; Defend; death if non-viable | ✅ done & verified |
 | 3 | Composite rules (State = Subject+Predicate, Maneuver = Command+Object), 2-hero party w/ per-unit Procedures vs a 3-enemy group, filter-then-pick targeting, victory/defeat | ✅ done & verified |
+| 4 | The first "wall": Hex Warden counters every heal; naive cure-Procedure loses, disabling the cure rule wins. Encounter selector (Slime Pack / Hex Warden) | ✅ done & verified |
 
 Screenshots: [docs/progress/](progress/).
 
@@ -73,13 +74,23 @@ most later content needs.*
 **Done when:** a 2-hero party with per-unit Procedures clears a multi-enemy fight,
 and composed targeting is visibly correct in the decision log.
 
-### Slice 4 — The first "wall" *(recommended next)*
+### Slice 4 — The first "wall" ✅ *(done & verified)*
 An enemy with a mechanic that a naive program cannot beat (e.g. *counters healing*,
 or *enrages below 50%*), solvable **only** by changing the Procedure.
 **Done when:** the default Procedure loses, and a specific Protocol change wins —
 proven in-browser.
 
-### Slice 5 — AFK offline progression + save
+*Shipped:* the **Hex Warden** — whenever a hero is healed it strikes the healed
+unit for 30 (`counterHeal` trait in `sim.ts`, applied as a same-turn reaction
+before the outcome check). The default party's `Ally lowest HP<50% → Cure` rule
+becomes a death-spiral trap; disabling that one rule (Healer joins the DPS race;
+the Warrior tanks on its own `Self HP<30% → Defend`) flips defeat → victory.
+Proven in-browser (`docs/progress/slice4-defeat.png` → `slice4-victory.png`) and
+pinned by two opposite-outcome tests. An **encounter selector** (Slime Pack /
+Hex Warden) keeps the player's Procedures and swaps only the enemy group, so the
+"same program, different wall" contrast is visible.
+
+### Slice 5 — AFK offline progression + save *(recommended next)*
 `localStorage` save/load; on load, compute elapsed time and replay `step` to catch
 up. Introduce a seeded PRNG so catch-up is reproducible.
 **Done when:** closing and reopening the tab resumes correctly and credits offline

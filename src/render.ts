@@ -18,9 +18,9 @@ interface HpBar {
   fill: string
 }
 
-function drawSprite(ctx: CanvasRenderingContext2D, sprite: HTMLCanvasElement, x: number, y: number): void {
+function drawSprite(ctx: CanvasRenderingContext2D, sprite: HTMLCanvasElement, x: number, y: number, scale: number): void {
   ctx.imageSmoothingEnabled = false
-  ctx.drawImage(sprite, x, y, sprite.width * SCALE, sprite.height * SCALE)
+  ctx.drawImage(sprite, x, y, sprite.width * scale, sprite.height * scale)
 }
 
 function drawHpBar(ctx: CanvasRenderingContext2D, bar: HpBar): void {
@@ -43,17 +43,19 @@ function drawUnit(
   baseY: number,
   fill: string,
 ): void {
-  const w = sprite.width * SCALE
-  const h = sprite.height * SCALE
+  const scale = unit.isBoss === true ? 9 : SCALE
+  const w = sprite.width * scale
+  const h = sprite.height * scale
   const dead = unit.hp <= 0
+  const barFill = unit.isBoss === true ? '#c78bff' : fill // boss bar reads as the threat
 
   ctx.save()
   ctx.globalAlpha = dead ? 0.25 : 1
-  drawSprite(ctx, sprite, x, baseY)
+  drawSprite(ctx, sprite, x, baseY, scale)
   ctx.restore()
 
   if (!dead) {
-    drawHpBar(ctx, { x, y: baseY - 14, w, frac: unit.hp / unit.maxHp, fill })
+    drawHpBar(ctx, { x, y: baseY - 14, w, frac: unit.hp / unit.maxHp, fill: barFill })
     if (unit.defending) {
       // small shield tick to show the Defend status is active
       ctx.fillStyle = '#4fd1ff'
@@ -76,7 +78,12 @@ function drawColumn(
   gap: number,
   fill: string,
 ): void {
-  units.forEach((u, i) => drawUnit(ctx, u, sprite, x, topY + i * gap, fill))
+  // Right-align each unit so a wider boss sprite still hugs the right edge.
+  units.forEach((u, i) => {
+    const scale = u.isBoss === true ? 9 : SCALE
+    const drawX = x + (sprite.width * SCALE - sprite.width * scale)
+    drawUnit(ctx, u, sprite, drawX, topY + i * gap, fill)
+  })
 }
 
 function drawBanner(ctx: CanvasRenderingContext2D, title: string, subtitle: string, colour: string): void {
@@ -114,7 +121,7 @@ export function render(ctx: CanvasRenderingContext2D, state: GameState, sprites:
   const enemies = state.units.filter((u) => u.side === 'enemy')
   const enemiesLeft = enemies.filter((u) => u.hp > 0).length
   ctx.fillStyle = '#9fe0a8'
-  ctx.fillText(`Slimes left: ${enemiesLeft}/${enemies.length}`, 16, 34)
+  ctx.fillText(`Enemies left: ${enemiesLeft}/${enemies.length}`, 16, 34)
 
   // Stack the party on the left, the enemy group on the right.
   const gap = 78
