@@ -5,11 +5,13 @@
 ```
 index.html            Entry point + page layout (canvas left, rule editor right)
 src/
-  sim.ts              PURE simulation: types, decide(), step(), conditions
-  sim.test.ts         Vitest unit tests for the simulation (colocated)
-  render.ts           PURE view: draws a GameState onto the canvas
+  sim.ts              PURE encounter sim: types, decide(), step() — one fight
+  sim.test.ts         Vitest unit tests for the encounter sim (colocated)
+  run.ts              PURE run layer: RunState, stepRun() — a gauntlet of encounters
+  run.test.ts         Vitest unit tests for the run layer (colocated)
+  render.ts           PURE view: draws a GameState onto the canvas (+ run HUD)
   sprites.ts          Pixel-art sprites generated in code (hero, slime)
-  main.ts             Wiring: rule editor (DOM), game loop, decision log
+  main.ts             Wiring: camp/run modes, rule editor (DOM), loop, journal
   style.css           UI styling
 vite.config.ts        base: './' (GitHub Pages) + Vitest config
 docs/
@@ -19,28 +21,36 @@ docs/
   deploy.yml          Build + publish dist/ to GitHub Pages
 ```
 
-## Core principle: a pure deterministic simulation
+## Two pure layers: encounter and run
 
-All game logic lives in `src/sim.ts` as **pure functions** — no DOM, no canvas,
-no timers, no randomness. Given the same inputs they always return the same
-outputs.
+Game logic is split into two **pure** modules (no DOM, canvas, timers, or
+randomness — same inputs always give the same outputs):
 
-- `decide(self, enemy, program)` — the **rule engine** running a unit's Procedure:
-  it scans the Protocols top-to-bottom and the first whose State holds wins
-  (inspired by FF12 gambits). This is the heart of the game; the player programs by
-  ordering Protocols. (The composite State/Maneuver model lands in slice 3; the
-  shipped code still uses the flat `Condition`/`ActionKind` types.)
-- `step(state, program)` — advances one turn and returns a *new* state.
+- `sim.ts` — the **encounter**: one fight. `decide(self, units)` is the rule
+  engine; `step(state)` advances one unit-action.
+- `run.ts` — the **run**: a gauntlet of encounters. `stepRun(run)` advances the
+  inner battle and, when it resolves, transitions the run (carry the party to the
+  next encounter, or end it cleared/dead). The party (HP, deaths) persists across
+  encounters — attrition is the run's pressure. See [VISION.md](VISION.md).
+
+`main.ts` owns the only mutable loop and the camp ↔ run UI.
+
+- `decide(self, units)` — the **rule engine** running a unit's Procedure: it
+  scans the Protocols top-to-bottom and the first whose composite State resolves
+  to a target wins (inspired by FF12 gambits). The State's Subject IS the target.
+  This is the heart of the game; the player programs by ordering Protocols.
+- `step(state)` — advances one unit-action and returns a *new* state.
+- `stepRun(run)` — advances the run (the encounter, then the gauntlet transition).
 
 Why this matters:
 
 1. **Testability that can't lie.** Pure functions are tested against hand-computed
    expected values (see "Testing" below).
-2. **AFK offline catch-up is trivial later** — just replay `step` N times for the
-   elapsed seconds.
-3. **Determinism.** When dice / D&D randomness arrive, use a **seeded PRNG**
-   (passed through state) so runs stay reproducible and offline catch-up matches
-   online play.
+2. **AFK offline catch-up is trivial later** — just replay `step`/`stepRun` N
+   times for the elapsed seconds.
+3. **Determinism = diagnosis.** The journal is only trustworthy because the sim
+   is reproducible. When dice / D&D randomness arrive, use a **seeded PRNG**
+   (passed through state) so runs stay reproducible.
 
 The renderer (`render.ts`) is a **pure view**: it reads state and draws it, never
 mutating anything. `main.ts` owns the only mutable loop.

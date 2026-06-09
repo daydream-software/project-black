@@ -1,18 +1,18 @@
 import './style.css'
 import {
-  initialState,
-  step,
-  ENCOUNTERS,
+  makeWarrior,
+  makeHealer,
+  type Combatant,
   type GameState,
   type Procedure,
   type Protocol,
   type State,
   type Maneuver,
   type SkillId,
-  type EncounterId,
 } from './sim'
+import { startRun, stepRun, type RunState } from './run'
 import { makeHero, makeSlime } from './sprites'
-import { render } from './render'
+import { render, renderRunHud, renderRunEnd } from './render'
 import { requireElement, require2dContext } from './dom'
 
 // --- Rule catalog: the composed vocabulary the player picks from. -----------
@@ -132,10 +132,10 @@ function procedureFor(hero: Hero): Procedure {
   return hero.rows.filter((r) => r.enabled).map(rowToProtocol)
 }
 
-// --- DOM + simulation wiring ------------------------------------------------
+// --- DOM + run wiring -------------------------------------------------------
 const canvas = requireElement('game', HTMLCanvasElement)
 const ctx = require2dContext(canvas)
-const encountersEl = requireElement('encounters', HTMLDivElement)
+const runBarEl = requireElement('run-bar', HTMLDivElement)
 const tabsEl = requireElement('hero-tabs', HTMLDivElement)
 const editorEl = requireElement('editor', HTMLUListElement)
 const addBtn = requireElement('add-protocol', HTMLButtonElement)
@@ -143,14 +143,26 @@ const logEl = requireElement('log', HTMLDivElement)
 
 const sprites = { hero: makeHero(), slime: makeSlime() }
 
-let currentEncounter: EncounterId = 'warden'
-let state: GameState = buildState()
+type Mode = 'camp' | 'run'
+let mode: Mode = 'camp'
+let run: RunState | null = null
+// The GameState currently on screen (camp preview or the run's battle),
+// recomputed each frame so tabs / log / highlight read one consistent source.
+let view: GameState = campState()
 // Maps each enabled-row index of the ACTIVE hero -> its <li>, so we can highlight
 // the firing protocol without rebuilding the editor (which would clobber focus).
 let enabledLis: HTMLLIElement[] = []
 
-function buildState(): GameState {
-  return initialState(procedureFor(roster[0]), procedureFor(roster[1]), currentEncounter)
+// Design rule #2: a launched run is autonomous — Procedures are authored at camp.
+const editingLocked = (): boolean => mode === 'run'
+
+function party(): Combatant[] {
+  return [makeWarrior(procedureFor(roster[0])), makeHealer(procedureFor(roster[1]))]
+}
+
+/** The camp screen is just the party with no enemies (render shows "Camp"). */
+function campState(): GameState {
+  return { units: party(), turn: 0, round: 0, cursor: -1, log: [], outcome: 'ongoing' }
 }
 
 function esc(s: string): string {
@@ -159,11 +171,27 @@ function esc(s: string): string {
   )
 }
 
-/** Rebuild every Procedure and restart the fight so the player sees their logic. */
-function commit(): void {
-  state = buildState()
-  renderTabs()
+function launchRun(): void {
+  run = startRun(party())
+  mode = 'run'
+  renderRunBar()
+  renderEditor() // re-render so inputs pick up the locked state
+  frame()
+}
+
+function backToCamp(): void {
+  run = null
+  mode = 'camp'
+  renderRunBar()
   renderEditor()
+  frame()
+}
+
+/** Camp-only: editing rebuilds the editor (e.g. the contextual Object dropdown)
+ *  and refreshes the camp preview. A launched run is unaffected. */
+function commit(): void {
+  renderEditor()
+  frame()
 }
 
 function move(i: number, dir: number): void {
@@ -202,6 +230,7 @@ function makeButton(label: string, title: string, onClick: () => void): HTMLButt
 // One editor row: Subject · Predicate → Command [· Object] + controls.
 function createRow(row: ProtocolRow, i: number): HTMLLIElement {
   const rows = roster[activeHero].rows
+  const locked = editingLocked()
   const li = document.createElement('li')
   li.className = row.enabled ? 'protocol' : 'protocol disabled'
 
@@ -212,6 +241,7 @@ function createRow(row: ProtocolRow, i: number): HTMLLIElement {
   const chk = document.createElement('input')
   chk.type = 'checkbox'
   chk.checked = row.enabled
+  chk.disabled = locked
   chk.title = 'Enable / disable this protocol'
   chk.addEventListener('change', () => {
     row.enabled = chk.checked
@@ -227,6 +257,7 @@ function createRow(row: ProtocolRow, i: number): HTMLLIElement {
     },
   )
   subjSel.title = 'Subject — who this Protocol looks at (and acts on)'
+  subjSel.disabled = locked
 
   const dot = document.createElement('span')
   dot.className = 'dot'
@@ -241,6 +272,7 @@ function createRow(row: ProtocolRow, i: number): HTMLLIElement {
     },
   )
   predSel.title = 'Predicate — what must be true of the Subject'
+  predSel.disabled = locked
 
   const arrow = document.createElement('span')
   arrow.className = 'arrow'
@@ -256,6 +288,7 @@ function createRow(row: ProtocolRow, i: number): HTMLLIElement {
     },
   )
   cmdSel.title = 'Command — what to do'
+  cmdSel.disabled = locked
 
   li.append(prio, chk, subjSel, dot, predSel, arrow, cmdSel)
 
@@ -273,44 +306,48 @@ function createRow(row: ProtocolRow, i: number): HTMLLIElement {
       },
     )
     objSel.title = 'Object — which skill to use'
+    objSel.disabled = locked
     li.append(objSel)
   }
 
   const up = makeButton('▲', 'Higher priority', () => move(i, -1))
-  up.disabled = i === 0
+  up.disabled = locked || i === 0
   const down = makeButton('▼', 'Lower priority', () => move(i, 1))
-  down.disabled = i === rows.length - 1
+  down.disabled = locked || i === rows.length - 1
   const del = makeButton('✕', 'Remove protocol', () => {
     rows.splice(i, 1)
     commit()
   })
   del.className = 'del'
+  del.disabled = locked
 
   li.append(up, down, del)
   return li
 }
 
-function renderEncounters(): void {
-  encountersEl.replaceChildren()
-  const label = document.createElement('span')
-  label.className = 'enc-label'
-  label.textContent = 'Encounter:'
-  encountersEl.appendChild(label)
-  for (const enc of ENCOUNTERS) {
-    const btn = document.createElement('button')
-    btn.className = enc.id === currentEncounter ? 'enc active' : 'enc'
-    btn.textContent = enc.name
-    btn.title = enc.hint
-    btn.addEventListener('click', () => {
-      if (enc.id === currentEncounter) return
-      currentEncounter = enc.id
-      // Restart the fight against the new enemy group — the player's Procedures
-      // are untouched (this is the "same program, different wall" comparison).
-      state = buildState()
-      renderEncounters()
-      renderEditor()
-    })
-    encountersEl.appendChild(btn)
+function makeHint(text: string): HTMLSpanElement {
+  const hint = document.createElement('span')
+  hint.className = 'run-hint'
+  hint.textContent = text
+  return hint
+}
+
+// The run-control bar: launch at camp, abandon during a run, back-to-camp at the end.
+function renderRunBar(): void {
+  runBarEl.replaceChildren()
+  if (mode === 'camp') {
+    const launch = makeButton('▶ Launch run', 'Send your party on an autonomous run', launchRun)
+    launch.className = 'run-launch'
+    runBarEl.append(launch, makeHint('Gauntlet: Two Slimes → Slime Pack → Hex Warden'))
+  } else if (run !== null && run.status === 'fighting') {
+    const abandon = makeButton('✕ Abandon run', 'Give up and return to camp', backToCamp)
+    abandon.className = 'run-abandon'
+    runBarEl.append(abandon, makeHint('Run in progress — editing locked (no rescue)'))
+  } else {
+    const back = makeButton('↩ Back to camp', 'Return to camp to revise your Procedures', backToCamp)
+    back.className = 'run-launch'
+    const msg = run?.status === 'cleared' ? 'Run cleared!' : 'Run over — read the journal below'
+    runBarEl.append(back, makeHint(msg))
   }
 }
 
@@ -319,8 +356,8 @@ function renderTabs(): void {
   roster.forEach((hero, i) => {
     const tab = document.createElement('button')
     tab.className = i === activeHero ? 'tab active' : 'tab'
-    const alive = state.units.find((u) => u.id === hero.simId)
-    const hp = alive ? `${Math.max(0, alive.hp)}/${alive.maxHp}` : ''
+    const unit = view.units.find((u) => u.id === hero.simId)
+    const hp = unit ? `${Math.max(0, unit.hp)}/${unit.maxHp}` : ''
     tab.textContent = `${hero.name}  ${hp}`
     tab.addEventListener('click', () => {
       activeHero = i
@@ -333,6 +370,7 @@ function renderTabs(): void {
 
 // Built with DOM APIs (not innerHTML) — safe, and keeps live event handlers.
 function renderEditor(): void {
+  addBtn.disabled = editingLocked()
   editorEl.replaceChildren()
   enabledLis = []
   roster[activeHero].rows.forEach((row, i) => {
@@ -343,7 +381,7 @@ function renderEditor(): void {
 }
 
 function renderLog(): void {
-  const recent = state.log.slice(-14).reverse()
+  const recent = view.log.slice(-14).reverse()
   logEl.innerHTML = recent
     .map((e) => {
       const target = e.targetName !== null ? ` <span class="tgt">→ ${esc(e.targetName)}</span>` : ''
@@ -355,20 +393,26 @@ function renderLog(): void {
 /** Highlight the firing Protocol — but only when the ACTIVE hero just acted. */
 function highlightFiringProtocol(): void {
   for (const li of enabledLis) li.classList.remove('active')
-  const last = state.log.at(-1)
+  const last = view.log.at(-1)
   if (last === undefined || last.actorId !== roster[activeHero].simId) return
   const idx = last.protocolIndex
   if (idx >= 0 && idx < enabledLis.length) enabledLis[idx].classList.add('active')
 }
 
 function frame(): void {
-  render(ctx, state, sprites)
+  view = mode === 'camp' ? campState() : (run?.battle ?? campState())
+  render(ctx, view, sprites)
+  if (mode === 'run' && run !== null) {
+    renderRunHud(ctx, run.depth, run.gauntlet.length)
+    if (run.status !== 'fighting') renderRunEnd(ctx, run.status)
+  }
   renderLog()
   renderTabs()
   highlightFiringProtocol()
 }
 
 addBtn.addEventListener('click', () => {
+  if (editingLocked()) return
   roster[activeHero].rows.push({
     subjectId: 'enemy_near',
     predId: 'always',
@@ -379,15 +423,16 @@ addBtn.addEventListener('click', () => {
   commit()
 })
 
-renderEncounters()
+renderRunBar()
 renderTabs()
 renderEditor()
 frame()
 
 const ticker = setInterval(() => {
-  if (state.outcome !== 'ongoing') return // battle over — pause until the player edits
-  state = step(state)
+  if (mode !== 'run' || run === null || run.status !== 'fighting') return
+  run = stepRun(run)
   frame()
+  if (run.status !== 'fighting') renderRunBar() // surface "Back to camp"
 }, 450)
 
 // Vite HMR re-runs this module on edit; without this, each hot update would stack

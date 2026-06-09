@@ -37,38 +37,45 @@ canvas {
   max-width: 520px;
 }
 
-.encounters {
+.run-bar {
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: 10px;
   margin: 10px 0 4px;
 }
 
-.encounters .enc-label {
-  color: #62687a;
-  font-size: 12px;
-  margin-right: 2px;
-}
-
-.enc {
-  background: #14141f;
-  color: #8b90a0;
-  border: 1px solid #26263a;
+.run-bar button {
   border-radius: 6px;
-  padding: 5px 10px;
-  font-size: 12.5px;
+  padding: 7px 14px;
+  font-size: 13px;
+  font-weight: 600;
   cursor: pointer;
   transition: border-color 0.1s, color 0.1s, background 0.1s;
 }
 
-.enc:hover {
-  border-color: #2f4a5a;
+.run-launch {
+  background: #15202b;
+  color: #4fd1ff;
+  border: 1px solid #2f4a5a;
 }
 
-.enc.active {
-  border-color: #c78bff;
-  color: #e6e9ef;
-  background: #1d1630;
+.run-launch:hover {
+  border-color: #4fd1ff;
+}
+
+.run-abandon {
+  background: #1f1417;
+  color: #ff6b6b;
+  border: 1px solid #5a2f33;
+}
+
+.run-abandon:hover {
+  border-color: #ff6b6b;
+}
+
+.run-hint {
+  color: #62687a;
+  font-size: 12px;
 }
 
 .right {

@@ -271,7 +271,7 @@ export function makeHealer(procedure: Procedure): Combatant {
   return { id: 'hero-2', name: 'Healer', side: 'hero', hp: 80, maxHp: 80, atk: 6, defending: false, procedure }
 }
 
-export type EncounterId = 'pack' | 'warden'
+export type EncounterId = 'duo' | 'pack' | 'warden'
 
 export interface Encounter {
   id: EncounterId
@@ -280,24 +280,41 @@ export interface Encounter {
 }
 
 export const ENCOUNTERS: Encounter[] = [
+  { id: 'duo', name: 'Two Slimes', hint: 'A gentle opener.' },
   { id: 'pack', name: 'Slime Pack', hint: 'A naive Procedure clears it.' },
   { id: 'warden', name: 'Hex Warden', hint: 'Punishes healing — the first wall.' },
 ]
 
 function encounterEnemies(id: EncounterId): Combatant[] {
-  return id === 'warden' ? [makeWarden()] : [makeEnemy(1), makeEnemy(2), makeEnemy(3)]
+  switch (id) {
+    case 'warden':
+      return [makeWarden()]
+    case 'duo':
+      return [makeEnemy(1), makeEnemy(2)]
+    case 'pack':
+      return [makeEnemy(1), makeEnemy(2), makeEnemy(3)]
+  }
 }
 
-/** Build a fresh encounter: the 2-hero party vs the chosen enemy group. */
-export function initialState(warriorProc: Procedure, healerProc: Procedure, encounter: EncounterId = 'pack'): GameState {
+/**
+ * Build an encounter from EXISTING hero Combatants (HP, deaths and Procedures
+ * carry in). This is what lets a run chain encounters with attrition; a fresh
+ * `defending` flag and a fresh log/cursor give each encounter a clean slate.
+ */
+export function makeBattle(heroes: Combatant[], encounter: EncounterId): GameState {
   return {
-    units: [makeWarrior(warriorProc), makeHealer(healerProc), ...encounterEnemies(encounter)],
+    units: [...heroes.map((h) => ({ ...h, defending: false })), ...encounterEnemies(encounter)],
     turn: 0,
     round: 0,
     cursor: -1,
     log: [],
     outcome: 'ongoing',
   }
+}
+
+/** Convenience: a one-off encounter against a freshly-built default party. */
+export function initialState(warriorProc: Procedure, healerProc: Procedure, encounter: EncounterId = 'pack'): GameState {
+  return makeBattle([makeWarrior(warriorProc), makeHealer(healerProc)], encounter)
 }
 
 /** The next living unit to act after `cursor`, and whether we wrapped (new round). */

@@ -111,17 +111,22 @@ export function render(ctx: CanvasRenderingContext2D, state: GameState, sprites:
   ctx.fillStyle = '#1b1b2a'
   ctx.fillRect(0, height - 60, width, 60) // ground band
 
-  // header
-  ctx.textBaseline = 'top'
-  ctx.fillStyle = '#cfd6e0'
-  ctx.font = '15px system-ui, sans-serif'
-  ctx.fillText(`Round ${state.round + 1} · turn ${state.turn}`, 16, 12)
-
   const heroes = state.units.filter((u) => u.side === 'hero')
   const enemies = state.units.filter((u) => u.side === 'enemy')
-  const enemiesLeft = enemies.filter((u) => u.hp > 0).length
-  ctx.fillStyle = '#9fe0a8'
-  ctx.fillText(`Enemies left: ${enemiesLeft}/${enemies.length}`, 16, 34)
+
+  // header — a state with no enemies is the camp (between runs)
+  ctx.textBaseline = 'top'
+  ctx.font = '15px system-ui, sans-serif'
+  if (enemies.length === 0) {
+    ctx.fillStyle = '#8b90a0'
+    ctx.fillText('Camp — edit your party, then launch a run', 16, 14)
+  } else {
+    ctx.fillStyle = '#cfd6e0'
+    ctx.fillText(`Round ${state.round + 1} · turn ${state.turn}`, 16, 12)
+    const enemiesLeft = enemies.filter((u) => u.hp > 0).length
+    ctx.fillStyle = '#9fe0a8'
+    ctx.fillText(`Enemies left: ${enemiesLeft}/${enemies.length}`, 16, 34)
+  }
 
   // Stack the party on the left, the enemy group on the right.
   const gap = 78
@@ -129,7 +134,21 @@ export function render(ctx: CanvasRenderingContext2D, state: GameState, sprites:
   drawColumn(ctx, heroes, sprites.hero, 50, topY, gap, '#4fd1ff')
   const slimeX = width - 50 - sprites.slime.width * SCALE
   drawColumn(ctx, enemies, sprites.slime, slimeX, topY, gap, '#ff6b6b')
+}
 
-  if (state.outcome === 'victory') drawBanner(ctx, 'VICTORY', 'Your Procedure cleared the fight', '#9fe0a8')
-  else if (state.outcome === 'defeat') drawBanner(ctx, 'DEFEATED', 'Adjust your Procedure to survive', '#ff6b6b')
+/** Run-level HUD: which stage of the gauntlet we're on (top-right). */
+export function renderRunHud(ctx: CanvasRenderingContext2D, depth: number, total: number): void {
+  ctx.save()
+  ctx.textAlign = 'right'
+  ctx.textBaseline = 'top'
+  ctx.fillStyle = '#c78bff'
+  ctx.font = 'bold 15px system-ui, sans-serif'
+  ctx.fillText(`Stage ${depth + 1} / ${total}`, ctx.canvas.width - 16, 14)
+  ctx.restore()
+}
+
+/** Run-end banner, driven by the RUN status (not a single encounter's outcome). */
+export function renderRunEnd(ctx: CanvasRenderingContext2D, status: 'cleared' | 'dead'): void {
+  if (status === 'cleared') drawBanner(ctx, 'RUN CLEARED', 'Your program survived the gauntlet', '#9fe0a8')
+  else drawBanner(ctx, 'RUN OVER', 'Read the journal, fix your Procedures, run again', '#ff6b6b')
 }
