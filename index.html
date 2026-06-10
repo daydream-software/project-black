@@ -27,16 +27,19 @@
 
     <main class="app" id="screen-game" hidden>
       <section class="left">
-        <div class="title-row">
-          <h1>Program your party, then send them delving</h1>
+        <header class="game-bar">
+          <span class="wordmark">PROJECT&nbsp;BLACK</span>
           <div class="title-actions">
             <button id="to-slots" class="link-btn" title="Save and return to the slot picker">← Slots</button>
             <button id="music-toggle" class="music-toggle" title="Toggle music">♪ Music: off</button>
           </div>
-        </div>
+        </header>
         <canvas id="game" width="520" height="360"></canvas>
         <div id="run-bar" class="run-bar"></div>
-        <p class="hint">Author each unit's combat <em>Procedure</em> in town, then <em>descend</em>. The party explores a seeded dungeon, fights and hunts the objective on its own. A wipe sends you back to town — read the <em>journal</em> to see what went wrong, and reprogram.</p>
+        <p class="hint">
+          Program your party's two brains — how they <em>fight</em> and how they <em>delve</em> — then
+          descend. A wipe sends you back; read the <em>journal</em> and reprogram.
+        </p>
       </section>
       <section class="right">
         <h2>Procedure <span class="sub">per unit · priority: top → bottom</span></h2>

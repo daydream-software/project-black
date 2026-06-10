@@ -11,24 +11,26 @@ body {
 
 .app {
   display: flex;
-  gap: 24px;
+  gap: 28px;
   align-items: flex-start;
   padding: 24px;
-  max-width: 1000px;
+  max-width: 1120px;
   margin: 0 auto;
 }
 
-.title-row {
+.game-bar {
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 12px;
-  margin: 0 0 12px;
+  margin: 0 0 14px;
 }
 
-.left h1 {
-  font-size: 20px;
-  margin: 0;
+.wordmark {
+  font-size: 14px;
+  font-weight: 800;
+  letter-spacing: 3px;
+  color: #4a4f60;
 }
 
 .music-toggle {
@@ -165,21 +167,19 @@ canvas {
   padding: 0;
 }
 
+/* A rule is a two-line card: the rule reads as a sentence on top, the priority +
+   reorder/delete controls sit on a subtle strip below — so the rule never has to
+   fight the controls for horizontal space. */
 .protocol {
   display: flex;
-  align-items: center;
-  flex-wrap: wrap;
-  gap: 6px;
-  padding: 6px 8px;
+  flex-direction: column;
+  gap: 7px;
+  padding: 9px 11px;
   border: 1px solid #26263a;
-  border-radius: 6px;
-  margin-bottom: 6px;
+  border-radius: 7px;
+  margin-bottom: 7px;
   background: #14141f;
-  transition: border-color 0.1s, background 0.1s;
-}
-
-.protocol .dot {
-  color: #62687a;
+  transition: border-color 0.12s, background 0.12s;
 }
 
 .protocol.active {
@@ -188,53 +188,161 @@ canvas {
 }
 
 .protocol.disabled {
-  opacity: 0.45;
+  opacity: 0.5;
 }
 
-.protocol .prio {
-  width: 16px;
-  text-align: center;
-  font-size: 12px;
-  color: #62687a;
+/* line 1 — the rule. Selects size to their content and wrap when the column is
+   narrow, so a dropdown is never squeezed to an unreadable stub. */
+.rule-line {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px 7px;
+}
+
+.rule-line input[type='checkbox'] {
+  flex: none;
+  margin: 0;
+  accent-color: #4fd1ff;
+  cursor: pointer;
+}
+
+.protocol .dot {
+  flex: none;
+  color: #4a4f60;
 }
 
 .protocol .arrow {
-  color: #8b90a0;
+  flex: none;
+  color: #4fd1ff;
 }
 
-.protocol select {
-  flex: 1 1 90px;
-  min-width: 80px;
+/* Custom dropdown (replaces native <select> — we control open/close ourselves so
+   the list can never spontaneously reopen the way native popups did). */
+.dropdown {
+  position: relative;
+  flex: 0 0 auto; /* size to the head; wrap within the rule-line */
+}
+
+.dropdown-head {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
   background: #0c0c12;
   color: #e6e9ef;
   border: 1px solid #2c2c40;
-  border-radius: 4px;
-  padding: 4px 6px;
+  border-radius: 5px;
+  padding: 5px 8px;
   font-size: 13px;
+  font-family: inherit;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: border-color 0.1s;
 }
 
-.protocol button {
-  background: #20202c;
+.dropdown-head:hover:not(:disabled) {
+  border-color: #3a5566;
+}
+
+.dropdown.open .dropdown-head {
+  border-color: #4fd1ff;
+}
+
+.dropdown-head:disabled {
+  cursor: default;
+}
+
+.dropdown-caret {
+  color: #62687a;
+  font-size: 10px;
+}
+
+.dropdown-list {
+  position: absolute;
+  top: calc(100% + 3px);
+  left: 0;
+  z-index: 30;
+  min-width: 100%;
+  width: max-content; /* grow to the widest option, never clip a label */
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 4px;
+  background: #14141f;
+  border: 1px solid #2f4a5a;
+  border-radius: 6px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.55);
+  max-height: 240px;
+  overflow-y: auto;
+}
+
+.dropdown-list[hidden] {
+  display: none;
+}
+
+.dropdown-item {
+  display: block;
+  width: 100%;
+  text-align: left;
+  white-space: nowrap;
+  background: transparent;
   color: #cfd6e0;
-  border: 1px solid #2c2c40;
+  border: none;
   border-radius: 4px;
-  width: 24px;
+  padding: 6px 10px;
+  font-size: 13px;
+  font-family: inherit;
+  cursor: pointer;
+}
+
+.dropdown-item:hover {
+  background: #15202b;
+  color: #e6e9ef;
+}
+
+.dropdown-item.selected {
+  color: #4fd1ff;
+}
+
+/* line 2 — control strip */
+.ctrl-line {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.ctrl-line .prio {
+  margin-right: auto;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.03em;
+  color: #62687a;
+}
+
+.ctrl-line button {
+  background: #1a1a26;
+  color: #aab0c0;
+  border: 1px solid #2c2c40;
+  border-radius: 5px;
+  width: 26px;
   height: 24px;
   font-size: 11px;
   cursor: pointer;
   padding: 0;
+  transition: border-color 0.1s, color 0.1s;
 }
 
-.protocol button:hover:not(:disabled) {
+.ctrl-line button:hover:not(:disabled) {
   border-color: #4fd1ff;
+  color: #e6e9ef;
 }
 
-.protocol button:disabled {
+.ctrl-line button:disabled {
   opacity: 0.3;
   cursor: default;
 }
 
-.protocol button.del:hover {
+.ctrl-line button.del:hover:not(:disabled) {
   border-color: #ff6b6b;
   color: #ff6b6b;
 }

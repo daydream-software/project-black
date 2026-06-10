@@ -45,9 +45,9 @@ import {
 const SUBJECTS: Option<State['subject']>[] = [
   { id: 'self', label: 'Self', make: () => ({ who: 'self' }) },
   { id: 'ally_any', label: 'Ally · any', make: () => ({ who: 'ally', pick: 'first' }) },
-  { id: 'ally_low', label: 'Ally · lowest HP', make: () => ({ who: 'ally', pick: 'lowestHp' }) },
-  { id: 'enemy_near', label: 'Enemy · nearest', make: () => ({ who: 'enemy', pick: 'first' }) },
-  { id: 'enemy_low', label: 'Enemy · lowest HP', make: () => ({ who: 'enemy', pick: 'lowestHp' }) },
+  { id: 'ally_low', label: 'Ally · low HP', make: () => ({ who: 'ally', pick: 'lowestHp' }) },
+  { id: 'enemy_near', label: 'Enemy · near', make: () => ({ who: 'enemy', pick: 'first' }) },
+  { id: 'enemy_low', label: 'Enemy · low HP', make: () => ({ who: 'enemy', pick: 'lowestHp' }) },
 ]
 
 const PREDICATES: Option<State['predicate']>[] = [
@@ -401,12 +401,23 @@ function renderSlots(): void {
   }
 }
 
-/** Camp-only: editing rebuilds the editor (e.g. the contextual Object dropdown)
- *  and refreshes the camp preview. A launched run is unaffected. */
+/** A structural edit (add / remove / reorder / enable-toggle) — rebuild the editor
+ *  and persist. Town-only; a launched delve is locked so this never runs mid-delve. */
 function commit(): void {
   renderEditor()
   renderExEditor()
-  frame()
+  saveNow()
+}
+
+/**
+ * A value-only edit — a dropdown pick that changes a rule's data but not the
+ * editor's structure. We deliberately do NOT rebuild the editor here: replacing a
+ * `<select>` inside its own `change` handler makes the freshly-created element
+ * reopen its dropdown at the same spot, so closing a list felt flaky. Nothing in
+ * the editor's layout depends on the value (the rule's label only surfaces in the
+ * delve journal), so persisting is all that's needed.
+ */
+function persist(): void {
   saveNow()
 }
 
@@ -418,21 +429,79 @@ function move(i: number, dir: number): void {
   commit()
 }
 
+// A custom dropdown (not a native <select>). We build our own so open/close is
+// fully under our control — native <select> popups misbehaved in some browsers
+// (a closed list spontaneously reopening). Only one is open at a time; any click
+// outside the open one closes it.
+let closeOpenDropdown: (() => void) | null = null
+document.addEventListener('click', () => closeOpenDropdown?.())
+
 function makeSelect(
   options: { value: string; label: string }[],
   selected: string,
   onChange: (value: string) => void,
-): HTMLSelectElement {
-  const sel = document.createElement('select')
-  for (const opt of options) {
-    const o = document.createElement('option')
-    o.value = opt.value
-    o.textContent = opt.label
-    if (opt.value === selected) o.selected = true
-    sel.appendChild(o)
+  disabled = false,
+): HTMLElement {
+  let value = selected
+
+  const root = document.createElement('div')
+  root.className = disabled ? 'dropdown disabled' : 'dropdown'
+
+  const head = document.createElement('button')
+  head.type = 'button'
+  head.className = 'dropdown-head'
+  head.disabled = disabled
+  const label = document.createElement('span')
+  label.className = 'dropdown-label'
+  label.textContent = options.find((o) => o.value === value)?.label ?? value
+  const caret = document.createElement('span')
+  caret.className = 'dropdown-caret'
+  caret.textContent = '▾'
+  head.append(label, caret)
+
+  const list = document.createElement('div')
+  list.className = 'dropdown-list'
+  list.hidden = true
+
+  const close = (): void => {
+    list.hidden = true
+    root.classList.remove('open')
+    if (closeOpenDropdown === close) closeOpenDropdown = null
   }
-  sel.addEventListener('change', () => onChange(sel.value))
-  return sel
+  const open = (): void => {
+    closeOpenDropdown?.() // only one dropdown open at a time
+    list.hidden = false
+    root.classList.add('open')
+    closeOpenDropdown = close
+  }
+
+  for (const opt of options) {
+    const item = document.createElement('button')
+    item.type = 'button'
+    item.className = opt.value === value ? 'dropdown-item selected' : 'dropdown-item'
+    item.textContent = opt.label
+    item.addEventListener('click', (e) => {
+      e.stopPropagation()
+      if (opt.value !== value) {
+        value = opt.value
+        label.textContent = opt.label
+        for (const child of list.children) child.classList.toggle('selected', child === item)
+        onChange(value)
+      }
+      close()
+    })
+    list.appendChild(item)
+  }
+
+  head.addEventListener('click', (e) => {
+    e.stopPropagation() // so the document handler doesn't close it on the opening click
+    if (disabled) return
+    if (list.hidden) open()
+    else close()
+  })
+
+  root.append(head, list)
+  return root
 }
 
 function makeButton(label: string, title: string, onClick: () => void): HTMLButtonElement {
@@ -443,102 +512,145 @@ function makeButton(label: string, title: string, onClick: () => void): HTMLButt
   return btn
 }
 
-// One editor row: Subject · Predicate → Command [· Object] + controls.
-function createRow(row: ProtocolRow, i: number): HTMLLIElement {
-  const rows = roster[activeHero].rows
-  const locked = editingLocked()
-  const li = document.createElement('li')
-  li.className = row.enabled ? 'protocol' : 'protocol disabled'
+/** A `·` / `→` separator span between rule dropdowns. */
+function sep(text: string, cls = 'dot'): HTMLSpanElement {
+  const s = document.createElement('span')
+  s.className = cls
+  s.textContent = text
+  return s
+}
 
-  const prio = document.createElement('span')
-  prio.className = 'prio'
-  prio.textContent = String(i + 1)
+interface CardControls {
+  index: number
+  count: number
+  locked: boolean
+  enabled: boolean
+  onToggle: (on: boolean) => void
+  onUp: () => void
+  onDown: () => void
+  onDelete: () => void
+}
+
+/**
+ * A two-line rule card: the rule reads as a sentence ([✓] Subject · Predicate →
+ * …) on the top line, with the priority + reorder/delete controls on a subtle
+ * strip below. Shared by the combat Procedure and the exploration Protocol
+ * editors, so the rule never has to fight the controls for horizontal space.
+ */
+function ruleCard(ruleEls: HTMLElement[], c: CardControls): HTMLLIElement {
+  const li = document.createElement('li')
+  li.className = c.enabled ? 'protocol' : 'protocol disabled'
 
   const chk = document.createElement('input')
   chk.type = 'checkbox'
-  chk.checked = row.enabled
-  chk.disabled = locked
-  chk.title = 'Enable / disable this protocol'
-  chk.addEventListener('change', () => {
-    row.enabled = chk.checked
-    commit()
-  })
+  chk.checked = c.enabled
+  chk.disabled = c.locked
+  chk.title = 'Enable / disable this rule'
+  chk.addEventListener('change', () => c.onToggle(chk.checked))
+
+  const ruleLine = document.createElement('div')
+  ruleLine.className = 'rule-line'
+  ruleLine.append(chk, ...ruleEls)
+
+  const prio = document.createElement('span')
+  prio.className = 'prio'
+  prio.textContent = `#${c.index + 1}`
+
+  const up = makeButton('▲', 'Higher priority', c.onUp)
+  up.disabled = c.locked || c.index === 0
+  const down = makeButton('▼', 'Lower priority', c.onDown)
+  down.disabled = c.locked || c.index === c.count - 1
+  const del = makeButton('✕', 'Remove this rule', c.onDelete)
+  del.className = 'del'
+  del.disabled = c.locked
+
+  const ctrlLine = document.createElement('div')
+  ctrlLine.className = 'ctrl-line'
+  ctrlLine.append(prio, up, down, del)
+
+  li.append(ruleLine, ctrlLine)
+  return li
+}
+
+// One combat-Procedure row: Subject · Predicate → Command [· Object].
+function createRow(row: ProtocolRow, i: number): HTMLLIElement {
+  const rows = roster[activeHero].rows
+  const locked = editingLocked()
 
   const subjSel = makeSelect(
     SUBJECTS.map((s) => ({ value: s.id, label: s.label })),
     row.subjectId,
     (v) => {
       row.subjectId = v
-      commit()
+      persist()
     },
+    locked,
   )
-  subjSel.title = 'Subject — who this Protocol looks at (and acts on)'
-  subjSel.disabled = locked
-
-  const dot = document.createElement('span')
-  dot.className = 'dot'
-  dot.textContent = '·'
+  subjSel.title = 'Subject — who this rule looks at (and acts on)'
 
   const predSel = makeSelect(
     PREDICATES.map((p) => ({ value: p.id, label: p.label })),
     row.predId,
     (v) => {
       row.predId = v
-      commit()
+      persist()
     },
+    locked,
   )
   predSel.title = 'Predicate — what must be true of the Subject'
-  predSel.disabled = locked
 
-  const arrow = document.createElement('span')
-  arrow.className = 'arrow'
-  arrow.textContent = '→'
+  // The Object dropdown (and its separator) is always built, but only *shown* for
+  // a Command that carries one (Use Skill). A Command change toggles its
+  // visibility — it never recreates a <select>, which is what made the native
+  // dropdown reopen flakily when an editor was rebuilt mid-change.
+  const objSep = sep('·')
+  const objSel = makeSelect(
+    SKILLS.map((s) => ({ value: s.id, label: s.label })),
+    row.skillId,
+    (v) => {
+      const found = SKILLS.find((s) => s.id === v)
+      if (found !== undefined) {
+        row.skillId = found.id
+        persist()
+      }
+    },
+    locked,
+  )
+  objSel.title = 'Object — which skill to use'
+  const showObject = (on: boolean): void => {
+    objSep.style.display = on ? '' : 'none'
+    objSel.style.display = on ? '' : 'none'
+  }
+  showObject(commandById(row.command).hasObject)
 
   const cmdSel = makeSelect(
     COMMANDS.map((c) => ({ value: c.id, label: c.label })),
     row.command,
     (v) => {
-      const cmd = commandById(v)
-      row.command = cmd.id
-      commit()
+      row.command = commandById(v).id
+      persist()
+      showObject(commandById(row.command).hasObject)
     },
+    locked,
   )
   cmdSel.title = 'Command — what to do'
-  cmdSel.disabled = locked
 
-  li.append(prio, chk, subjSel, dot, predSel, arrow, cmdSel)
-
-  // Contextual Object dropdown: only "Use Skill" carries an Object.
-  if (commandById(row.command).hasObject) {
-    const objSel = makeSelect(
-      SKILLS.map((s) => ({ value: s.id, label: s.label })),
-      row.skillId,
-      (v) => {
-        const found = SKILLS.find((s) => s.id === v)
-        if (found !== undefined) {
-          row.skillId = found.id
-          commit()
-        }
-      },
-    )
-    objSel.title = 'Object — which skill to use'
-    objSel.disabled = locked
-    li.append(objSel)
-  }
-
-  const up = makeButton('▲', 'Higher priority', () => move(i, -1))
-  up.disabled = locked || i === 0
-  const down = makeButton('▼', 'Lower priority', () => move(i, 1))
-  down.disabled = locked || i === rows.length - 1
-  const del = makeButton('✕', 'Remove protocol', () => {
-    rows.splice(i, 1)
-    commit()
+  return ruleCard([subjSel, sep('·'), predSel, sep('→', 'arrow'), cmdSel, objSep, objSel], {
+    index: i,
+    count: rows.length,
+    locked,
+    enabled: row.enabled,
+    onToggle: (on) => {
+      row.enabled = on
+      commit()
+    },
+    onUp: () => move(i, -1),
+    onDown: () => move(i, 1),
+    onDelete: () => {
+      rows.splice(i, 1)
+      commit()
+    },
   })
-  del.className = 'del'
-  del.disabled = locked
-
-  li.append(up, down, del)
-  return li
 }
 
 function makeHint(text: string): HTMLSpanElement {
@@ -603,83 +715,60 @@ function renderEditor(): void {
   })
 }
 
-// One exploration editor row: Subject · Predicate → Move + controls. Party-wide
-// (no hero tabs); reuses the .protocol styling and the makeSelect/makeButton helpers.
+// One exploration-Protocol row: Subject · Predicate → Move. Party-wide (no hero
+// tabs); shares the two-line ruleCard with the combat editor.
 function createExRow(row: ExProtocolRow, i: number): HTMLLIElement {
   const locked = editingLocked()
-  const li = document.createElement('li')
-  li.className = row.enabled ? 'protocol' : 'protocol disabled'
-
-  const prio = document.createElement('span')
-  prio.className = 'prio'
-  prio.textContent = String(i + 1)
-
-  const chk = document.createElement('input')
-  chk.type = 'checkbox'
-  chk.checked = row.enabled
-  chk.disabled = locked
-  chk.title = 'Enable / disable this exploration Protocol'
-  chk.addEventListener('change', () => {
-    row.enabled = chk.checked
-    commit()
-  })
 
   const subjSel = makeSelect(
     EX_SUBJECTS.map((s) => ({ value: s.id, label: s.label })),
     row.subjectId,
     (v) => {
       row.subjectId = v
-      commit()
+      persist()
     },
+    locked,
   )
   subjSel.title = 'Subject — what in the dungeon this rule looks at'
-  subjSel.disabled = locked
-
-  const dot = document.createElement('span')
-  dot.className = 'dot'
-  dot.textContent = '·'
 
   const predSel = makeSelect(
     EX_PREDICATES.map((p) => ({ value: p.id, label: p.label })),
     row.predId,
     (v) => {
       row.predId = v
-      commit()
+      persist()
     },
+    locked,
   )
   predSel.title = 'Predicate — what must be true'
-  predSel.disabled = locked
-
-  const arrow = document.createElement('span')
-  arrow.className = 'arrow'
-  arrow.textContent = '→'
 
   const moveSel = makeSelect(
     EX_MOVES.map((m) => ({ value: m.id, label: m.label })),
     row.moveId,
     (v) => {
       row.moveId = v
-      commit()
+      persist()
     },
+    locked,
   )
   moveSel.title = 'Move — what the party does'
-  moveSel.disabled = locked
 
-  li.append(prio, chk, subjSel, dot, predSel, arrow, moveSel)
-
-  const up = makeButton('▲', 'Higher priority', () => exMove(i, -1))
-  up.disabled = locked || i === 0
-  const down = makeButton('▼', 'Lower priority', () => exMove(i, 1))
-  down.disabled = locked || i === exploration.length - 1
-  const del = makeButton('✕', 'Remove exploration Protocol', () => {
-    exploration.splice(i, 1)
-    commit()
+  return ruleCard([subjSel, sep('·'), predSel, sep('→', 'arrow'), moveSel], {
+    index: i,
+    count: exploration.length,
+    locked,
+    enabled: row.enabled,
+    onToggle: (on) => {
+      row.enabled = on
+      commit()
+    },
+    onUp: () => exMove(i, -1),
+    onDown: () => exMove(i, 1),
+    onDelete: () => {
+      exploration.splice(i, 1)
+      commit()
+    },
   })
-  del.className = 'del'
-  del.disabled = locked
-
-  li.append(up, down, del)
-  return li
 }
 
 function exMove(i: number, dir: number): void {

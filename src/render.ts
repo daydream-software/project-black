@@ -117,21 +117,36 @@ export function render(ctx: CanvasRenderingContext2D, state: GameState, sprites:
   const heroes = state.units.filter((u) => u.side === 'hero')
   const enemies = state.units.filter((u) => u.side === 'enemy')
 
-  // header — a state with no enemies is the camp (between runs)
   ctx.textBaseline = 'top'
-  ctx.font = '15px system-ui, sans-serif'
+
+  // TOWN — a state with no enemies: a centred roster lineup standing on the ground.
   if (enemies.length === 0) {
-    ctx.fillStyle = '#8b90a0'
-    ctx.fillText('Camp — edit your party, then launch a run', 16, 14)
-  } else {
-    ctx.fillStyle = '#cfd6e0'
-    ctx.fillText(`Round ${state.round + 1} · turn ${state.turn}`, 16, 12)
-    const enemiesLeft = enemies.filter((u) => u.hp > 0).length
-    ctx.fillStyle = '#9fe0a8'
-    ctx.fillText(`Enemies left: ${enemiesLeft}/${enemies.length}`, 16, 34)
+    ctx.textAlign = 'center'
+    ctx.fillStyle = '#e6e9ef'
+    ctx.font = 'bold 22px system-ui, sans-serif'
+    ctx.fillText('TOWN', width / 2, 22)
+    ctx.fillStyle = '#62687a'
+    ctx.font = '13px system-ui, sans-serif'
+    ctx.fillText('Your party rests — program their brains, then descend', width / 2, 52)
+    ctx.textAlign = 'left'
+
+    const heroW = sprites.hero.width * SCALE
+    const heroH = sprites.hero.height * SCALE
+    const slot = 150
+    const startX = (width - heroes.length * slot) / 2 + (slot - heroW) / 2
+    const baseY = height - 60 - heroH // feet on the ground band
+    heroes.forEach((u, i) => drawUnit(ctx, u, sprites.hero, startX + i * slot, baseY, '#4fd1ff'))
+    return
   }
 
-  // Stack the party on the left, the enemy group on the right.
+  // COMBAT — party on the left, the enemy group on the right.
+  ctx.font = '15px system-ui, sans-serif'
+  ctx.fillStyle = '#cfd6e0'
+  ctx.fillText(`Round ${state.round + 1} · turn ${state.turn}`, 16, 12)
+  const enemiesLeft = enemies.filter((u) => u.hp > 0).length
+  ctx.fillStyle = '#9fe0a8'
+  ctx.fillText(`Enemies left: ${enemiesLeft}/${enemies.length}`, 16, 34)
+
   const gap = 78
   const topY = 70
   drawColumn(ctx, heroes, sprites.hero, 50, topY, gap, '#4fd1ff')
