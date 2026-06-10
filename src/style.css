@@ -2,6 +2,13 @@
   box-sizing: border-box;
 }
 
+/* The `hidden` attribute must always win — otherwise a display rule like
+   `.app { display: flex }` overrides it and the screen leaks below the active
+   one (you could scroll past the title and see the game). */
+[hidden] {
+  display: none !important;
+}
+
 body {
   margin: 0;
   font-family: system-ui, -apple-system, sans-serif;
