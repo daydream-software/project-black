@@ -44,15 +44,22 @@
         </p>
       </section>
       <section class="right">
-        <h2>Procedure <span class="sub">per unit · priority: top → bottom</span></h2>
-        <div id="hero-tabs" class="tabs"></div>
-        <ul id="editor"></ul>
-        <button id="add-protocol">+ Add protocol</button>
-        <h2>Protocol <span class="sub">exploration · party · priority: top → bottom</span></h2>
-        <ul id="ex-editor"></ul>
-        <button id="ex-add">+ Add protocol</button>
-        <h2>Decision log</h2>
-        <div id="log"></div>
+        <div id="station-switcher" class="station-switcher"></div>
+        <div id="station-planning">
+          <h2>Procedure <span class="sub">per unit · priority: top → bottom</span></h2>
+          <div id="hero-tabs" class="tabs"></div>
+          <ul id="editor"></ul>
+          <button id="add-protocol">+ Add protocol</button>
+          <h2>Protocol <span class="sub">exploration · party · priority: top → bottom</span></h2>
+          <ul id="ex-editor"></ul>
+          <button id="ex-add">+ Add protocol</button>
+          <h2>Decision log</h2>
+          <div id="log"></div>
+        </div>
+        <div id="station-trainer" hidden>
+          <h2>Trainer <span class="sub">spend Insight to learn new vocabulary</span></h2>
+          <div id="trainer-list"></div>
+        </div>
       </section>
     </main>
     <script type="module" src="/src/main.ts"></script>

@@ -660,3 +660,112 @@ canvas {
 .insight-counter:empty {
   display: none;
 }
+
+/* --- Stations: Planning / Trainer switcher + the Trainer shop (slice 10b-3) - */
+.station-switcher {
+  display: flex;
+  gap: 6px;
+  margin-bottom: 12px;
+}
+
+.station-switcher:empty {
+  display: none;
+}
+
+.station-btn {
+  background: #14141f;
+  color: #8b90a0;
+  border: 1px solid #26263a;
+  border-radius: 6px;
+  padding: 7px 14px;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: border-color 0.1s, color 0.1s, background 0.1s;
+}
+
+.station-btn:hover {
+  border-color: #2f4a5a;
+}
+
+.station-btn.active {
+  border-color: #4fd1ff;
+  color: #e6e9ef;
+  background: #15202b;
+}
+
+.trainer-item {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 12px 14px;
+  border: 1px solid #26263a;
+  border-radius: 8px;
+  background: #14141f;
+  margin-bottom: 8px;
+}
+
+.trainer-item.owned {
+  opacity: 0.65;
+}
+
+.trainer-item .ti-body {
+  flex: 1;
+  min-width: 0;
+}
+
+.trainer-item .ti-name {
+  font-size: 14px;
+  font-weight: 600;
+  color: #e6e9ef;
+}
+
+.trainer-item .ti-desc {
+  font-size: 12.5px;
+  color: #8b90a0;
+  margin-top: 3px;
+  line-height: 1.5;
+}
+
+.trainer-item .ti-buy {
+  flex: none;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+}
+
+.trainer-item .ti-cost {
+  font-size: 12px;
+  font-weight: 600;
+  color: #c7a3ff;
+  white-space: nowrap;
+}
+
+.trainer-item .ti-buy button {
+  background: #15202b;
+  color: #4fd1ff;
+  border: 1px solid #2f4a5a;
+  border-radius: 6px;
+  padding: 6px 14px;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: border-color 0.1s;
+}
+
+.trainer-item .ti-buy button:hover:not(:disabled) {
+  border-color: #4fd1ff;
+}
+
+.trainer-item .ti-buy button:disabled {
+  opacity: 0.35;
+  cursor: default;
+}
+
+.trainer-item .ti-owned {
+  font-size: 12px;
+  font-weight: 600;
+  color: #9fe0a8;
+  white-space: nowrap;
+}

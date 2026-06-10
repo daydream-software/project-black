@@ -12,6 +12,7 @@ import {
 } from './sim'
 import { startDelve, stepDelve, catchUpDelve, type DelveState, type ExProtocol } from './delve'
 import { LEVELS, applyClear, levelById, hasCleared } from './levels'
+import { UNLOCKABLES, buy, isOwned, canAfford } from './shop'
 import { toggleMusic, setMusicState, type TrackId } from './music'
 import {
   saveSlot,
@@ -127,6 +128,8 @@ let insight = 0
 let unlocked: string[] = []
 // Which level the next Descend launches (town-only choice; defaults to the first).
 let selectedLevelId: string = LEVELS[0].id
+// Which Town station is showing: Planning (the editors) or Trainer (the shop).
+let station: 'planning' | 'trainer' = 'planning'
 
 /** When the current delve has just cleared, apply it to the meta: a FIRST clear
  *  adds the level and pays +1 Insight (a re-clear pays nothing). Called wherever a
@@ -182,6 +185,10 @@ const exAddBtn = requireElement('ex-add', HTMLButtonElement)
 const logEl = requireElement('log', HTMLDivElement)
 const musicBtn = requireElement('music-toggle', HTMLButtonElement)
 const insightEl = requireElement('insight', HTMLSpanElement)
+const switcherEl = requireElement('station-switcher', HTMLDivElement)
+const planningEl = requireElement('station-planning', HTMLDivElement)
+const trainerEl = requireElement('station-trainer', HTMLDivElement)
+const trainerListEl = requireElement('trainer-list', HTMLDivElement)
 const screenTitleEl = requireElement('screen-title', HTMLDivElement)
 const screenSlotsEl = requireElement('screen-slots', HTMLDivElement)
 const screenGameEl = requireElement('screen-game', HTMLElement)
@@ -252,6 +259,7 @@ function descend(): void {
   renderLevelSelect() // hide the picker during the delve
   renderEditor() // re-render so inputs pick up the locked state
   renderExEditor()
+  renderStation() // a delve forces the Planning view (watch the journal)
   frame()
 }
 
@@ -263,6 +271,7 @@ function backToTown(): void {
   renderLevelSelect() // show the picker again, with refreshed cleared badges
   renderEditor()
   renderExEditor()
+  renderStation()
   frame()
 }
 
@@ -291,6 +300,7 @@ function enterGame(): void {
   renderTabs()
   renderEditor()
   renderExEditor()
+  renderStation()
   frame()
 }
 
@@ -753,6 +763,85 @@ function renderLevelSelect(): void {
     })
     levelSelectEl.append(chip)
   }
+}
+
+// --- Town stations: Planning (editors) ↔ Trainer (shop) ---------------------
+
+/** Show the right-column station. A delve forces Planning (so the journal shows);
+ *  the switcher is town-only. */
+function renderStation(): void {
+  const effective: 'planning' | 'trainer' = mode === 'camp' ? station : 'planning'
+  planningEl.hidden = effective !== 'planning'
+  trainerEl.hidden = effective !== 'trainer'
+
+  switcherEl.replaceChildren()
+  if (mode === 'camp') {
+    for (const s of ['planning', 'trainer'] as const) {
+      const btn = document.createElement('button')
+      btn.className = s === effective ? 'station-btn active' : 'station-btn'
+      btn.textContent = s === 'planning' ? 'Planning' : 'Trainer'
+      btn.addEventListener('click', () => {
+        station = s
+        renderStation()
+      })
+      switcherEl.append(btn)
+    }
+  }
+
+  if (effective === 'trainer') renderTrainer()
+}
+
+/** The Trainer shop: each unlockable as name · description · cost / Learn / owned. */
+function renderTrainer(): void {
+  trainerListEl.replaceChildren()
+  for (const u of UNLOCKABLES) {
+    const owned = isOwned(unlocked, u.id)
+    const item = document.createElement('div')
+    item.className = owned ? 'trainer-item owned' : 'trainer-item'
+
+    const body = document.createElement('div')
+    body.className = 'ti-body'
+    const name = document.createElement('div')
+    name.className = 'ti-name'
+    name.textContent = u.name
+    const desc = document.createElement('div')
+    desc.className = 'ti-desc'
+    desc.textContent = u.desc
+    body.append(name, desc)
+
+    const buyCol = document.createElement('div')
+    buyCol.className = 'ti-buy'
+    if (owned) {
+      const o = document.createElement('span')
+      o.className = 'ti-owned'
+      o.textContent = '✓ learned'
+      buyCol.append(o)
+    } else {
+      const cost = document.createElement('span')
+      cost.className = 'ti-cost'
+      cost.textContent = `✦ ${u.cost}`
+      const btn = makeButton('Learn', 'Spend Insight to learn this', () => buyUnlock(u.id))
+      btn.disabled = !canAfford(insight, u.id)
+      buyCol.append(cost, btn)
+    }
+
+    item.append(body, buyCol)
+    trainerListEl.append(item)
+  }
+}
+
+/** Buy an unlockable: spend Insight, add to `unlocked`, refresh the shop + the
+ *  editors (the new vocabulary appears in the dropdowns) + the counter, and save. */
+function buyUnlock(id: string): void {
+  const r = buy(id, insight, unlocked)
+  if (!r.bought) return
+  insight = r.insight
+  unlocked = r.unlocked
+  renderInsight()
+  renderTrainer()
+  renderEditor()
+  renderExEditor()
+  saveNow()
 }
 
 function renderTabs(): void {
