@@ -10,22 +10,26 @@ import {
   type Maneuver,
   type SkillId,
 } from './sim'
-import { startDelve, stepDelve, catchUpDelve, type DelveState } from './delve'
+import { startDelve, stepDelve, catchUpDelve, type DelveState, type ExProtocol } from './delve'
 import { toggleMusic, setMusicState, type TrackId } from './music'
-import { saveGame, loadGame, elapsedSteps, type Hero, type ProtocolRow } from './save'
+import { saveGame, loadGame, elapsedSteps, type Hero, type ProtocolRow, type ExProtocolRow } from './save'
 import { makeHero, makeHeroBack, makeSlime } from './sprites'
 import { render, renderDelve } from './render'
 import { requireElement, require2dContext } from './dom'
+import {
+  byId,
+  buildExploration,
+  EX_SUBJECTS,
+  EX_PREDICATES,
+  EX_MOVES,
+  DEFAULT_EX_ROWS,
+  type Option,
+} from './protocol'
 
 // --- Rule catalog: the composed vocabulary the player picks from. -----------
 // A Protocol is built from four dropdowns: Subject + Predicate (the State) and
 // Command + Object (the Maneuver). The Object dropdown only shows for "Use Skill".
-
-interface Option<T> {
-  id: string
-  label: string
-  make: () => T
-}
+// The pure row→model compiler (+ the exploration catalogs) lives in protocol.ts.
 
 const SUBJECTS: Option<State['subject']>[] = [
   { id: 'self', label: 'Self', make: () => ({ who: 'self' }) },
@@ -54,12 +58,6 @@ const SKILLS: { id: SkillId; label: string }[] = [
   { id: 'cure', label: 'Cure' },
   { id: 'defend', label: 'Defend' },
 ]
-
-function byId<T>(list: Option<T>[], id: string): Option<T> {
-  const found = list.find((o) => o.id === id)
-  if (found === undefined) throw new Error(`Unknown option: ${id}`)
-  return found
-}
 
 function commandById(id: string): (typeof COMMANDS)[number] {
   const found = COMMANDS.find((c) => c.id === id)
@@ -97,6 +95,15 @@ let roster: Hero[] = [
 
 let activeHero = 0
 
+// The party-wide exploration Protocol rows (priority = order). `let` so a loaded
+// save can replace it; the defaults (protocol.ts) compile to DEFAULT_EXPLORATION.
+let exploration: ExProtocolRow[] = DEFAULT_EX_ROWS.map((r) => ({ ...r }))
+
+/** The live exploration Protocol fed to a delve (enabled rows, in priority order). */
+function explorationProtocol(): ExProtocol {
+  return buildExploration(exploration)
+}
+
 function maneuverFor(row: ProtocolRow): Maneuver {
   if (row.command === 'useSkill') return { command: 'useSkill', skill: row.skillId }
   if (row.command === 'flee') return { command: 'flee' }
@@ -129,6 +136,8 @@ const runBarEl = requireElement('run-bar', HTMLDivElement)
 const tabsEl = requireElement('hero-tabs', HTMLDivElement)
 const editorEl = requireElement('editor', HTMLUListElement)
 const addBtn = requireElement('add-protocol', HTMLButtonElement)
+const exEditorEl = requireElement('ex-editor', HTMLUListElement)
+const exAddBtn = requireElement('ex-add', HTMLButtonElement)
 const logEl = requireElement('log', HTMLDivElement)
 const musicBtn = requireElement('music-toggle', HTMLButtonElement)
 
@@ -179,11 +188,12 @@ function newSeed(): number {
 }
 
 function descend(): void {
-  delve = startDelve(party(), newSeed())
+  delve = startDelve(party(), newSeed(), explorationProtocol())
   mode = 'delve'
   saveNow()
   renderRunBar()
   renderEditor() // re-render so inputs pick up the locked state
+  renderExEditor()
   frame()
 }
 
@@ -193,12 +203,13 @@ function backToTown(): void {
   saveNow()
   renderRunBar()
   renderEditor()
+  renderExEditor()
   frame()
 }
 
 /** Persist the whole state, stamped with the current time (for offline catch-up). */
 function saveNow(): void {
-  saveGame({ roster, activeHero, mode, delve })
+  saveGame({ roster, activeHero, exploration, mode, delve })
 }
 
 /**
@@ -212,6 +223,7 @@ function restore(): void {
   if (saved === null) return
   roster = saved.roster
   activeHero = Math.max(0, Math.min(saved.activeHero, roster.length - 1))
+  if (saved.exploration !== undefined) exploration = saved.exploration // pre-8c saves default it
   if (saved.delve !== null) {
     delve = catchUpDelve(saved.delve, elapsedSteps(saved.savedAt, Date.now()))
     mode = 'delve'
@@ -225,6 +237,7 @@ function restore(): void {
  *  and refreshes the camp preview. A launched run is unaffected. */
 function commit(): void {
   renderEditor()
+  renderExEditor()
   frame()
   saveNow()
 }
@@ -422,6 +435,98 @@ function renderEditor(): void {
   })
 }
 
+// One exploration editor row: Subject · Predicate → Move + controls. Party-wide
+// (no hero tabs); reuses the .protocol styling and the makeSelect/makeButton helpers.
+function createExRow(row: ExProtocolRow, i: number): HTMLLIElement {
+  const locked = editingLocked()
+  const li = document.createElement('li')
+  li.className = row.enabled ? 'protocol' : 'protocol disabled'
+
+  const prio = document.createElement('span')
+  prio.className = 'prio'
+  prio.textContent = String(i + 1)
+
+  const chk = document.createElement('input')
+  chk.type = 'checkbox'
+  chk.checked = row.enabled
+  chk.disabled = locked
+  chk.title = 'Enable / disable this exploration Protocol'
+  chk.addEventListener('change', () => {
+    row.enabled = chk.checked
+    commit()
+  })
+
+  const subjSel = makeSelect(
+    EX_SUBJECTS.map((s) => ({ value: s.id, label: s.label })),
+    row.subjectId,
+    (v) => {
+      row.subjectId = v
+      commit()
+    },
+  )
+  subjSel.title = 'Subject — what in the dungeon this rule looks at'
+  subjSel.disabled = locked
+
+  const dot = document.createElement('span')
+  dot.className = 'dot'
+  dot.textContent = '·'
+
+  const predSel = makeSelect(
+    EX_PREDICATES.map((p) => ({ value: p.id, label: p.label })),
+    row.predId,
+    (v) => {
+      row.predId = v
+      commit()
+    },
+  )
+  predSel.title = 'Predicate — what must be true'
+  predSel.disabled = locked
+
+  const arrow = document.createElement('span')
+  arrow.className = 'arrow'
+  arrow.textContent = '→'
+
+  const moveSel = makeSelect(
+    EX_MOVES.map((m) => ({ value: m.id, label: m.label })),
+    row.moveId,
+    (v) => {
+      row.moveId = v
+      commit()
+    },
+  )
+  moveSel.title = 'Move — what the party does'
+  moveSel.disabled = locked
+
+  li.append(prio, chk, subjSel, dot, predSel, arrow, moveSel)
+
+  const up = makeButton('▲', 'Higher priority', () => exMove(i, -1))
+  up.disabled = locked || i === 0
+  const down = makeButton('▼', 'Lower priority', () => exMove(i, 1))
+  down.disabled = locked || i === exploration.length - 1
+  const del = makeButton('✕', 'Remove exploration Protocol', () => {
+    exploration.splice(i, 1)
+    commit()
+  })
+  del.className = 'del'
+  del.disabled = locked
+
+  li.append(up, down, del)
+  return li
+}
+
+function exMove(i: number, dir: number): void {
+  const j = i + dir
+  if (j < 0 || j >= exploration.length) return
+  ;[exploration[i], exploration[j]] = [exploration[j], exploration[i]]
+  commit()
+}
+
+function renderExEditor(): void {
+  exAddBtn.disabled = editingLocked()
+  exEditorEl.replaceChildren()
+  exploration.forEach((row, i) => exEditorEl.appendChild(createExRow(row, i)))
+}
+
 // Map a delve-log kind to one of the existing log-entry colour classes.
 const LOG_CLASS: Record<string, string> = { explore: 'defend', enter: 'flee', combat: 'attack', clear: 'heal', end: 'counter' }
 
@@ -472,10 +577,17 @@ addBtn.addEventListener('click', () => {
   commit()
 })
 
+exAddBtn.addEventListener('click', () => {
+  if (editingLocked()) return
+  exploration.push({ subjectId: 'unexplored', predId: 'always', moveId: 'head', enabled: true })
+  commit()
+})
+
 restore() // load a saved game (and fast-forward an in-progress delve) before first paint
 renderRunBar()
 renderTabs()
 renderEditor()
+renderExEditor()
 frame()
 
 let lastSaveMs = 0

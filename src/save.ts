@@ -27,6 +27,14 @@ export interface Hero {
   rows: ProtocolRow[]
 }
 
+/** One row of the party's exploration Protocol (Subject · Predicate → Move). */
+export interface ExProtocolRow {
+  subjectId: string
+  predId: string
+  moveId: string
+  enabled: boolean
+}
+
 export type Mode = 'camp' | 'delve'
 
 export interface SaveData {
@@ -34,6 +42,10 @@ export interface SaveData {
   savedAt: number // ms epoch when this snapshot was taken
   roster: Hero[]
   activeHero: number
+  // The party-wide exploration Protocol rows. Optional in the blob: saves written
+  // before slice 8c lack it, and load defaults them — so this stays additive (no
+  // version bump, no wiping a live player's authored combat Procedure).
+  exploration?: ExProtocolRow[]
   mode: Mode
   delve: DelveState | null
 }
@@ -78,6 +90,7 @@ function isSaveData(x: unknown): x is SaveData {
     typeof x.savedAt === 'number' &&
     Array.isArray(x.roster) &&
     typeof x.activeHero === 'number' &&
+    (x.exploration === undefined || Array.isArray(x.exploration)) &&
     (x.mode === 'camp' || x.mode === 'delve') &&
     (x.delve === null || isDelveState(x.delve))
   )
