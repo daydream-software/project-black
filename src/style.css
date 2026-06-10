@@ -596,3 +596,55 @@ canvas {
   color: #4fd1ff;
   background: #15202b;
 }
+
+/* --- Level select (slice 10a-3) -------------------------------------------- */
+.level-select {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 12px 0 2px;
+}
+
+.level-select:empty {
+  display: none;
+}
+
+.level-chip {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: #14141f;
+  color: #cfd6e0;
+  border: 1px solid #26263a;
+  border-radius: 8px;
+  padding: 8px 12px;
+  font-size: 13px;
+  cursor: pointer;
+  transition: border-color 0.1s, background 0.1s;
+}
+
+.level-chip:hover {
+  border-color: #2f4a5a;
+}
+
+.level-chip.selected {
+  border-color: #4fd1ff;
+  background: #15202b;
+  color: #e6e9ef;
+}
+
+.level-chip .lvl-meta {
+  font-size: 11px;
+  color: #62687a;
+}
+
+.level-chip .lvl-cleared {
+  font-size: 11px;
+  font-weight: 600;
+  color: #9fe0a8;
+}
+
+.level-chip .lvl-new {
+  font-size: 11px;
+  color: #62687a;
+}

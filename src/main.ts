@@ -11,7 +11,7 @@ import {
   type SkillId,
 } from './sim'
 import { startDelve, stepDelve, catchUpDelve, type DelveState, type ExProtocol } from './delve'
-import { LEVELS, recordClear } from './levels'
+import { LEVELS, recordClear, levelById, hasCleared } from './levels'
 import { toggleMusic, setMusicState, type TrackId } from './music'
 import {
   saveSlot,
@@ -117,6 +117,8 @@ let exploration: ExProtocolRow[] = DEFAULT_EX_ROWS.map((r) => ({ ...r }))
 
 // Levels this profile has first-cleared (meta; persisted per slot, survives a wipe).
 let clearedLevels: string[] = []
+// Which level the next Descend launches (town-only choice; defaults to the first).
+let selectedLevelId: string = LEVELS[0].id
 
 /** Mark the current delve's level cleared if it just finished cleared (first-clear
  *  only — recordClear is idempotent). Called wherever a delve can reach 'cleared':
@@ -161,6 +163,7 @@ function procedureFor(hero: Hero): Procedure {
 const canvas = requireElement('game', HTMLCanvasElement)
 const ctx = require2dContext(canvas)
 const runBarEl = requireElement('run-bar', HTMLDivElement)
+const levelSelectEl = requireElement('level-select', HTMLDivElement)
 const tabsEl = requireElement('hero-tabs', HTMLDivElement)
 const editorEl = requireElement('editor', HTMLUListElement)
 const addBtn = requireElement('add-protocol', HTMLButtonElement)
@@ -231,10 +234,11 @@ function newSeed(): number {
 }
 
 function descend(): void {
-  delve = startDelve(party(), newSeed(), explorationProtocol())
+  delve = startDelve(party(), newSeed(), explorationProtocol(), levelById(selectedLevelId))
   mode = 'delve'
   saveNow()
   renderRunBar()
+  renderLevelSelect() // hide the picker during the delve
   renderEditor() // re-render so inputs pick up the locked state
   renderExEditor()
   frame()
@@ -245,6 +249,7 @@ function backToTown(): void {
   mode = 'camp'
   saveNow()
   renderRunBar()
+  renderLevelSelect() // show the picker again, with refreshed cleared badges
   renderEditor()
   renderExEditor()
   frame()
@@ -271,6 +276,7 @@ function enterGame(): void {
   screen = 'game'
   renderScreens()
   renderRunBar()
+  renderLevelSelect()
   renderTabs()
   renderEditor()
   renderExEditor()
@@ -682,9 +688,9 @@ function makeHint(text: string): HTMLSpanElement {
 function renderRunBar(): void {
   runBarEl.replaceChildren()
   if (mode === 'camp' || delve === null) {
-    const launch = makeButton('▶ Descend', 'Send your party delving into a procedural dungeon', descend)
+    const launch = makeButton('▶ Descend', 'Send your party delving into the selected level', descend)
     launch.className = 'run-launch'
-    runBarEl.append(launch, makeHint('A seeded dungeon — they explore, fight and hunt the objective on their own'))
+    runBarEl.append(launch, makeHint(`${levelById(selectedLevelId).name} — a fresh seeded layout each run`))
   } else if (delve.status === 'delving') {
     const abandon = makeButton('✕ Abandon delve', 'Give up and return to town', backToTown)
     abandon.className = 'run-abandon'
@@ -699,6 +705,38 @@ function renderRunBar(): void {
           ? 'The delve got stuck — read the journal'
           : 'The party was wiped — read the journal'
     runBarEl.append(back, makeHint(msg))
+  }
+}
+
+/** Town-only level picker: a chip per level (name · room range · cleared badge).
+ *  Picking one sets which level the next Descend launches. Empty during a delve. */
+function renderLevelSelect(): void {
+  levelSelectEl.replaceChildren()
+  if (mode !== 'camp' || delve !== null) return
+  for (const level of LEVELS) {
+    const chip = document.createElement('button')
+    chip.type = 'button'
+    chip.className = level.id === selectedLevelId ? 'level-chip selected' : 'level-chip'
+
+    const name = document.createElement('span')
+    name.textContent = level.name
+
+    const meta = document.createElement('span')
+    meta.className = 'lvl-meta'
+    meta.textContent = `${level.rooms[0]}–${level.rooms[1]} rooms`
+
+    const badge = document.createElement('span')
+    const cleared = hasCleared(clearedLevels, level.id)
+    badge.className = cleared ? 'lvl-cleared' : 'lvl-new'
+    badge.textContent = cleared ? '✓ cleared' : 'new'
+
+    chip.append(name, meta, badge)
+    chip.addEventListener('click', () => {
+      selectedLevelId = level.id
+      renderLevelSelect()
+      renderRunBar() // the Descend hint names the selected level
+    })
+    levelSelectEl.append(chip)
   }
 }
 
