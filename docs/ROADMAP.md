@@ -199,13 +199,17 @@ Gear and unlocked vocabulary persist across delves (roguelite).
   Proven in-browser: selecting Level 2 descends its 31×23 / 6-9-room config; a
   cleared level shows its badge, persisting across reload (`docs/progress/`).
   Boss stays the Hex Warden for now (per-level enemies are content, deferred).
-- **10b — Insight economy + vocab unlock.** On a level's **first clear**, +1
-  Insight (uncapped; re-runs and wipes pay nothing). `unlocked` + `insight` persist
-  per profile (meta, survive a wipe). Spend Insight to flip a vocab item
-  locked→unlocked; the editor dropdowns offer only unlocked vocab. Ship ONE locked
-  **placeholder** vocab item (cheapest to implement — *not* a progression decision).
-  **Done when:** first-clear a level → earn Insight → unlock the item in Town → it
-  appears in the editor → program with it → it persists into the next delve.
+- **10b — Insight economy + vocab unlock.** ✅ *(done & verified)* On a level's
+  **first clear**, +1 Insight (uncapped; re-runs and wipes pay nothing) — pure
+  `applyClear`, **10b-1**, with a `✦ N` counter. A new combat Subject "Enemy · most
+  HP" (`highestHp` targeting) ships **locked**; options carry an `unlock` id and a
+  pure `available(options, unlocked)` filters every editor dropdown — **10b-2**.
+  The **Trainer** station (Planning ↔ Trainer switcher) spends Insight via pure
+  `shop.buy` to learn vocab, which then appears in the editor — **10b-3**.
+  `insight` + `unlocked` persist per profile (additive). Proven at the mouse: ✦2 →
+  Trainer → Learn → ✦1, "✓ learned", "Enemy · most HP" in the dropdown, persists
+  (`docs/progress/slice10b-trainer.png`). Placeholder vocab — *not* a progression
+  decision. **The full "language grows" loop works end to end.**
 
   **Town = a village hub** (the spend surface). Each building is a progression
   category: **Trainer** (learn vocabulary — "the language grows"; built in 10b),
@@ -224,6 +228,14 @@ capped). Dungeons are re-playable config-driven levels (varied per seed).
 **Deferred (content/progression, not the system):** the real progression — the set
 of levels, their configs / order / gating, which vocab unlocks at what cost; gear /
 the capped common currency (slice 11+); theme/fiction & resource naming.
+
+> ⚠️ **Balance gate before "playable":** slice 10's loop is verified system-wise
+> (via injection), but the starting party can't reliably clear level 1 — its boss
+> is the **Hex Warden** (a *wall*, slice 4), too hard for level 1. Until level 1 is
+> beatable, a real player can never earn Insight, so the economy is inaccessible in
+> practice. **Do a small "level 1 is beatable" pass** (a basic boss instead of the
+> Warden, or tuning) before defining real progression or a player demo. Cheap;
+> it's the bridge from "system done" to "actually playable."
 
 ### Slice 11 — Exploration depth + the chain lever + room variety
 Richer exploration vocabulary (threat estimation; loot / rest / elite / boss
