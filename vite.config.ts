@@ -12,6 +12,13 @@ export default defineConfig({
     // http://127.0.0.1.nip.io:5173 or http://<wsl-ip>.nip.io:5173 — same nip.io
     // convention the rest of the workspace uses for dev hosts.
     allowedHosts: ['.nip.io'],
+    watch: {
+      // Don't let agent/QA artefacts reload the page under test: Playwright writes
+      // a file into .playwright-mcp/ on every navigation and screenshot, which the
+      // dev-server watcher would otherwise treat as a change and full-reload the
+      // running app — making an open dropdown look like it spontaneously reopened.
+      ignored: ['**/.playwright-mcp/**'],
+    },
   },
   test: {
     environment: 'node',
