@@ -229,13 +229,14 @@ capped). Dungeons are re-playable config-driven levels (varied per seed).
 of levels, their configs / order / gating, which vocab unlocks at what cost; gear /
 the capped common currency (slice 11+); theme/fiction & resource naming.
 
-> ⚠️ **Balance gate before "playable":** slice 10's loop is verified system-wise
-> (via injection), but the starting party can't reliably clear level 1 — its boss
-> is the **Hex Warden** (a *wall*, slice 4), too hard for level 1. Until level 1 is
-> beatable, a real player can never earn Insight, so the economy is inaccessible in
-> practice. **Do a small "level 1 is beatable" pass** (a basic boss instead of the
-> Warden, or tuning) before defining real progression or a player demo. Cheap;
-> it's the bridge from "system done" to "actually playable."
+> **Balance/tuning (a late pass, not a blocker):** slice 10's loop is verified
+> system-wise (via injection), but the starting party can't reliably clear level 1
+> (boss = the **Hex Warden**, a *wall* from slice 4 — too hard for a first level).
+> So a real player can't yet earn Insight by playing. That's **tuning** — done in a
+> dedicated balance pass once the content exists (you don't tune one level in
+> isolation only to re-tune it against the full progression). It gates a *player
+> playtest*, not further development. Cheap when we get to it (a basic level-1 boss
+> instead of the Warden).
 
 ### Slice 11 — Exploration depth + the chain lever + room variety
 Richer exploration vocabulary (threat estimation; loot / rest / elite / boss

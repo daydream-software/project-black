@@ -54,10 +54,11 @@ you **automated** it.
 - **Town — active, you're present.** The *only* place you decide: edit both
   protocols, equip what you found, buy/unlock new vocabulary & heroes, manage the
   party. This is where build choices are made.
-- **Dungeon — autonomous, AFK-able.** The party delves a **seeded procedural**
+- **Dungeon — autonomous, hands-off.** The party delves a **seeded procedural**
   dungeon by your protocols: navigates, fights packs (combat Procedure), chains
-  kills, auto-collects loot, hunts the **target**. No live input; it plays on even
-  while you're away (offline catch-up replays the delve deterministically).
+  kills, auto-collects loot, hunts the **target**. No live input — it runs itself
+  in real time while the game is open; you idle or watch. **No offline progress:**
+  close the game and the delve waits where it left off (time-away never advances it).
 - **Outcome.** Target killed → return with the haul. Party wiped → back to 0.
   Either way you read the **journal** (a replay/debugger) and reprogram.
 
@@ -101,10 +102,16 @@ or wipe → Town.** Save slots are independent roguelite profiles.
 
 1. **Programming is the gameplay** — now **two** brains (fight + delve), one grammar.
 2. **Intense ↔ relaxed** — calm authoring in town; tense delves you cannot rescue.
-3. **AFK delivers the delve; the program unlocks progress.** The delve runs itself
-   (the exploration Protocol is the navigator) and continues offline.
-4. **The language grows** — new vocabulary, heroes and gear unlock over time;
-   expanding what you can *express* is the meta-progression.
+3. **Automation you watch, not idle-farming.** Inscribe your Golems and set them
+   delving — they explore, fight and hunt the target *on their own, successfully*,
+   because you programmed them well. Idle, watch, or go about your business while
+   they work; the draw is **watching your program work** (Gladiabots / factory-game
+   satisfaction), not waiting for a meter to fill. **No offline progress:** a delve
+   runs in real time while the game is open and simply waits where it left off when
+   you close it — time-away never advances a delve (and waiting never beats a wall,
+   rule #1).
+4. **The language grows** — new vocabulary, Golems and gear unlock over time;
+   expanding what you can *express* (and inscribe) is the meta-progression.
 5. **Static & tiny** — GitHub Pages, no server. Solo first; local then P2P co-op.
 
 ## Design rules
@@ -117,6 +124,34 @@ or wipe → Town.** Save slots are independent roguelite profiles.
 > steer it live, not the fights and not the navigation. You program better *next*
 > time. The journal is how you learn; the seed makes the lesson real.
 
+## Setting (decided 2026-06-10) — an Artificer and her Golems
+
+You're an **Artificer**. You don't hire heroes — you **build Golems** and
+**inscribe their cores** with the behaviour they'll run on, then send them delving.
+A Golem acts on its own inscription: it explores, fights and hunts the target by
+itself. This makes "you program autonomous delvers" *diegetic* — a Golem runs on
+what you etched into it, so authoring-then-watching is the natural way to play.
+
+The theme reskins only the **setting nouns**; the rule-grammar (**Procedure /
+Protocol / State / Maneuver**) is unchanged — "inscribing the core" *is* authoring a
+Golem's Procedure/Protocol. Direction (some names still open; reskin gradually,
+slice by slice — not a big-bang rename):
+
+| System | Term |
+|---|---|
+| Player | **Artificer** |
+| Party / units | **Golems** *(models TBD)* |
+| Author behaviour | **inscribe** a Golem's **core** |
+| Planning station | **The Workshop** |
+| Learn vocabulary *(was "Trainer")* | **The Library** — study; spend **Insight** |
+| Gear *(later)* | **The Arcane Forge** — craft & equip **Runes** |
+| Recruit Golems *(later)* | **The Crucible** *(alt: Arcane Foundry)* |
+| Unlock currency | **Insight** — rare, from **first clears** → vocabulary + Golems |
+| Common currency *(later)* | **Parts** *(alt: Scrap / Resource)* — from packs → Runes/gear |
+| Enemies | varied creatures (slimes, …) — **not** necessarily Golems |
+| Levels | **Ruin · Vault · Ancient City · Necropolis · …** |
+| Loot | **Parts** + **Runes**; Insight is a first-clear reward, **not** loot |
+
 ## Open knobs (decide while building)
 
 - **How punishing is a wipe?** Full roguelite reset (lose the delve's gains, keep
@@ -128,15 +163,16 @@ or wipe → Town.** Save slots are independent roguelite profiles.
   estimation, how the chain lever is exposed.
 - **Loot:** auto-collected vs. a programmable "loot policy"; how the town shop and
   unlocks gate progression.
-- **Theme / fiction:** still open (constructs/automatons, or a classic fantasy
-  party à la Nevergrind).
+- **Theme / fiction:** ✅ decided — an **Artificer and her Golems** (see *Setting*
+  above). A few names stay open (Parts/Scrap, Crucible/Foundry, the Golem models).
 
 ## POC ≠ game
 
 Built today (and **live** on GitHub Pages): the combat engine (composite
 State/Maneuver, party, the first counter-mechanic wall — the "Hex Warden"), the
 **run-loop spine** (a fixed gauntlet — the forerunner of the dungeon), **save +
-offline catch-up**, a 3-track music director. These prove *mechanisms*. The
+resume** (offline catch-up was built, now being dropped — see pillar 3: no offline
+progress), a 3-track music director. These prove *mechanisms*. The
 **dungeon + exploration Protocol + town shell** are what turn them into the game
 above. Build them in tiny verified slices; never mistake a POC for the game.
 
