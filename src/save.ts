@@ -50,6 +50,9 @@ export interface SaveData {
   // survives a wipe and (slice 10b) gates Insight to first clears. Optional/additive:
   // pre-10a saves lack it and default to empty.
   clearedLevels?: string[]
+  // Insight: the rare unlock currency, +1 per first level clear (slice 10b).
+  // Additive/optional; pre-10b saves default to 0.
+  insight?: number
   mode: Mode
   delve: DelveState | null
 }
@@ -88,6 +91,7 @@ function isSaveData(x: unknown): x is SaveData {
     typeof x.activeHero === 'number' &&
     (x.exploration === undefined || Array.isArray(x.exploration)) &&
     (x.clearedLevels === undefined || Array.isArray(x.clearedLevels)) &&
+    (x.insight === undefined || typeof x.insight === 'number') &&
     (x.mode === 'camp' || x.mode === 'delve') &&
     (x.delve === null || isDelveState(x.delve))
   )

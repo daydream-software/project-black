@@ -11,7 +11,7 @@ import {
   type SkillId,
 } from './sim'
 import { startDelve, stepDelve, catchUpDelve, type DelveState, type ExProtocol } from './delve'
-import { LEVELS, recordClear, levelById, hasCleared } from './levels'
+import { LEVELS, applyClear, levelById, hasCleared } from './levels'
 import { toggleMusic, setMusicState, type TrackId } from './music'
 import {
   saveSlot,
@@ -115,17 +115,21 @@ let activeHero = 0
 // save can replace it; the defaults (protocol.ts) compile to DEFAULT_EXPLORATION.
 let exploration: ExProtocolRow[] = DEFAULT_EX_ROWS.map((r) => ({ ...r }))
 
-// Levels this profile has first-cleared (meta; persisted per slot, survives a wipe).
+// Profile meta (persisted per slot, survives a wipe): levels first-cleared, and
+// the Insight earned (+1 per first clear) — the currency the Trainer spends.
 let clearedLevels: string[] = []
+let insight = 0
 // Which level the next Descend launches (town-only choice; defaults to the first).
 let selectedLevelId: string = LEVELS[0].id
 
-/** Mark the current delve's level cleared if it just finished cleared (first-clear
- *  only — recordClear is idempotent). Called wherever a delve can reach 'cleared':
- *  the live ticker and offline catch-up on slot entry. */
+/** When the current delve has just cleared, apply it to the meta: a FIRST clear
+ *  adds the level and pays +1 Insight (a re-clear pays nothing). Called wherever a
+ *  delve can reach 'cleared': the live ticker and offline catch-up on slot entry. */
 function maybeRecordClear(): void {
   if (delve !== null && delve.status === 'cleared' && delve.levelId) {
-    clearedLevels = recordClear(clearedLevels, delve.levelId)
+    const r = applyClear(clearedLevels, insight, delve.levelId)
+    clearedLevels = r.clearedLevels
+    insight = r.insight
   }
 }
 
@@ -171,6 +175,7 @@ const exEditorEl = requireElement('ex-editor', HTMLUListElement)
 const exAddBtn = requireElement('ex-add', HTMLButtonElement)
 const logEl = requireElement('log', HTMLDivElement)
 const musicBtn = requireElement('music-toggle', HTMLButtonElement)
+const insightEl = requireElement('insight', HTMLSpanElement)
 const screenTitleEl = requireElement('screen-title', HTMLDivElement)
 const screenSlotsEl = requireElement('screen-slots', HTMLDivElement)
 const screenGameEl = requireElement('screen-game', HTMLElement)
@@ -260,7 +265,7 @@ function backToTown(): void {
  *  must not write a blank slot. */
 function saveNow(): void {
   if (activeSlot === null) return
-  saveSlot(activeSlot, { roster, activeHero, exploration, clearedLevels, mode, delve })
+  saveSlot(activeSlot, { roster, activeHero, exploration, clearedLevels, insight, mode, delve })
 }
 
 // --- Screen shell: title → slots → game -------------------------------------
@@ -289,6 +294,7 @@ function newGame(index: number): void {
   roster = freshRoster()
   exploration = DEFAULT_EX_ROWS.map((r) => ({ ...r }))
   clearedLevels = []
+  insight = 0
   activeHero = 0
   delve = null
   mode = 'camp'
@@ -313,6 +319,7 @@ function enterSlot(index: number): void {
   activeHero = Math.max(0, Math.min(saved.activeHero, roster.length - 1))
   exploration = saved.exploration ?? DEFAULT_EX_ROWS.map((r) => ({ ...r }))
   clearedLevels = saved.clearedLevels ?? []
+  insight = saved.insight ?? 0
   if (saved.delve !== null) {
     // Pre-10a delves lack levelId — default it so first-clear tracking has a key.
     const base = { ...saved.delve, levelId: saved.delve.levelId || LEVELS[0].id }
@@ -869,11 +876,16 @@ function musicTrack(): TrackId {
   return 'run'
 }
 
+function renderInsight(): void {
+  insightEl.textContent = `✦ ${insight} Insight`
+}
+
 function frame(): void {
   if (mode === 'camp' || delve === null) render(ctx, campState(), sprites)
   else renderDelve(ctx, delve, sprites)
   renderLog()
   renderTabs()
+  renderInsight()
   highlightFiringProtocol()
   setMusicState(musicTrack()) // cheap no-op unless the track should change
 }

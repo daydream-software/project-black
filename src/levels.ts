@@ -32,3 +32,21 @@ export function hasCleared(cleared: readonly string[], id: string): boolean {
 export function recordClear(cleared: readonly string[], id: string): string[] {
   return cleared.includes(id) ? [...cleared] : [...cleared, id]
 }
+
+export interface ClearResult {
+  clearedLevels: string[]
+  insight: number
+  firstClear: boolean
+}
+
+/** Apply a level clear to the profile's meta: the **first** clear of a level adds
+ *  it to the set and pays **+1 Insight**; a re-clear changes nothing. This is the
+ *  "Insight only on a first clear, never farmed" rule, made pure & testable. */
+export function applyClear(cleared: readonly string[], insight: number, id: string): ClearResult {
+  const firstClear = !hasCleared(cleared, id)
+  return {
+    clearedLevels: recordClear(cleared, id),
+    insight: firstClear ? insight + 1 : insight,
+    firstClear,
+  }
+}

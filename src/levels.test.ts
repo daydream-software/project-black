@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { LEVELS, levelById, hasCleared, recordClear } from './levels'
+import { LEVELS, levelById, hasCleared, recordClear, applyClear } from './levels'
 import { generateDungeon } from './dungeon'
 
 describe('levels — config-driven, well-formed', () => {
@@ -49,5 +49,16 @@ describe('levels — first-clear tracking', () => {
   it('hasCleared reflects the set', () => {
     expect(hasCleared(['lvl-1'], 'lvl-1')).toBe(true)
     expect(hasCleared(['lvl-1'], 'lvl-2')).toBe(false)
+  })
+
+  it('applyClear pays +1 Insight on a first clear, nothing on a re-clear', () => {
+    const first = applyClear([], 3, 'lvl-1')
+    expect(first).toEqual({ clearedLevels: ['lvl-1'], insight: 4, firstClear: true })
+
+    const again = applyClear(first.clearedLevels, first.insight, 'lvl-1')
+    expect(again).toEqual({ clearedLevels: ['lvl-1'], insight: 4, firstClear: false }) // re-run pays nothing
+
+    const second = applyClear(first.clearedLevels, first.insight, 'lvl-2')
+    expect(second).toEqual({ clearedLevels: ['lvl-1', 'lvl-2'], insight: 5, firstClear: true })
   })
 })

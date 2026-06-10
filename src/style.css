@@ -648,3 +648,15 @@ canvas {
   font-size: 11px;
   color: #62687a;
 }
+
+/* Insight counter (slice 10b) — the rare unlock currency, in the game bar. */
+.insight-counter {
+  font-size: 13px;
+  font-weight: 600;
+  color: #c7a3ff;
+  white-space: nowrap;
+}
+
+.insight-counter:empty {
+  display: none;
+}
