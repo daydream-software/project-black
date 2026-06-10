@@ -104,8 +104,23 @@ with the navigation choices visible in the journal. Built in sub-slices:
   Hex Warden's counter can't trap it — **kills the target (DELVE CLEARED)**
   (`docs/progress/slice8b-*.png`). `run.ts` is now superseded (dead but still
   tested) — to be removed in a cleanup.
-- **8c** *(recommended next)* — the exploration-Protocol **editor** in Town (a
-  second rule list, same composed-dropdown UI as the combat Procedure).
+- **8c** ✅ *(done & verified)* — the exploration-Protocol **editor** in Town: a
+  second, **party-wide** rule list (`Subject · Predicate → Move`) under the combat
+  Procedure, built with the same composed-dropdown UI (reorder / enable / add /
+  remove, locked during a delve). The authored rows are mapped to an `ExProtocol`
+  and fed to `startDelve` (replacing the hardcoded `DEFAULT_EXPLORATION`), and
+  persisted in the save (`exploration` — an **additive, optional** field; no
+  version bump, so a live player's combat Procedure survives, and pre-8c saves
+  default it). Proven in-browser: the editor renders both protocols
+  (`docs/progress/slice8c-town-two-editors.png`); disabling the *Unexplored → head
+  toward* frontier rule makes the delve go **STUCK on turn 1** ("no path forward")
+  — the discriminating proof that the **authored** Protocol drives the delve, not
+  the default (`docs/progress/slice8c-authored-protocol-drives-delve.png`). The
+  testable part — the row→`ExProtocol` **rule compiler** + the exploration
+  catalogs — lives in a pure `src/protocol.ts` (no DOM); `protocol.test.ts` (6
+  tests) pins that `DEFAULT_EX_ROWS` compiles to exactly `DEFAULT_EXPLORATION`
+  (mutation-checked), that disabled rows are dropped in priority order, and that
+  `byId` rejects a corrupt id.
 
 ### Slice 9 — The shell: Title → Save slots → Town → Dungeon
 The screen frame: a **title** screen, **multiple save slots** (independent
