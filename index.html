@@ -6,11 +6,33 @@
     <title>Project Black — the delve</title>
   </head>
   <body>
-    <main class="app">
+    <div id="screen-title" class="screen" hidden>
+      <div class="screen-inner title">
+        <h1 class="game-title">PROJECT&nbsp;BLACK</h1>
+        <p class="tagline">
+          You don't steer the heroes — you <em>program</em> their brains: how they
+          <em>fight</em> and how they <em>delve</em>. Then send them into a seeded dungeon, and watch.
+        </p>
+        <button id="title-play" class="big-btn">▶ Play</button>
+      </div>
+    </div>
+
+    <div id="screen-slots" class="screen" hidden>
+      <div class="screen-inner">
+        <h2 class="screen-head">Choose a save slot</h2>
+        <div id="slot-list" class="slot-list"></div>
+        <button id="slots-back" class="link-btn">← Title</button>
+      </div>
+    </div>
+
+    <main class="app" id="screen-game" hidden>
       <section class="left">
         <div class="title-row">
           <h1>Program your party, then send them delving</h1>
-          <button id="music-toggle" class="music-toggle" title="Toggle music">♪ Music: off</button>
+          <div class="title-actions">
+            <button id="to-slots" class="link-btn" title="Save and return to the slot picker">← Slots</button>
+            <button id="music-toggle" class="music-toggle" title="Toggle music">♪ Music: off</button>
+          </div>
         </div>
         <canvas id="game" width="520" height="360"></canvas>
         <div id="run-bar" class="run-bar"></div>

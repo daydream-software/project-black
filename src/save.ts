@@ -53,18 +53,10 @@ export interface SaveData {
 /** Must match the delve loop's tick interval in main.ts (offline replay uses it). */
 export const STEP_MS = 450
 
+// The slot keys derive from this; KEY itself is now only the *legacy* single-save
+// blob that importLegacy migrates into slot 0 (slice 9). Kept as the legacy key.
 const KEY = 'project-black/save'
 const VERSION = 3 // bumped: run (gauntlet) replaced by delve (slice 8b); older blobs ignored
-
-/** Persist the current state, stamped with `version` and `savedAt = now`. */
-export function saveGame(snapshot: Omit<SaveData, 'version' | 'savedAt'>): void {
-  const data: SaveData = { version: VERSION, savedAt: Date.now(), ...snapshot }
-  try {
-    localStorage.setItem(KEY, JSON.stringify(data))
-  } catch {
-    /* storage full or unavailable — non-fatal, just skip this save */
-  }
-}
 
 function isObj(x: unknown): x is Record<string, unknown> {
   return typeof x === 'object' && x !== null
@@ -94,23 +86,6 @@ function isSaveData(x: unknown): x is SaveData {
     (x.mode === 'camp' || x.mode === 'delve') &&
     (x.delve === null || isDelveState(x.delve))
   )
-}
-
-/** Load the saved game, or null if there is nothing valid. Never throws. */
-export function loadGame(): SaveData | null {
-  let raw: string | null
-  try {
-    raw = localStorage.getItem(KEY)
-  } catch {
-    return null
-  }
-  if (raw === null) return null
-  try {
-    const parsed: unknown = JSON.parse(raw)
-    return isSaveData(parsed) ? parsed : null
-  } catch {
-    return null
-  }
 }
 
 /** How many run-steps elapsed between a save and now (for offline catch-up). */

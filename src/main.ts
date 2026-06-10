@@ -12,7 +12,18 @@ import {
 } from './sim'
 import { startDelve, stepDelve, catchUpDelve, type DelveState, type ExProtocol } from './delve'
 import { toggleMusic, setMusicState, type TrackId } from './music'
-import { saveGame, loadGame, elapsedSteps, type Hero, type ProtocolRow, type ExProtocolRow } from './save'
+import {
+  saveSlot,
+  loadSlot,
+  listSlots,
+  deleteSlot,
+  importLegacy,
+  elapsedSteps,
+  type Hero,
+  type ProtocolRow,
+  type ExProtocolRow,
+  type SlotInfo,
+} from './save'
 import { makeHero, makeHeroBack, makeSlime } from './sprites'
 import { render, renderDelve } from './render'
 import { requireElement, require2dContext } from './dom'
@@ -74,25 +85,29 @@ function skillLabel(id: SkillId): string {
 // ProtocolRow / Hero are defined in save.ts (they're the persisted schema).
 // `roster` is `let` so a loaded save can replace it on startup.
 
-let roster: Hero[] = [
-  {
-    simId: 'hero-1',
-    name: 'Warrior',
-    rows: [
-      { subjectId: 'self', predId: 'hp_lt_30', command: 'useSkill', skillId: 'defend', enabled: true },
-      { subjectId: 'enemy_near', predId: 'always', command: 'attack', skillId: 'cure', enabled: true },
-    ],
-  },
-  {
-    simId: 'hero-2',
-    name: 'Healer',
-    rows: [
-      { subjectId: 'ally_low', predId: 'hp_lt_50', command: 'useSkill', skillId: 'cure', enabled: true },
-      { subjectId: 'enemy_near', predId: 'always', command: 'attack', skillId: 'cure', enabled: true },
-    ],
-  },
-]
+/** The starting party + Procedures a New Game (or a never-saved slot) begins with. */
+function freshRoster(): Hero[] {
+  return [
+    {
+      simId: 'hero-1',
+      name: 'Warrior',
+      rows: [
+        { subjectId: 'self', predId: 'hp_lt_30', command: 'useSkill', skillId: 'defend', enabled: true },
+        { subjectId: 'enemy_near', predId: 'always', command: 'attack', skillId: 'cure', enabled: true },
+      ],
+    },
+    {
+      simId: 'hero-2',
+      name: 'Healer',
+      rows: [
+        { subjectId: 'ally_low', predId: 'hp_lt_50', command: 'useSkill', skillId: 'cure', enabled: true },
+        { subjectId: 'enemy_near', predId: 'always', command: 'attack', skillId: 'cure', enabled: true },
+      ],
+    },
+  ]
+}
 
+let roster: Hero[] = freshRoster()
 let activeHero = 0
 
 // The party-wide exploration Protocol rows (priority = order). `let` so a loaded
@@ -140,6 +155,13 @@ const exEditorEl = requireElement('ex-editor', HTMLUListElement)
 const exAddBtn = requireElement('ex-add', HTMLButtonElement)
 const logEl = requireElement('log', HTMLDivElement)
 const musicBtn = requireElement('music-toggle', HTMLButtonElement)
+const screenTitleEl = requireElement('screen-title', HTMLDivElement)
+const screenSlotsEl = requireElement('screen-slots', HTMLDivElement)
+const screenGameEl = requireElement('screen-game', HTMLElement)
+const slotListEl = requireElement('slot-list', HTMLDivElement)
+const playBtn = requireElement('title-play', HTMLButtonElement)
+const slotsBackBtn = requireElement('slots-back', HTMLButtonElement)
+const toSlotsBtn = requireElement('to-slots', HTMLButtonElement)
 
 musicBtn.addEventListener('click', () => {
   void toggleMusic().then((muted) => {
@@ -150,9 +172,17 @@ musicBtn.addEventListener('click', () => {
 
 const sprites = { hero: makeHero(), heroBack: makeHeroBack(), slime: makeSlime() }
 
+// The screen shell sits above the in-game mode: title → slots → game (where the
+// game's own town/delve `mode` lives). `activeSlot` is the profile every save
+// routes to — null on title/slots, so saveNow() there is a no-op.
+type Screen = 'title' | 'slots' | 'game'
+let screen: Screen = 'title'
+let activeSlot: number | null = null
+
 type Mode = 'camp' | 'delve'
 let mode: Mode = 'camp'
 let delve: DelveState | null = null
+let pendingDelete: number | null = null // slot index awaiting a delete confirm
 // Maps each enabled-row index of the ACTIVE hero -> its <li>, so we can highlight
 // the firing protocol without rebuilding the editor (which would clobber focus).
 let enabledLis: HTMLLIElement[] = []
@@ -207,29 +237,167 @@ function backToTown(): void {
   frame()
 }
 
-/** Persist the whole state, stamped with the current time (for offline catch-up). */
+/** Persist the active slot, stamped with the current time (for offline catch-up).
+ *  No-op on title/slots (no active profile) — a stray visibilitychange there
+ *  must not write a blank slot. */
 function saveNow(): void {
-  saveGame({ roster, activeHero, exploration, mode, delve })
+  if (activeSlot === null) return
+  saveSlot(activeSlot, { roster, activeHero, exploration, mode, delve })
+}
+
+// --- Screen shell: title → slots → game -------------------------------------
+
+function renderScreens(): void {
+  screenTitleEl.hidden = screen !== 'title'
+  screenSlotsEl.hidden = screen !== 'slots'
+  screenGameEl.hidden = screen !== 'game'
+}
+
+/** Paint the in-game screen for the current profile (called on slot entry). */
+function enterGame(): void {
+  screen = 'game'
+  renderScreens()
+  renderRunBar()
+  renderTabs()
+  renderEditor()
+  renderExEditor()
+  frame()
+}
+
+/** Start a brand-new profile in an empty slot. */
+function newGame(index: number): void {
+  activeSlot = index
+  roster = freshRoster()
+  exploration = DEFAULT_EX_ROWS.map((r) => ({ ...r }))
+  activeHero = 0
+  delve = null
+  mode = 'camp'
+  saveNow() // materialise the slot right away
+  enterGame()
 }
 
 /**
- * Restore from localStorage on startup. If a delve was in progress when we last
- * saved, fast-forward it by the elapsed wall-clock (offline progress) — a delve
- * that ended while away lands on its CLEARED / WIPED screen so the player can
- * read the journal (Design rule #1). A bad/missing save is ignored.
+ * Open an existing slot. If a delve was in progress, fast-forward it by the
+ * elapsed wall-clock (offline progress now happens at slot-entry, not app load)
+ * — a delve that ended while away lands on its CLEARED / WIPED screen so the
+ * journal can be read (Design rule #1). An empty slot starts a new game.
  */
-function restore(): void {
-  const saved = loadGame()
-  if (saved === null) return
+function enterSlot(index: number): void {
+  const saved = loadSlot(index)
+  if (saved === null) {
+    newGame(index)
+    return
+  }
+  activeSlot = index
   roster = saved.roster
   activeHero = Math.max(0, Math.min(saved.activeHero, roster.length - 1))
-  if (saved.exploration !== undefined) exploration = saved.exploration // pre-8c saves default it
+  exploration = saved.exploration ?? DEFAULT_EX_ROWS.map((r) => ({ ...r }))
   if (saved.delve !== null) {
     delve = catchUpDelve(saved.delve, elapsedSteps(saved.savedAt, Date.now()))
     mode = 'delve'
   } else {
     delve = null
     mode = 'camp'
+  }
+  saveNow() // re-stamp savedAt after catch-up
+  enterGame()
+}
+
+/** Leave the game back to the slot picker — PAUSE, not abandon: the in-progress
+ *  delve is saved as-is and resumes (with offline catch-up) on re-entry. */
+function backToSlots(): void {
+  saveNow() // persist current state into the slot BEFORE dropping activeSlot
+  activeSlot = null
+  goToSlots()
+}
+
+function goToSlots(): void {
+  pendingDelete = null
+  screen = 'slots'
+  renderScreens()
+  renderSlots()
+}
+
+function goToTitle(): void {
+  screen = 'title'
+  renderScreens()
+}
+
+/** Relative "x ago" for a slot's savedAt. */
+function relTime(ms: number): string {
+  const s = Math.floor((Date.now() - ms) / 1000)
+  if (s < 60) return 'just now'
+  const m = Math.floor(s / 60)
+  if (m < 60) return `${m} min ago`
+  const h = Math.floor(m / 60)
+  if (h < 24) return `${h} h ago`
+  return `${Math.floor(h / 24)} d ago`
+}
+
+function slotSummary(info: SlotInfo): string {
+  if (info.savedAt === null) return 'No save'
+  const where =
+    info.mode === 'delve'
+      ? info.delveStatus === 'delving'
+        ? 'Delving…'
+        : info.delveStatus === 'cleared'
+          ? 'Delve cleared'
+          : info.delveStatus === 'dead'
+            ? 'Party wiped'
+            : 'Delve stuck'
+      : 'In town'
+  return `${where} · ${info.heroCount} heroes · ${relTime(info.savedAt)}`
+}
+
+function renderSlots(): void {
+  slotListEl.replaceChildren()
+  for (const info of listSlots()) {
+    const empty = info.savedAt === null
+    const card = document.createElement('div')
+    card.className = empty ? 'slot-card empty' : 'slot-card'
+
+    const no = document.createElement('span')
+    no.className = 'slot-no'
+    no.textContent = `Slot ${info.index + 1}`
+
+    const body = document.createElement('div')
+    body.className = 'slot-body'
+    const name = document.createElement('div')
+    name.className = 'slot-name'
+    name.textContent = empty ? 'Empty slot' : `Profile ${info.index + 1}`
+    const meta = document.createElement('div')
+    meta.className = 'slot-meta'
+    meta.textContent = slotSummary(info)
+    body.append(name, meta)
+
+    const actions = document.createElement('div')
+    actions.className = 'slot-actions'
+    if (empty) {
+      actions.append(makeButton('New game', 'Start a new profile here', () => newGame(info.index)))
+    } else if (pendingDelete === info.index) {
+      const yes = makeButton('Confirm', 'Permanently erase this profile', () => {
+        deleteSlot(info.index)
+        pendingDelete = null
+        renderSlots()
+      })
+      yes.className = 'danger'
+      const cancel = makeButton('Cancel', 'Keep this profile', () => {
+        pendingDelete = null
+        renderSlots()
+      })
+      actions.append(yes, cancel)
+    } else {
+      actions.append(makeButton('Continue', 'Resume this profile', () => enterSlot(info.index)))
+      const del = makeButton('Delete', 'Erase this profile', () => {
+        pendingDelete = info.index
+        renderSlots()
+      })
+      del.className = 'danger'
+      actions.append(del)
+    }
+
+    card.append(no, body, actions)
+    slotListEl.appendChild(card)
   }
 }
 
@@ -583,16 +751,19 @@ exAddBtn.addEventListener('click', () => {
   commit()
 })
 
-restore() // load a saved game (and fast-forward an in-progress delve) before first paint
-renderRunBar()
-renderTabs()
-renderEditor()
-renderExEditor()
-frame()
+playBtn.addEventListener('click', goToSlots)
+slotsBackBtn.addEventListener('click', goToTitle)
+toSlotsBtn.addEventListener('click', backToSlots)
+
+// Startup: no auto-resume. Surface any pre-9 single-save as slot 0, then show the
+// title — a profile loads (and an in-progress delve fast-forwards) on slot entry.
+importLegacy()
+screen = 'title'
+renderScreens()
 
 let lastSaveMs = 0
 const ticker = setInterval(() => {
-  if (mode !== 'delve' || delve === null || delve.status !== 'delving') return
+  if (screen !== 'game' || mode !== 'delve' || delve === null || delve.status !== 'delving') return
   delve = stepDelve(delve)
   frame()
   const now = Date.now()
