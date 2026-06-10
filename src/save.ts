@@ -53,6 +53,8 @@ export interface SaveData {
   // Insight: the rare unlock currency, +1 per first level clear (slice 10b).
   // Additive/optional; pre-10b saves default to 0.
   insight?: number
+  // Vocabulary ids learned at the Trainer (slice 10b) — gates the editor. Additive.
+  unlocked?: string[]
   mode: Mode
   delve: DelveState | null
 }
@@ -92,6 +94,7 @@ function isSaveData(x: unknown): x is SaveData {
     (x.exploration === undefined || Array.isArray(x.exploration)) &&
     (x.clearedLevels === undefined || Array.isArray(x.clearedLevels)) &&
     (x.insight === undefined || typeof x.insight === 'number') &&
+    (x.unlocked === undefined || Array.isArray(x.unlocked)) &&
     (x.mode === 'camp' || x.mode === 'delve') &&
     (x.delve === null || isDelveState(x.delve))
   )

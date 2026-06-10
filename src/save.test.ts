@@ -37,15 +37,17 @@ describe('save — slots', () => {
     expect(typeof loaded?.savedAt).toBe('number')
   })
 
-  it('round-trips the unlock meta (clearedLevels + insight)', () => {
+  it('round-trips the unlock meta (clearedLevels + insight + unlocked)', () => {
     const store = fakeStore()
-    saveSlot(0, { ...snap(2), clearedLevels: ['lvl-1', 'lvl-3'], insight: 5 }, store)
+    saveSlot(0, { ...snap(2), clearedLevels: ['lvl-1', 'lvl-3'], insight: 5, unlocked: ['enemy-most-hp'] }, store)
     expect(loadSlot(0, store)?.clearedLevels).toEqual(['lvl-1', 'lvl-3'])
     expect(loadSlot(0, store)?.insight).toBe(5)
-    // a pre-10a/10b blob (no clearedLevels / insight) still loads — fields are additive
+    expect(loadSlot(0, store)?.unlocked).toEqual(['enemy-most-hp'])
+    // a pre-10a/10b blob (no clearedLevels / insight / unlocked) still loads — fields are additive
     saveSlot(1, snap(2), store)
     expect(loadSlot(1, store)?.clearedLevels).toBeUndefined()
     expect(loadSlot(1, store)?.insight).toBeUndefined()
+    expect(loadSlot(1, store)?.unlocked).toBeUndefined()
   })
 
   it('keeps slots independent — writing one does not touch the others', () => {

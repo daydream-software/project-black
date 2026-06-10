@@ -30,6 +30,7 @@ import { render, renderDelve } from './render'
 import { requireElement, require2dContext } from './dom'
 import {
   byId,
+  available,
   buildExploration,
   EX_SUBJECTS,
   EX_PREDICATES,
@@ -49,6 +50,8 @@ const SUBJECTS: Option<State['subject']>[] = [
   { id: 'ally_low', label: 'Ally · low HP', make: () => ({ who: 'ally', pick: 'lowestHp' }) },
   { id: 'enemy_near', label: 'Enemy · near', make: () => ({ who: 'enemy', pick: 'first' }) },
   { id: 'enemy_low', label: 'Enemy · low HP', make: () => ({ who: 'enemy', pick: 'lowestHp' }) },
+  // Locked until learned at the Trainer (slice 10b): focus-fire the biggest threat.
+  { id: 'enemy_high', label: 'Enemy · most HP', make: () => ({ who: 'enemy', pick: 'highestHp' }), unlock: 'enemy-most-hp' },
 ]
 
 const PREDICATES: Option<State['predicate']>[] = [
@@ -119,6 +122,9 @@ let exploration: ExProtocolRow[] = DEFAULT_EX_ROWS.map((r) => ({ ...r }))
 // the Insight earned (+1 per first clear) — the currency the Trainer spends.
 let clearedLevels: string[] = []
 let insight = 0
+// Vocabulary ids the profile has learned at the Trainer (10b). Gates the editor
+// dropdowns; additive per-slot meta, survives a wipe.
+let unlocked: string[] = []
 // Which level the next Descend launches (town-only choice; defaults to the first).
 let selectedLevelId: string = LEVELS[0].id
 
@@ -265,7 +271,7 @@ function backToTown(): void {
  *  must not write a blank slot. */
 function saveNow(): void {
   if (activeSlot === null) return
-  saveSlot(activeSlot, { roster, activeHero, exploration, clearedLevels, insight, mode, delve })
+  saveSlot(activeSlot, { roster, activeHero, exploration, clearedLevels, insight, unlocked, mode, delve })
 }
 
 // --- Screen shell: title → slots → game -------------------------------------
@@ -295,6 +301,7 @@ function newGame(index: number): void {
   exploration = DEFAULT_EX_ROWS.map((r) => ({ ...r }))
   clearedLevels = []
   insight = 0
+  unlocked = []
   activeHero = 0
   delve = null
   mode = 'camp'
@@ -320,6 +327,7 @@ function enterSlot(index: number): void {
   exploration = saved.exploration ?? DEFAULT_EX_ROWS.map((r) => ({ ...r }))
   clearedLevels = saved.clearedLevels ?? []
   insight = saved.insight ?? 0
+  unlocked = saved.unlocked ?? []
   if (saved.delve !== null) {
     // Pre-10a delves lack levelId — default it so first-clear tracking has a key.
     const base = { ...saved.delve, levelId: saved.delve.levelId || LEVELS[0].id }
@@ -609,7 +617,7 @@ function createRow(row: ProtocolRow, i: number): HTMLLIElement {
   const locked = editingLocked()
 
   const subjSel = makeSelect(
-    SUBJECTS.map((s) => ({ value: s.id, label: s.label })),
+    available(SUBJECTS, unlocked).map((s) => ({ value: s.id, label: s.label })),
     row.subjectId,
     (v) => {
       row.subjectId = v
@@ -620,7 +628,7 @@ function createRow(row: ProtocolRow, i: number): HTMLLIElement {
   subjSel.title = 'Subject — who this rule looks at (and acts on)'
 
   const predSel = makeSelect(
-    PREDICATES.map((p) => ({ value: p.id, label: p.label })),
+    available(PREDICATES, unlocked).map((p) => ({ value: p.id, label: p.label })),
     row.predId,
     (v) => {
       row.predId = v
@@ -784,7 +792,7 @@ function createExRow(row: ExProtocolRow, i: number): HTMLLIElement {
   const locked = editingLocked()
 
   const subjSel = makeSelect(
-    EX_SUBJECTS.map((s) => ({ value: s.id, label: s.label })),
+    available(EX_SUBJECTS, unlocked).map((s) => ({ value: s.id, label: s.label })),
     row.subjectId,
     (v) => {
       row.subjectId = v
@@ -795,7 +803,7 @@ function createExRow(row: ExProtocolRow, i: number): HTMLLIElement {
   subjSel.title = 'Subject — what in the dungeon this rule looks at'
 
   const predSel = makeSelect(
-    EX_PREDICATES.map((p) => ({ value: p.id, label: p.label })),
+    available(EX_PREDICATES, unlocked).map((p) => ({ value: p.id, label: p.label })),
     row.predId,
     (v) => {
       row.predId = v
@@ -806,7 +814,7 @@ function createExRow(row: ExProtocolRow, i: number): HTMLLIElement {
   predSel.title = 'Predicate — what must be true'
 
   const moveSel = makeSelect(
-    EX_MOVES.map((m) => ({ value: m.id, label: m.label })),
+    available(EX_MOVES, unlocked).map((m) => ({ value: m.id, label: m.label })),
     row.moveId,
     (v) => {
       row.moveId = v

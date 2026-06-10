@@ -8,6 +8,8 @@ import {
   EX_PREDICATES,
   EX_MOVES,
   byId,
+  available,
+  type Option,
 } from './protocol'
 import type { ExProtocolRow } from './save'
 
@@ -52,5 +54,16 @@ describe('protocol — exploration rule compiler', () => {
 
   it('byId throws on an unknown id (a corrupt/stale row must not pass silently)', () => {
     expect(() => byId(EX_MOVES, 'teleport')).toThrow(/Unknown option/)
+  })
+
+  it('available() offers always-on options + unlocked ones, hides locked-unowned (10b gating)', () => {
+    const opts: Option<number>[] = [
+      { id: 'a', label: 'A', make: () => 1 }, // always available
+      { id: 'b', label: 'B', make: () => 2, unlock: 'buy-b' }, // locked
+    ]
+    expect(available(opts, []).map((o) => o.id)).toEqual(['a']) // locked one hidden
+    expect(available(opts, ['buy-b']).map((o) => o.id)).toEqual(['a', 'b']) // purchased → offered
+    // byId still resolves a locked id (an already-authored rule must keep working)
+    expect(byId(opts, 'b').label).toBe('B')
   })
 })

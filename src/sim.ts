@@ -45,9 +45,10 @@ export interface Combatant {
  * How to pick one unit among those matching a Subject's class+predicate.
  * `first` covers "any" and "nearest" — there is no geometry yet, so "nearest"
  * is operationally the front of the list (lowest index). `lowestHp` picks the
- * most-hurt by HP ratio, tie-broken by index.
+ * most-hurt by HP ratio; `highestHp` picks the healthiest (focus the biggest
+ * threat — the boss/tank); both tie-broken by index.
  */
-export type Pick = 'first' | 'lowestHp'
+export type Pick = 'first' | 'lowestHp' | 'highestHp'
 
 export type Subject =
   | { who: 'self' }
@@ -130,10 +131,12 @@ function candidatesFor(subject: Subject, self: Combatant, units: Combatant[]): C
 function pickOne(pick: Pick, list: Combatant[]): Combatant | null {
   if (list.length === 0) return null
   if (pick === 'first') return list[0]
-  // lowestHp: smallest HP ratio; strict `<` keeps the earliest on a tie.
+  // lowestHp / highestHp: by HP ratio; strict comparison keeps the earliest on a tie.
   let best = list[0]
   for (const u of list) {
-    if (u.hp / u.maxHp < best.hp / best.maxHp) best = u
+    const r = u.hp / u.maxHp
+    const b = best.hp / best.maxHp
+    if (pick === 'lowestHp' ? r < b : r > b) best = u
   }
   return best
 }

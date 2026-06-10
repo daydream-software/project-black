@@ -7,11 +7,20 @@ import type { ExProtocol, ExRule, ExSubject, ExPredicate, ExMove } from './delve
 import type { ExProtocolRow } from './save'
 
 /** A dropdown choice: a stable `id` (persisted), a `label` (shown + journaled),
- *  and a `make()` that builds the model value. Shared by the combat editor too. */
+ *  and a `make()` that builds the model value. Shared by the combat editor too.
+ *  `unlock` (10b) gates the option behind a Trainer purchase — absent = always
+ *  available; present = only offered once its id is in the profile's `unlocked`. */
 export interface Option<T> {
   id: string
   label: string
   make: () => T
+  unlock?: string
+}
+
+/** The options the editor may offer right now: always-available ones, plus any
+ *  whose `unlock` id the profile has purchased. Pure, so it's unit-testable. */
+export function available<T>(options: Option<T>[], unlocked: readonly string[]): Option<T>[] {
+  return options.filter((o) => o.unlock === undefined || unlocked.includes(o.unlock))
 }
 
 /** Look up an option by id, throwing on an unknown id (a corrupt/stale row). */

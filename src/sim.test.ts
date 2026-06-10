@@ -72,6 +72,17 @@ describe('resolveTarget — the subject IS the target', () => {
     expect(resolveTarget(lowest, me, [me, e2, e3])?.id).toBe(e2.id)
   })
 
+  it('Enemy most-HP picks the healthiest by ratio (focus the biggest threat)', () => {
+    const me = unit('hero', 100, 100)
+    const e1 = unit('enemy', 9, 30) // 30%
+    const e2 = unit('enemy', 27, 30) // 90% — healthiest
+    const highest: State = { subject: { who: 'enemy', pick: 'highestHp' }, predicate: { p: 'always' } }
+    expect(resolveTarget(highest, me, [me, e1, e2])?.id).toBe(e2.id)
+    // Tie at 90%: the earlier index wins.
+    const e3 = unit('enemy', 27, 30)
+    expect(resolveTarget(highest, me, [me, e2, e3])?.id).toBe(e2.id)
+  })
+
   // The crux: FILTER then PICK. "lowest-HP ally that is ALSO below 50%" — not
   // "the lowest-HP ally, only if it happens to be below 50%".
   it('filter-then-pick: the most-hurt unit is ignored if it fails the predicate', () => {
