@@ -32,10 +32,24 @@ export interface Dungeon {
   objectiveRoomId: number
 }
 
-const WIDTH = 21
-const HEIGHT = 15
-const MAX_ROOMS = 6
-const PLACE_ATTEMPTS = 60
+/**
+ * The knobs a level config feeds into generation. The **grid is part of the
+ * config** so a bigger level is actually bigger — not just more rooms crammed into
+ * the same box (slice 10a). `rooms` is the total room count *including* the
+ * entrance and target; `packs` is how many of the interior rooms hold a monster
+ * pack (clamped to the interior rooms actually placed). Both ranges are inclusive.
+ */
+export interface GenConfig {
+  width: number
+  height: number
+  rooms: [number, number]
+  packs: [number, number]
+}
+
+/** Default for the lone caller until levels are wired (10a-3) — ~the pre-10a feel. */
+export const DEFAULT_GEN: GenConfig = { width: 21, height: 15, rooms: [5, 6], packs: [1, 2] }
+
+const PLACE_ATTEMPTS = 200
 
 export function cellIndex(d: { width: number }, x: number, y: number): number {
   return y * d.width + x
@@ -137,23 +151,26 @@ function carveV(cells: boolean[], width: number, y1: number, y2: number, x: numb
  * rng state, so the delve can keep rolling deterministically from where
  * generation left off (rather than re-seeding).
  */
-export function generateDungeon(seed: number): { dungeon: Dungeon; rngState: number } {
+export function generateDungeon(seed: number, gen: GenConfig = DEFAULT_GEN): { dungeon: Dungeon; rngState: number } {
   const rng = makeRng(seed)
-  const cells = new Array<boolean>(WIDTH * HEIGHT).fill(false)
+  const { width, height } = gen
+  const cells = new Array<boolean>(width * height).fill(false)
   const rooms: Room[] = []
 
-  // place non-overlapping rooms
-  for (let a = 0; a < PLACE_ATTEMPTS && rooms.length < MAX_ROOMS; a++) {
+  // place up to `targetRooms` non-overlapping rooms (placement may fall short in a
+  // tight grid — the connectivity test pins that a valid config still gives ≥ 2).
+  const targetRooms = range(rng, gen.rooms[0], gen.rooms[1])
+  for (let a = 0; a < PLACE_ATTEMPTS && rooms.length < targetRooms; a++) {
     const w = range(rng, 3, 5)
     const h = range(rng, 3, 5)
-    const x = range(rng, 1, WIDTH - w - 2)
-    const y = range(rng, 1, HEIGHT - h - 2)
+    const x = range(rng, 1, width - w - 2)
+    const y = range(rng, 1, height - h - 2)
     const cand = { x, y, w, h }
     if (rooms.some((r) => rectsOverlap(r, cand, 1))) continue
     rooms.push({ id: rooms.length, x, y, w, h, type: 'empty' })
   }
 
-  for (const r of rooms) carveRoom(cells, WIDTH, r)
+  for (const r of rooms) carveRoom(cells, width, r)
 
   // connect each room to the previous one with an L-corridor → spanning chain
   // → the whole dungeon is connected.
@@ -161,17 +178,17 @@ export function generateDungeon(seed: number): { dungeon: Dungeon; rngState: num
     const a = roomCenter(rooms[i - 1])
     const b = roomCenter(rooms[i])
     if (int(rng, 2) === 0) {
-      carveH(cells, WIDTH, a.x, b.x, a.y)
-      carveV(cells, WIDTH, a.y, b.y, b.x)
+      carveH(cells, width, a.x, b.x, a.y)
+      carveV(cells, width, a.y, b.y, b.x)
     } else {
-      carveV(cells, WIDTH, a.y, b.y, a.x)
-      carveH(cells, WIDTH, a.x, b.x, b.y)
+      carveV(cells, width, a.y, b.y, a.x)
+      carveH(cells, width, a.x, b.x, b.y)
     }
   }
 
   const dungeon: Dungeon = {
-    width: WIDTH,
-    height: HEIGHT,
+    width,
+    height,
     cells,
     rooms,
     entranceRoomId: 0,
@@ -192,17 +209,20 @@ export function generateDungeon(seed: number): { dungeon: Dungeon; rngState: num
     }
   }
 
-  // assign types: entrance, target, and a seeded mix of monster/empty for the rest
+  // types: entrance (room 0), target (farthest), then exactly `packCount` of the
+  // remaining interior rooms become monster packs — a chosen count, not a per-room
+  // coin flip, so a level's `packs` range actually controls how many fights there are.
   for (const r of rooms) {
-    r.type =
-      r.id === dungeon.entranceRoomId
-        ? 'entrance'
-        : r.id === dungeon.objectiveRoomId
-          ? 'target'
-          : int(rng, 3) === 0 // ~1/3 of rooms hold a monster pack (keeps attrition fair)
-            ? 'monster'
-            : 'empty'
+    r.type = r.id === dungeon.entranceRoomId ? 'entrance' : r.id === dungeon.objectiveRoomId ? 'target' : 'empty'
   }
+  const interior = rooms.filter((r) => r.type === 'empty')
+  const packCount = Math.min(range(rng, gen.packs[0], gen.packs[1]), interior.length)
+  for (let i = interior.length - 1; i > 0; i--) {
+    // Fisher–Yates: a seeded, deterministic pick of which interior rooms fight.
+    const j = int(rng, i + 1)
+    ;[interior[i], interior[j]] = [interior[j], interior[i]]
+  }
+  for (let i = 0; i < packCount; i++) interior[i].type = 'monster'
 
   return { dungeon, rngState: rng.s }
 }

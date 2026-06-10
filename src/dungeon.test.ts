@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { generateDungeon, bfsDistances, cellIndex, roomCenter, type Dungeon } from './dungeon'
+import { generateDungeon, bfsDistances, cellIndex, roomCenter, type Dungeon, type GenConfig } from './dungeon'
 
 const centerCell = (d: Dungeon, roomId: number): number => {
   const c = roomCenter(d.rooms[roomId])
@@ -38,6 +38,43 @@ describe('dungeon generation — seeded & connected', () => {
       // NO isolated floor: reachable floor cells == all floor cells
       const reachable = dist.filter((d) => d !== Infinity).length
       expect(reachable).toBe(floorCount(dungeon))
+    }
+  })
+
+  // --- slice 10a: a level config drives the size, room count and pack count ---
+
+  const LVL: GenConfig = { width: 21, height: 15, rooms: [3, 7], packs: [1, 2] }
+
+  it('the grid comes from the config (bigger config → bigger grid)', () => {
+    const big: GenConfig = { width: 33, height: 25, rooms: [3, 7], packs: [1, 2] }
+    const a = generateDungeon(1, LVL).dungeon
+    const b = generateDungeon(1, big).dungeon
+    expect([a.width, a.height]).toEqual([21, 15])
+    expect([b.width, b.height]).toEqual([33, 25])
+    expect(b.cells.length).toBe(33 * 25)
+  })
+
+  it('same seed + same config is deterministic; the config changes the layout', () => {
+    expect(generateDungeon(42, LVL)).toEqual(generateDungeon(42, LVL))
+    const other: GenConfig = { ...LVL, rooms: [6, 9], width: 31, height: 23 }
+    expect(JSON.stringify(generateDungeon(42, LVL))).not.toBe(JSON.stringify(generateDungeon(42, other)))
+  })
+
+  it('room count stays within the config range (across seeds)', () => {
+    for (let seed = 0; seed < 300; seed++) {
+      const n = generateDungeon(seed, LVL).dungeon.rooms.length
+      expect(n).toBeGreaterThanOrEqual(LVL.rooms[0])
+      expect(n).toBeLessThanOrEqual(LVL.rooms[1])
+    }
+  })
+
+  it('pack count = a chosen number, clamped to the interior rooms (not a coin flip)', () => {
+    for (let seed = 0; seed < 300; seed++) {
+      const d = generateDungeon(seed, LVL).dungeon
+      const interior = d.rooms.length - 2 // minus entrance + target
+      const packs = d.rooms.filter((r) => r.type === 'monster').length
+      expect(packs).toBeGreaterThanOrEqual(Math.min(LVL.packs[0], interior))
+      expect(packs).toBeLessThanOrEqual(Math.min(LVL.packs[1], interior))
     }
   })
 
