@@ -37,6 +37,15 @@ describe('save — slots', () => {
     expect(typeof loaded?.savedAt).toBe('number')
   })
 
+  it('round-trips clearedLevels (the first-clear meta)', () => {
+    const store = fakeStore()
+    saveSlot(0, { ...snap(2), clearedLevels: ['lvl-1', 'lvl-3'] }, store)
+    expect(loadSlot(0, store)?.clearedLevels).toEqual(['lvl-1', 'lvl-3'])
+    // a pre-10a blob (no clearedLevels) still loads — the field is optional/additive
+    saveSlot(1, snap(2), store)
+    expect(loadSlot(1, store)?.clearedLevels).toBeUndefined()
+  })
+
   it('keeps slots independent — writing one does not touch the others', () => {
     const store = fakeStore()
     saveSlot(1, snap(2), store)

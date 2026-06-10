@@ -24,6 +24,7 @@ import {
   type Dir,
 } from './dungeon'
 import { makeBattle, step, type Combatant, type GameState } from './sim'
+import { LEVELS, type LevelConfig } from './levels'
 
 // --- Exploration Protocol: WHEN <Subject + Predicate> → Move ----------------
 
@@ -67,6 +68,7 @@ export interface DelveLogEntry {
 
 export interface DelveState {
   seed: number
+  levelId: string // which level this delve is a run of (first-clear tracking, 10a)
   rng: number // live rng state (starts where generation left off)
   dungeon: Dungeon // stored whole; never regenerated
   party: Combatant[] // hero units; HP/deaths persist across the delve
@@ -223,13 +225,19 @@ export function decideExploration(s: DelveState): ExDecision {
 
 // --- Start + step -----------------------------------------------------------
 
-export function startDelve(party: Combatant[], seed: number, exploration: ExProtocol = DEFAULT_EXPLORATION): DelveState {
-  const { dungeon, rngState } = generateDungeon(seed)
+export function startDelve(
+  party: Combatant[],
+  seed: number,
+  exploration: ExProtocol = DEFAULT_EXPLORATION,
+  level: LevelConfig = LEVELS[0],
+): DelveState {
+  const { dungeon, rngState } = generateDungeon(seed, level)
   const pos = entranceCell(dungeon)
   const explored = new Array<boolean>(dungeon.cells.length).fill(false)
   reveal(dungeon, pos, explored)
   return {
     seed,
+    levelId: level.id,
     rng: rngState,
     dungeon,
     party,

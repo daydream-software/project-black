@@ -46,6 +46,10 @@ export interface SaveData {
   // before slice 8c lack it, and load defaults them — so this stays additive (no
   // version bump, no wiping a live player's authored combat Procedure).
   exploration?: ExProtocolRow[]
+  // Levels this profile has cleared at least once (slice 10a) — the meta that
+  // survives a wipe and (slice 10b) gates Insight to first clears. Optional/additive:
+  // pre-10a saves lack it and default to empty.
+  clearedLevels?: string[]
   mode: Mode
   delve: DelveState | null
 }
@@ -83,6 +87,7 @@ function isSaveData(x: unknown): x is SaveData {
     Array.isArray(x.roster) &&
     typeof x.activeHero === 'number' &&
     (x.exploration === undefined || Array.isArray(x.exploration)) &&
+    (x.clearedLevels === undefined || Array.isArray(x.clearedLevels)) &&
     (x.mode === 'camp' || x.mode === 'delve') &&
     (x.delve === null || isDelveState(x.delve))
   )

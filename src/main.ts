@@ -11,6 +11,7 @@ import {
   type SkillId,
 } from './sim'
 import { startDelve, stepDelve, catchUpDelve, type DelveState, type ExProtocol } from './delve'
+import { LEVELS, recordClear } from './levels'
 import { toggleMusic, setMusicState, type TrackId } from './music'
 import {
   saveSlot,
@@ -113,6 +114,18 @@ let activeHero = 0
 // The party-wide exploration Protocol rows (priority = order). `let` so a loaded
 // save can replace it; the defaults (protocol.ts) compile to DEFAULT_EXPLORATION.
 let exploration: ExProtocolRow[] = DEFAULT_EX_ROWS.map((r) => ({ ...r }))
+
+// Levels this profile has first-cleared (meta; persisted per slot, survives a wipe).
+let clearedLevels: string[] = []
+
+/** Mark the current delve's level cleared if it just finished cleared (first-clear
+ *  only — recordClear is idempotent). Called wherever a delve can reach 'cleared':
+ *  the live ticker and offline catch-up on slot entry. */
+function maybeRecordClear(): void {
+  if (delve !== null && delve.status === 'cleared' && delve.levelId) {
+    clearedLevels = recordClear(clearedLevels, delve.levelId)
+  }
+}
 
 /** The live exploration Protocol fed to a delve (enabled rows, in priority order). */
 function explorationProtocol(): ExProtocol {
@@ -242,7 +255,7 @@ function backToTown(): void {
  *  must not write a blank slot. */
 function saveNow(): void {
   if (activeSlot === null) return
-  saveSlot(activeSlot, { roster, activeHero, exploration, mode, delve })
+  saveSlot(activeSlot, { roster, activeHero, exploration, clearedLevels, mode, delve })
 }
 
 // --- Screen shell: title → slots → game -------------------------------------
@@ -269,6 +282,7 @@ function newGame(index: number): void {
   activeSlot = index
   roster = freshRoster()
   exploration = DEFAULT_EX_ROWS.map((r) => ({ ...r }))
+  clearedLevels = []
   activeHero = 0
   delve = null
   mode = 'camp'
@@ -292,14 +306,18 @@ function enterSlot(index: number): void {
   roster = saved.roster
   activeHero = Math.max(0, Math.min(saved.activeHero, roster.length - 1))
   exploration = saved.exploration ?? DEFAULT_EX_ROWS.map((r) => ({ ...r }))
+  clearedLevels = saved.clearedLevels ?? []
   if (saved.delve !== null) {
-    delve = catchUpDelve(saved.delve, elapsedSteps(saved.savedAt, Date.now()))
+    // Pre-10a delves lack levelId — default it so first-clear tracking has a key.
+    const base = { ...saved.delve, levelId: saved.delve.levelId || LEVELS[0].id }
+    delve = catchUpDelve(base, elapsedSteps(saved.savedAt, Date.now()))
     mode = 'delve'
+    maybeRecordClear() // a delve that cleared while away still counts
   } else {
     delve = null
     mode = 'camp'
   }
-  saveNow() // re-stamp savedAt after catch-up
+  saveNow() // re-stamp savedAt after catch-up (+ any first-clear just recorded)
   enterGame()
 }
 
@@ -857,8 +875,9 @@ const ticker = setInterval(() => {
   frame()
   const now = Date.now()
   if (delve.status !== 'delving') {
+    maybeRecordClear() // first-clear of this level → into the profile's cleared set
     renderRunBar() // surface "Back to town"
-    saveNow() // persist the finished delve
+    saveNow() // persist the finished delve (+ any first-clear)
   } else if (now - lastSaveMs >= 1000) {
     saveNow() // heartbeat: keep savedAt fresh so offline catch-up is accurate
     lastSaveMs = now
