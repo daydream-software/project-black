@@ -20,6 +20,12 @@ export default defineConfig({
       ignored: ['**/.playwright-mcp/**'],
     },
   },
+  // `vite preview` serves the production build with no HMR/WebSocket — a stable
+  // target for hands-on testing. Mirror the dev server's WSL/nip.io reachability.
+  preview: {
+    host: true,
+    allowedHosts: ['.nip.io'],
+  },
   test: {
     environment: 'node',
   },

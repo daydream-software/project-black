@@ -14,6 +14,7 @@ import { startDelve, stepDelve, type DelveState, type ExProtocol } from './delve
 import { LEVELS, applyClear, levelById, hasCleared } from './levels'
 import { UNLOCKABLES, buy, isOwned, canAfford } from './shop'
 import { toggleMusic, setMusicState, type TrackId } from './music'
+import { setSfxEnabled, playSfx, type SfxId } from './sfx'
 import {
   saveSlot,
   loadSlot,
@@ -200,6 +201,7 @@ musicBtn.addEventListener('click', () => {
   void toggleMusic().then((muted) => {
     musicBtn.textContent = muted ? '♪ Music: off' : '♪ Music: on'
     musicBtn.classList.toggle('on', !muted)
+    void setSfxEnabled(!muted) // one toggle drives both music and combat SFX
   })
 })
 
@@ -1013,21 +1015,87 @@ importLegacy()
 screen = 'title'
 renderScreens()
 
-let lastSaveMs = 0
-const ticker = setInterval(() => {
-  if (screen !== 'game' || mode !== 'delve' || delve === null || delve.status !== 'delving') return
-  delve = stepDelve(delve)
-  frame()
-  const now = Date.now()
-  if (delve.status !== 'delving') {
-    maybeRecordClear() // first-clear of this level → into the profile's cleared set
-    renderRunBar() // surface "Back to town"
-    saveNow() // persist the finished delve (+ any first-clear)
-  } else if (now - lastSaveMs >= 1000) {
-    saveNow() // heartbeat: keep savedAt fresh so offline catch-up is accurate
-    lastSaveMs = now
+// Combat SFX: play one clip per *new* battle-log entry. The log grows within a
+// fight and resets (battle → null) between fights, so we track its length and
+// reset on null. The first call only primes the baseline — never replaying the
+// history of a fight resumed from a save.
+let sfxLogLen = 0
+let sfxPrimed = false
+
+// Pick the clip for a log entry. An attack is logged the same way whoever throws
+// it, so we read the actor's side: your golems' blows play `attack`, an enemy's
+// blow (your golem taking the hit) plays `hit`. `flee` is silent.
+function sfxFor(e: GameState['log'][number], battle: GameState): SfxId | null {
+  switch (e.kind) {
+    case 'heal':
+      return 'heal'
+    case 'defend':
+      return 'defend'
+    case 'counter':
+      return 'hit'
+    case 'flee':
+      return null
+    case 'attack': {
+      const actor = battle.units.find((u) => u.id === e.actorId)
+      return actor?.side === 'hero' ? 'attack' : 'hit'
+    }
   }
-}, 450)
+}
+
+function pumpSfx(battle: GameState | null): void {
+  if (!sfxPrimed) {
+    sfxPrimed = true
+    sfxLogLen = battle?.log.length ?? 0
+    return
+  }
+  if (battle === null) {
+    sfxLogLen = 0
+    return
+  }
+  for (const e of battle.log.slice(sfxLogLen)) {
+    const id = sfxFor(e, battle)
+    if (id !== null) playSfx(id)
+  }
+  sfxLogLen = battle.log.length
+}
+
+// The delve advances one step per tick. Combat steps tick slowly so each blow
+// is readable (and the per-action SFX breathe instead of machine-gunning);
+// exploration (and the idle poll while not delving) stays snappy.
+const COMBAT_TICK_MS = 2000
+const EXPLORE_TICK_MS = 450
+let lastSaveMs = 0
+let tickHandle: ReturnType<typeof setTimeout>
+
+function tick(): void {
+  // Everything is wrapped so the loop is increvable: a throw anywhere (render,
+  // audio, save) must NOT stop the reschedule, or the whole game freezes for
+  // good. The error is logged (open DevTools to see it) but never fatal.
+  try {
+    if (screen === 'game' && mode === 'delve' && delve !== null && delve.status === 'delving') {
+      delve = stepDelve(delve)
+      pumpSfx(delve.battle)
+      frame()
+      const now = Date.now()
+      if (delve.status !== 'delving') {
+        maybeRecordClear() // first-clear of this level → into the profile's cleared set
+        renderRunBar() // surface "Back to town"
+        saveNow() // persist the finished delve (+ any first-clear)
+      } else if (now - lastSaveMs >= 1000) {
+        saveNow() // heartbeat: keep savedAt fresh so offline catch-up is accurate
+        lastSaveMs = now
+      }
+    }
+  } catch (err) {
+    console.error('[tick] error (loop survives):', err)
+  } finally {
+    // Pace the next tick by what the delve is doing now: slow mid-fight, brisk
+    // while exploring or idle (so a freshly-started delve resumes promptly).
+    const inCombat = delve?.battle != null && delve.status === 'delving'
+    tickHandle = setTimeout(tick, inCombat ? COMBAT_TICK_MS : EXPLORE_TICK_MS)
+  }
+}
+tickHandle = setTimeout(tick, EXPLORE_TICK_MS)
 
 // Persist immediately when the tab is hidden or unloaded — this stamps `savedAt`
 // at the moment of leaving, which is what offline catch-up measures from.
@@ -1038,5 +1106,5 @@ document.addEventListener('visibilitychange', () => {
 window.addEventListener('pagehide', () => saveNow())
 
 // Vite HMR re-runs this module on edit; without this, each hot update would stack
-// another interval and the fight would race. Clear ours when the module is replaced.
-if (import.meta.hot) import.meta.hot.dispose(() => clearInterval(ticker))
+// another timer and the fight would race. Clear ours when the module is replaced.
+if (import.meta.hot) import.meta.hot.dispose(() => clearTimeout(tickHandle))

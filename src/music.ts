@@ -106,10 +106,20 @@ export function setMusicState(id: TrackId): void {
   void transitionTo(id)
 }
 
+/**
+ * The single AudioContext shared by music and SFX. Browsers limit how many
+ * contexts a page may open, so everything routes through this one. Created
+ * lazily — the first caller must be inside a user gesture (the music toggle).
+ */
+export function audioContext(): AudioContext {
+  if (ctx === undefined) ctx = new AudioContext()
+  return ctx
+}
+
 /** Toggle music on/off (call from the toggle button's click handler). */
 export async function toggleMusic(): Promise<boolean> {
   muted = !muted
-  if (ctx === undefined) ctx = new AudioContext()
+  ctx = audioContext()
   await ctx.resume()
   if (!muted) {
     if (current?.id !== desired) await transitionTo(desired)
