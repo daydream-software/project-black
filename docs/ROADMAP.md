@@ -122,12 +122,33 @@ with the navigation choices visible in the journal. Built in sub-slices:
   (mutation-checked), that disabled rows are dropped in priority order, and that
   `byId` rejects a corrupt id.
 
-### Slice 9 — The shell: Title → Save slots → Town → Dungeon
+### Slice 9 — The shell: Title → Save slots → Town → Dungeon ✅ *(done & verified)*
 The screen frame: a **title** screen, **multiple save slots** (independent
 roguelite profiles, extending `save.ts`), a **Town** (edit both protocols, manage
 the party — today's "camp" grows up), and the **Dungeon** delve view.
 **Done when:** pick a slot → Town → descend → Dungeon → return, and slots persist
-independently.
+independently. Built in two sub-slices:
+
+- **9a** ✅ *(done & verified)* — the **save-slot persistence layer** in `save.ts`:
+  `saveSlot / loadSlot / deleteSlot / listSlots` over 3 per-slot localStorage keys,
+  plus a one-shot `importLegacy` (migrates the pre-9 single-save blob into slot 0
+  verbatim, preserving `savedAt`). The store is an **injected `KVStore`** (default
+  `localStorage`) so the layer is unit-testable in node with an in-memory fake —
+  `save.test.ts` (7 tests) pins slot isolation (mutation-checked), defensive load
+  of a corrupt blob, `listSlots` metadata, and the legacy import. Additive/headless.
+- **9b** ✅ *(done & verified)* — the **screen shell + wiring**: a `screen: 'title'
+  | 'slots' | 'game'` state above the in-game `mode`; a Title screen, a slot-picker
+  (cards show *In town* / *Delving…* / *Party wiped* + relative time; New game /
+  Continue / two-step-confirm Delete), and an `activeSlot` every save routes through
+  (`saveNow()` no-ops on title/slots; the ticker also gates on `screen==='game'`).
+  Startup no longer auto-resumes — it shows the title, and **offline catch-up moved
+  to slot-entry** (`enterSlot` fast-forwards an in-progress delve; a delve that
+  finished while away lands on its end screen — Design rule #1). Back-to-slots is
+  **pause, not abandon** (the delve is saved and resumes on re-entry). The dead
+  legacy `saveGame/loadGame` are removed. Proven in-browser: Title → New game (slot
+  1) → descend → ← Slots (slot 1 *Delving…*, slot 2/3 empty) → New game (slot 2,
+  *In town*) → **reload** lands on Title with both slots intact → Continue resumes &
+  catches up → two-step Delete erases one slot only (`docs/progress/slice9-*.png`).
 
 ### Slice 10 — Loot & the Town economy (build diversity + meta)
 Loot drops in the dungeon (auto-collected); in **Town** you **equip / spend /
