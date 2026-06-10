@@ -154,8 +154,44 @@ independently. Built in two sub-slices:
 Loot drops in the dungeon (auto-collected); in **Town** you **equip / spend /
 unlock** — the start of the pick economy and the "language grows" meta-progression.
 Gear and unlocked vocabulary persist across delves (roguelite).
-**Done when:** a delve yields loot, Town lets you spend it to change the build, and
-the changes persist into the next delve.
+
+**Design direction (agreed 2026-06-10):**
+- **Loot buys expressiveness, not raw power** — vocabulary / rule-slots / heroes —
+  so it can't trivialise a wall by grinding (Design rule #1 stays intact). Gear,
+  when it lands (slice 11+), is behaviour-changing / a sidegrade, never +stat power.
+- **Two resources (eventual):** a common currency (from packs) for gear / depth,
+  and a **rare unlock resource** — placeholder *"Insight"* — earned **only by
+  clearing a delve (killing the target)**. Because it can't be farmed off trash,
+  *waiting never buys a breakthrough* — rule #1 becomes structural, not a promise.
+- **The farmable currency is capped; Insight is not.** The common currency has a
+  **storage cap**, so idle / grind accumulation *saturates* — you can't bank your
+  way to power by waiting (a second structural guard for rule #1). The cap is
+  itself a **purchasable upgrade** (storage / vault — bought like any other unlock),
+  which also makes "widen storage vs. unlock vocab" a real investment choice and a
+  natural sink. **Insight is never capped** — it's only earned by clearing, so
+  there's nothing to grind, and we want it to flow into expressiveness.
+- **Wipe = roguelite:** unlocked vocabulary / slots / heroes persist (the meta);
+  the delve's un-banked currency + gear are lost.
+- **Resource names are theme-dependent** (dungeon adventurers vs. constructs in a
+  virtual world vs. …, still undecided) — skin the names later; the mechanics
+  don't depend on the fiction.
+- **Key build insight:** unlocking vocabulary requires the vocab to *exist in the
+  sim*, so the slice ships one genuine new vocabulary item (a real Skill /
+  Predicate / Move) that starts **locked**.
+
+**Slice 10 (minimal vertical slice — unlock vocabulary):**
+1. One genuinely new vocab item in the sim, starting locked.
+2. A persisted per-profile `unlocked` set (meta; survives a wipe).
+3. *Insight* earned by clearing a delve.
+4. A Town shop panel: spend Insight to unlock the vocab.
+5. The editor dropdowns offer only unlocked vocab.
+
+**Done when:** clear a delve → earn Insight → unlock the new Skill/Predicate in
+Town → it appears in the editor → program with it → it persists into the next delve.
+
+**Deferred (decide when we build it):** which vocab item is first; whether a small
+participation reward exists (vs. only-from-clearing); gear / gold / the second
+resource (slice 11+); theme/fiction & resource naming.
 
 ### Slice 11 — Exploration depth + the chain lever + room variety
 Richer exploration vocabulary (threat estimation; loot / rest / elite / boss
