@@ -134,3 +134,35 @@ export function makeHero(): HTMLCanvasElement {
   }
   return spriteFromGrid(rows, palette)
 }
+
+/** The adventurer seen from BEHIND (for the over-the-shoulder delve view): all
+ *  hair on the head, no face, and a backpack on the back. */
+export function makeHeroBack(): HTMLCanvasElement {
+  const rows = [
+    '................',
+    '......KKKK......',
+    '.....KHHHHK.....',
+    '.....KHHHHK.....', // back of head — all hair, no face
+    '.....KHHHHK.....',
+    '.....KHHHHK.....',
+    '......KHHK......',
+    '.....KTTTTK.....',
+    '....KTBBBBTK....', // backpack straps + pack (B)
+    '...KSTBBBBTSK...',
+    '...KSTBBBBTSK...',
+    '....KTBBBBTK....',
+    '.....KTTTTK.....',
+    '.....KP..PK.....',
+    '.....KP..PK.....',
+    '.....KK..KK.....',
+  ]
+  const palette: Palette = {
+    K: '#202028', // outline
+    S: '#3168b0', // arms (tunic-coloured, darker)
+    H: '#6f4827', // hair (back of head, a touch darker)
+    T: '#3f7bd6', // tunic
+    B: '#7a5a2e', // backpack
+    P: '#5a3a22', // boots
+  }
+  return spriteFromGrid(rows, palette)
+}

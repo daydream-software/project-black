@@ -13,7 +13,7 @@ import {
 import { startDelve, stepDelve, catchUpDelve, type DelveState } from './delve'
 import { toggleMusic, setMusicState, type TrackId } from './music'
 import { saveGame, loadGame, elapsedSteps, type Hero, type ProtocolRow } from './save'
-import { makeHero, makeSlime } from './sprites'
+import { makeHero, makeHeroBack, makeSlime } from './sprites'
 import { render, renderDelve } from './render'
 import { requireElement, require2dContext } from './dom'
 
@@ -139,7 +139,7 @@ musicBtn.addEventListener('click', () => {
   })
 })
 
-const sprites = { hero: makeHero(), slime: makeSlime() }
+const sprites = { hero: makeHero(), heroBack: makeHeroBack(), slime: makeSlime() }
 
 type Mode = 'camp' | 'delve'
 let mode: Mode = 'camp'
