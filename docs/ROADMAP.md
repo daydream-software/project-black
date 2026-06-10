@@ -159,10 +159,17 @@ Gear and unlocked vocabulary persist across delves (roguelite).
 - **Loot buys expressiveness, not raw power** — vocabulary / rule-slots / heroes —
   so it can't trivialise a wall by grinding (Design rule #1 stays intact). Gear,
   when it lands (slice 11+), is behaviour-changing / a sidegrade, never +stat power.
-- **Two resources (eventual):** a common currency (from packs) for gear / depth,
-  and a **rare unlock resource** — placeholder *"Insight"* — earned **only by
-  clearing a delve (killing the target)**. Because it can't be farmed off trash,
-  *waiting never buys a breakthrough* — rule #1 becomes structural, not a promise.
+- **Dungeons are re-playable levels.** A level is a *config* (level 1 = 3-7 rooms,
+  1-2 packs, 1 boss), **not** a fixed layout — each descent is a fresh seed within
+  that config, so it varies (your program must stay robust, not tuned to one map).
+  The **first clear of a level pays Insight**; re-running it pays the common
+  currency (later). That single split — progress → expressiveness, grind → bounded
+  power — is the whole economy.
+- **Two resources (eventual):** a common currency (from packs / re-runs) for gear /
+  depth, and a **rare unlock resource** — placeholder *"Insight"* — earned **only on
+  the FIRST clear of a level** (never on a re-run). Because it can't be farmed by
+  repeating content, *waiting never buys a breakthrough* — rule #1 becomes
+  structural, not a promise.
 - **The farmable currency is capped; Insight is not.** The common currency has a
   **storage cap**, so idle / grind accumulation *saturates* — you can't bank your
   way to power by waiting (a second structural guard for rule #1). The cap is
@@ -179,19 +186,28 @@ Gear and unlocked vocabulary persist across delves (roguelite).
   sim*, so the slice ships one genuine new vocabulary item (a real Skill /
   Predicate / Move) that starts **locked**.
 
-**Slice 10 (minimal vertical slice — unlock vocabulary):**
-1. One genuinely new vocab item in the sim, starting locked.
-2. A persisted per-profile `unlocked` set (meta; survives a wipe).
-3. *Insight* earned by clearing a delve.
-4. A Town shop panel: spend Insight to unlock the vocab.
-5. The editor dropdowns offer only unlocked vocab.
+**Built in two sub-slices** (the level system is the substrate the economy rides on):
 
-**Done when:** clear a delve → earn Insight → unlock the new Skill/Predicate in
-Town → it appears in the editor → program with it → it persists into the next delve.
+- **10a — Levels.** The dungeon becomes config-driven: `generateDungeon(seed,
+  config)` parameterised by `{ rooms:[min,max], packs:[min,max], boss }`; a Town
+  **level select**; per-profile **first-clear tracking** (which levels this profile
+  has beaten). Ship 1-2 levels. **Done when:** pick a level → descend a seeded
+  layout within its config → clear it → the profile records that level's first
+  clear, and re-running yields a *different* layout.
+- **10b — Insight economy + vocab unlock.** On a level's **first clear**, +1
+  Insight (uncapped; re-runs and wipes pay nothing). A Town **shop** spends Insight
+  to flip a vocab item locked→unlocked; the editor dropdowns offer only unlocked
+  vocab; `unlocked` + `insight` persist per profile (meta, survive a wipe). Ship ONE
+  locked **placeholder** vocab item (cheapest to implement — *not* a progression
+  decision). **Done when:** first-clear a level → earn Insight → unlock the item in
+  Town → it appears in the editor → program with it → it persists into the next delve.
 
-**Deferred (decide when we build it):** which vocab item is first; whether a small
-participation reward exists (vs. only-from-clearing); gear / gold / the second
-resource (slice 11+); theme/fiction & resource naming.
+**Settled:** Insight only on a level's first clear (no participation reward, never
+capped). Dungeons are re-playable config-driven levels (varied per seed).
+
+**Deferred (content/progression, not the system):** the real progression — the set
+of levels, their configs / order / gating, which vocab unlocks at what cost; gear /
+the capped common currency (slice 11+); theme/fiction & resource naming.
 
 ### Slice 11 — Exploration depth + the chain lever + room variety
 Richer exploration vocabulary (threat estimation; loot / rest / elite / boss
