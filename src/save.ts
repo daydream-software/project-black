@@ -59,9 +59,6 @@ export interface SaveData {
   delve: DelveState | null
 }
 
-/** Must match the delve loop's tick interval in main.ts (offline replay uses it). */
-export const STEP_MS = 450
-
 // The slot keys derive from this; KEY itself is now only the *legacy* single-save
 // blob that importLegacy migrates into slot 0 (slice 9). Kept as the legacy key.
 const KEY = 'project-black/save'
@@ -98,11 +95,6 @@ function isSaveData(x: unknown): x is SaveData {
     (x.mode === 'camp' || x.mode === 'delve') &&
     (x.delve === null || isDelveState(x.delve))
   )
-}
-
-/** How many run-steps elapsed between a save and now (for offline catch-up). */
-export function elapsedSteps(savedAt: number, now: number): number {
-  return Math.max(0, Math.floor((now - savedAt) / STEP_MS))
 }
 
 // --- Save slots (slice 9) ---------------------------------------------------

@@ -10,7 +10,7 @@ import {
   type Maneuver,
   type SkillId,
 } from './sim'
-import { startDelve, stepDelve, catchUpDelve, type DelveState, type ExProtocol } from './delve'
+import { startDelve, stepDelve, type DelveState, type ExProtocol } from './delve'
 import { LEVELS, applyClear, levelById, hasCleared } from './levels'
 import { UNLOCKABLES, buy, isOwned, canAfford } from './shop'
 import { toggleMusic, setMusicState, type TrackId } from './music'
@@ -20,7 +20,6 @@ import {
   listSlots,
   deleteSlot,
   importLegacy,
-  elapsedSteps,
   type Hero,
   type ProtocolRow,
   type ExProtocolRow,
@@ -320,10 +319,9 @@ function newGame(index: number): void {
 }
 
 /**
- * Open an existing slot. If a delve was in progress, fast-forward it by the
- * elapsed wall-clock (offline progress now happens at slot-entry, not app load)
- * — a delve that ended while away lands on its CLEARED / WIPED screen so the
- * journal can be read (Design rule #1). An empty slot starts a new game.
+ * Open an existing slot. A delve that was in progress **resumes exactly where it
+ * was saved** — the ticker continues it in real time. There is no offline progress:
+ * time away never advances a delve (it just waits). An empty slot starts a new game.
  */
 function enterSlot(index: number): void {
   const saved = loadSlot(index)
@@ -339,16 +337,16 @@ function enterSlot(index: number): void {
   insight = saved.insight ?? 0
   unlocked = saved.unlocked ?? []
   if (saved.delve !== null) {
-    // Pre-10a delves lack levelId — default it so first-clear tracking has a key.
-    const base = { ...saved.delve, levelId: saved.delve.levelId || LEVELS[0].id }
-    delve = catchUpDelve(base, elapsedSteps(saved.savedAt, Date.now()))
+    // Resume the delve as saved — no fast-forward (no offline progress).
+    // (Pre-10a delves lack levelId — default it so first-clear tracking has a key.)
+    delve = { ...saved.delve, levelId: saved.delve.levelId || LEVELS[0].id }
     mode = 'delve'
-    maybeRecordClear() // a delve that cleared while away still counts
+    maybeRecordClear() // a delve already saved as cleared still counts on resume
   } else {
     delve = null
     mode = 'camp'
   }
-  saveNow() // re-stamp savedAt after catch-up (+ any first-clear just recorded)
+  saveNow() // re-stamp savedAt (+ record a first clear if the saved delve was cleared)
   enterGame()
 }
 

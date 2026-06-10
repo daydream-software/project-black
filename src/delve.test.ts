@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { startDelve, stepDelve, catchUpDelve, DEFAULT_EXPLORATION, type ExProtocol } from './delve'
+import { startDelve, stepDelve, DEFAULT_EXPLORATION, type ExProtocol, type DelveState } from './delve'
 import { makeWarrior, makeHealer, type Combatant, type Procedure } from './sim'
 
 const attack: Procedure = [
@@ -13,8 +13,16 @@ const strongParty = (): Combatant[] => [
   { ...makeHealer(attack), atk: 100 },
 ]
 
+/** Step a delve to a terminal state (or a generous cap) — the headless way to run
+ *  a whole delve in a test, now that production has no batch-step helper. */
+const advance = (s: DelveState, n = 5000): DelveState => {
+  let r = s
+  while (n-- > 0 && r.status === 'delving') r = stepDelve(r)
+  return r
+}
+
 const runToEnd = (seed: number, proto: ExProtocol = DEFAULT_EXPLORATION) =>
-  catchUpDelve(startDelve(strongParty(), seed, proto), 5000)
+  advance(startDelve(strongParty(), seed, proto))
 
 describe('delve — the party crawls and hunts the objective', () => {
   it('a strong party reaches and kills the objective (status: cleared)', () => {
@@ -33,7 +41,7 @@ describe('delve — the party crawls and hunts the objective', () => {
     for (let seed = 0; seed < 120; seed++) {
       // a normal (mortal) party so some delves end in death — still terminal
       const party: Combatant[] = [makeWarrior(attack), makeHealer(attack)]
-      const end = catchUpDelve(startDelve(party, seed), 5000)
+      const end = advance(startDelve(party, seed))
       expect(end.status).not.toBe('delving')
       expect(end.turn).toBeLessThan(4000)
     }

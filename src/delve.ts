@@ -331,10 +331,3 @@ export function stepDelve(s: DelveState): DelveState {
 
   return { ...s, pos: next, facing, explored, battle, turn, log: logged(s, turn, { kind, reason: decision.reason, detail }) }
 }
-
-/** Fast-forward a delve by up to `steps` ticks (offline catch-up). Pure. */
-export function catchUpDelve(s: DelveState, steps: number): DelveState {
-  let r = s
-  while (steps-- > 0 && r.status === 'delving') r = stepDelve(r)
-  return r
-}
