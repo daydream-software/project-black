@@ -188,12 +188,17 @@ Gear and unlocked vocabulary persist across delves (roguelite).
 
 **Built in two sub-slices** (the level system is the substrate the economy rides on):
 
-- **10a — Levels.** The dungeon becomes config-driven: `generateDungeon(seed,
-  config)` parameterised by `{ rooms:[min,max], packs:[min,max], boss }`; a Town
-  **level select**; per-profile **first-clear tracking** (which levels this profile
-  has beaten). Ship 1-2 levels. **Done when:** pick a level → descend a seeded
-  layout within its config → clear it → the profile records that level's first
-  clear, and re-running yields a *different* layout.
+- **10a — Levels.** ✅ *(done & verified)* The dungeon is now config-driven:
+  `generateDungeon(seed, gen)` parameterised by `{ width, height, rooms:[min,max],
+  packs:[min,max] }` (grid in the config so bigger levels are bigger; packs a
+  chosen seeded count, not a coin flip) — **10a-1**. `src/levels.ts` holds the
+  `LevelConfig` + a `LEVELS` list; `DelveState.levelId`; a per-profile additive
+  `clearedLevels`; first-clear recorded on clear (ticker + offline catch-up) —
+  **10a-2**. A Town **level select** (chips: name · room range · ✓ cleared badge)
+  drives `descend(selected level)`; the picker hides during a delve — **10a-3**.
+  Proven in-browser: selecting Level 2 descends its 31×23 / 6-9-room config; a
+  cleared level shows its badge, persisting across reload (`docs/progress/`).
+  Boss stays the Hex Warden for now (per-level enemies are content, deferred).
 - **10b — Insight economy + vocab unlock.** On a level's **first clear**, +1
   Insight (uncapped; re-runs and wipes pay nothing). A Town **shop** spends Insight
   to flip a vocab item locked→unlocked; the editor dropdowns offer only unlocked
