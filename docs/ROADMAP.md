@@ -200,12 +200,23 @@ Gear and unlocked vocabulary persist across delves (roguelite).
   cleared level shows its badge, persisting across reload (`docs/progress/`).
   Boss stays the Hex Warden for now (per-level enemies are content, deferred).
 - **10b — Insight economy + vocab unlock.** On a level's **first clear**, +1
-  Insight (uncapped; re-runs and wipes pay nothing). A Town **shop** spends Insight
-  to flip a vocab item locked→unlocked; the editor dropdowns offer only unlocked
-  vocab; `unlocked` + `insight` persist per profile (meta, survive a wipe). Ship ONE
-  locked **placeholder** vocab item (cheapest to implement — *not* a progression
-  decision). **Done when:** first-clear a level → earn Insight → unlock the item in
-  Town → it appears in the editor → program with it → it persists into the next delve.
+  Insight (uncapped; re-runs and wipes pay nothing). `unlocked` + `insight` persist
+  per profile (meta, survive a wipe). Spend Insight to flip a vocab item
+  locked→unlocked; the editor dropdowns offer only unlocked vocab. Ship ONE locked
+  **placeholder** vocab item (cheapest to implement — *not* a progression decision).
+  **Done when:** first-clear a level → earn Insight → unlock the item in Town → it
+  appears in the editor → program with it → it persists into the next delve.
+
+  **Town = a village hub** (the spend surface). Each building is a progression
+  category: **Trainer** (learn vocabulary — "the language grows"; built in 10b),
+  later **Smith/Forge** (gear, slice 11+), **Tavern/Guild** (recruit heroes),
+  Library (rule-slot capacity). The editors (Procedure/Protocol) are the
+  **Planning** station — you *arrange* there; buildings *expand* what you can put
+  in. Navigation is **light + theme-agnostic for now** — a station switcher
+  (Planning · Trainer · …) that swaps the work area — because the immersive
+  town-map skin is theme-dependent (theme still open); it graduates to a real
+  village map once the theme lands. So 10b builds exactly one building (the
+  Trainer) plus the station switcher.
 
 **Settled:** Insight only on a level's first clear (no participation reward, never
 capped). Dungeons are re-playable config-driven levels (varied per seed).
