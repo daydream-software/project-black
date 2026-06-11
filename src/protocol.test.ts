@@ -42,7 +42,7 @@ describe('protocol — exploration rule compiler', () => {
     expect(compiled[1].label).toBe('Target · known → head toward')
   })
 
-  it('an all-disabled protocol compiles to an empty list (the delve will get stuck)', () => {
+  it('an all-disabled procedure compiles to an empty list (the delve will get stuck)', () => {
     const rows = DEFAULT_EX_ROWS.map((r) => ({ ...r, enabled: false }))
     expect(buildExploration(rows)).toEqual([])
   })

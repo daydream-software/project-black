@@ -626,7 +626,11 @@ function createRow(row: ProtocolRow, i: number): HTMLLIElement {
     objSep.style.display = on ? '' : 'none'
     objSel.style.display = on ? '' : 'none'
   }
-  showObject(commandById(row.command).hasObject)
+  // Tolerant on a persisted command: a stale/absent id must not throw here (this
+  // runs during the editor render in enterGame, outside the tick try/catch — see
+  // the defensive compile path). An unknown command just hides the Object dropdown;
+  // makeSelect shows the raw id, and the compiler treats it as a plain attack.
+  showObject(COMMANDS.find((c) => c.id === row.command)?.hasObject ?? false)
 
   const cmdSel = makeSelect(
     COMMANDS.map((c) => ({ value: c.id, label: c.label })),

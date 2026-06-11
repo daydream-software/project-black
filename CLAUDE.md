@@ -53,7 +53,8 @@ generated in code.
 - **Prove changes by running the app** (browser screenshot), not by green tests
   alone. Tests must fail when logic breaks — cover boundaries, and mutation-check
   (flip the logic, see red, restore).
-- Keep game logic in `src/sim.ts` as **pure, deterministic** functions; the
-  renderer (`src/render.ts`) is a pure view. This keeps tests honest and makes AFK
-  offline catch-up cheap (replay `step` N times). Use a **seeded** PRNG when
-  randomness/dice arrive.
+- Keep game logic in `src/sim.ts`/`delve.ts`/`dungeon.ts` as **pure,
+  deterministic** functions; the renderer (`src/render.ts`) is a pure view. This
+  keeps tests honest and keeps a delve reproducible so the journal is trustworthy.
+  (There is **no offline progress** — a delve resumes in real time, not by
+  replay.) Use the **seeded** PRNG (`src/rng.ts`) for any randomness/dice.
