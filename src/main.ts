@@ -1,6 +1,6 @@
 import './style.css'
 import { makeWarrior, makeHealer, type Combatant, type GameState } from './sim'
-import { startDelve, stepDelve, type DelveState, type ExProtocol } from './delve'
+import { startDelve, stepDelve, type DelveState, type ExProcedure } from './delve'
 import { LEVELS, applyClear, levelById, hasCleared } from './levels'
 import { UNLOCKABLES, buy, isOwned, canAfford } from './shop'
 import { toggleMusic, setMusicState, type TrackId } from './music'
@@ -64,8 +64,9 @@ function freshRoster(): Hero[] {
 let roster: Hero[] = freshRoster()
 let activeHero = 0
 
-// The party-wide exploration Protocol rows (priority = order). `let` so a loaded
-// save can replace it; the defaults (protocol.ts) compile to DEFAULT_EXPLORATION.
+// The party-wide exploration Procedure's rows — one Protocol each, priority =
+// order. `let` so a loaded save can replace it; the defaults (protocol.ts) compile
+// to DEFAULT_EXPLORATION.
 let exploration: ExProtocolRow[] = DEFAULT_EX_ROWS.map((r) => ({ ...r }))
 
 // Profile meta (persisted per slot, survives a wipe): levels first-cleared, and
@@ -99,8 +100,9 @@ function maybeRecordClear(): void {
   }
 }
 
-/** The live exploration Protocol fed to a delve (enabled rows, in priority order). */
-function explorationProtocol(): ExProtocol {
+/** The live exploration Procedure fed to a delve (enabled rows compiled to
+ *  Protocols, in priority order). */
+function explorationProcedure(): ExProcedure {
   return buildExploration(exploration)
 }
 
@@ -194,7 +196,7 @@ function newSeed(): number {
 
 function descend(): void {
   lastDelveLog = [] // a fresh run — the previous journal no longer applies
-  delve = startDelve(party(), newSeed(), explorationProtocol(), levelById(selectedLevelId))
+  delve = startDelve(party(), newSeed(), explorationProcedure(), levelById(selectedLevelId))
   mode = 'delve'
   saveNow()
   renderRunBar()
@@ -527,10 +529,10 @@ interface CardControls {
 }
 
 /**
- * A two-line rule card: the rule reads as a sentence ([✓] Subject · Predicate →
- * …) on the top line, with the priority + reorder/delete controls on a subtle
- * strip below. Shared by the combat Procedure and the exploration Protocol
- * editors, so the rule never has to fight the controls for horizontal space.
+ * A two-line Protocol card: the rule reads as a sentence ([✓] Subject · Predicate
+ * → …) on the top line, with the priority + reorder/delete controls on a subtle
+ * strip below. Shared by both Procedure editors (combat and exploration), so the
+ * rule never has to fight the controls for horizontal space.
  */
 function ruleCard(ruleEls: HTMLElement[], c: CardControls): HTMLLIElement {
   const li = document.createElement('li')
@@ -567,7 +569,8 @@ function ruleCard(ruleEls: HTMLElement[], c: CardControls): HTMLLIElement {
   return li
 }
 
-// One combat-Procedure row: Subject · Predicate → Command [· Object].
+// One row of the combat Procedure — a single Protocol: Subject · Predicate →
+// Command [· Object].
 function createRow(row: ProtocolRow, i: number): HTMLLIElement {
   const rows = roster[activeHero].rows
   const locked = editingLocked()
@@ -862,8 +865,9 @@ function renderEditor(): void {
   })
 }
 
-// One exploration-Protocol row: Subject · Predicate → Move. Party-wide (no hero
-// tabs); shares the two-line ruleCard with the combat editor.
+// One row of the exploration Procedure — a single Protocol: Subject · Predicate →
+// Move. Party-wide (no hero tabs); shares the two-line ruleCard with the combat
+// editor.
 function createExRow(row: ExProtocolRow, i: number): HTMLLIElement {
   const locked = editingLocked()
 

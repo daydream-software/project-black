@@ -56,8 +56,11 @@ randomness — same inputs always give the same outputs):
 - `rng.ts` — the **seeded PRNG** (mulberry32) every other pure module draws from.
 
 `main.ts` owns the only mutable loop and the town ↔ delve UI. A launched delve is
-autonomous: the player authors Procedures (combat) and Protocols (exploration) in
-town, descends, and lives with the result — then reads the journal and iterates.
+autonomous: in town the player authors two **Procedures** (ordered lists of
+**Protocols** — one rule each: `WHEN State → DO Maneuver`), one driving combat and
+one driving exploration, descends, and lives with the result — then reads the
+journal and iterates. (Procedure = the list; Protocol = a single rule. The two are
+a whole/part pair, *not* a combat/exploration split — see VOCABULARY.md.)
 
 **No offline progress.** A delve resumes in real time exactly where it was saved;
 time away never advances it. `save.ts` stamps each snapshot with `savedAt`, but

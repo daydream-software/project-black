@@ -5,8 +5,11 @@ Guidance for working in this repo. Keep it short — details live in `docs/`.
 ## What this is
 
 A web game where you don't steer adventurers — you **program** their brains, both
-how they **fight** (a combat **Procedure**) and how they **delve** (an exploration
-**Protocol**), in one `WHEN <State> → DO <X>` grammar. It's a **programmable, AFK,
+how they **fight** and how they **delve**, in one `WHEN <State> → DO <X>` grammar.
+Each is a **Procedure** — an ordered list of **Protocols** (one rule each); a
+combat Procedure per unit and one party-wide exploration Procedure. (Procedure =
+the list, Protocol = a single rule — a whole/part pair, *not* a combat/exploration
+split.) It's a **programmable, AFK,
 procedural dungeon-crawler roguelite** (Nevergrind Online's pacing × Gladiabots'
 AI-authoring × FF12 gambits): from **town** you program + manage, then **descend**;
 the party **auto-delves** a seeded dungeon (navigate, fight packs, loot, hunt the

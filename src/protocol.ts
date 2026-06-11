@@ -1,9 +1,9 @@
 // The PURE "rule compiler" for the editors: it turns the persisted editor rows
 // (ids picked from dropdowns, ExProtocolRow) into the model the sim consumes
-// (ExProtocol / ExRule from delve.ts). Kept out of main.ts so it has no DOM
+// (ExProcedure / ExProtocol from delve.ts). Kept out of main.ts so it has no DOM
 // dependency and is unit-testable — main.ts is just the DOM wiring around this.
 
-import type { ExProtocol, ExRule, ExSubject, ExPredicate, ExMove } from './delve'
+import type { ExProcedure, ExProtocol, ExSubject, ExPredicate, ExMove } from './delve'
 import type { Hero, ExProtocolRow, ProtocolRow } from './save'
 import type { State, Maneuver, Procedure, Protocol, SkillId } from './sim'
 
@@ -39,9 +39,9 @@ export function byId<T>(list: Option<T>[], id: string): Option<T> {
   return found
 }
 
-// --- Exploration vocabulary: the party-wide delve Protocol's dropdowns. ------
-// Subject · Predicate → Move (no Object — a Move carries no skill). These mirror
-// the ExRule model in delve.ts; the ids round-trip through ExProtocolRow.
+// --- Exploration vocabulary: the party-wide delve Procedure's dropdowns. -----
+// Subject · Predicate → Move (no Object — a Move carries no skill). Each row is one
+// ExProtocol (delve.ts); the ids round-trip through ExProtocolRow.
 
 export const EX_SUBJECTS: Option<ExSubject>[] = [
   { id: 'target', label: 'Target', make: () => ({ what: 'target' }) },
@@ -69,8 +69,8 @@ export const DEFAULT_EX_ROWS: ExProtocolRow[] = [
   { subjectId: 'unexplored', predId: 'always', moveId: 'head', enabled: true },
 ]
 
-/** Compile one editor row into an ExRule (its label is what the journal shows). */
-export function exRowToRule(row: ExProtocolRow): ExRule {
+/** Compile one editor row into an ExProtocol (its label is what the journal shows). */
+export function exRowToProtocol(row: ExProtocolRow): ExProtocol {
   const subject = byId(EX_SUBJECTS, row.subjectId)
   const pred = byId(EX_PREDICATES, row.predId)
   const mv = byId(EX_MOVES, row.moveId)
@@ -93,11 +93,11 @@ export function exRowResolves(row: ExProtocolRow): boolean {
   )
 }
 
-/** Compile the enabled rows (in priority order) into the ExProtocol a delve runs.
+/** Compile the enabled rows (in priority order) into the ExProcedure a delve runs.
  *  Rows whose ids no longer resolve are skipped (never thrown on) so a save from an
  *  older vocabulary still launches — the stale row stays visible in the editor. */
-export function buildExploration(rows: ExProtocolRow[]): ExProtocol {
-  return rows.filter((r) => r.enabled && exRowResolves(r)).map(exRowToRule)
+export function buildExploration(rows: ExProtocolRow[]): ExProcedure {
+  return rows.filter((r) => r.enabled && exRowResolves(r)).map(exRowToProtocol)
 }
 
 // --- Combat vocabulary: a hero's Procedure dropdowns. ------------------------

@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest'
 import { DEFAULT_EXPLORATION } from './delve'
 import {
   buildExploration,
-  exRowToRule,
+  exRowToProtocol,
   exRowResolves,
   DEFAULT_EX_ROWS,
   EX_SUBJECTS,
@@ -48,7 +48,7 @@ describe('protocol — exploration rule compiler', () => {
   })
 
   it('maps each dropdown id to the right model value', () => {
-    const rule = exRowToRule({ subjectId: 'exit', predId: 'php_lt_50', moveId: 'rest', enabled: true })
+    const rule = exRowToProtocol({ subjectId: 'exit', predId: 'php_lt_50', moveId: 'rest', enabled: true })
     expect(rule.subject).toEqual({ what: 'exit' })
     expect(rule.predicate).toEqual({ p: 'partyHpPctBelow', value: 50 })
     expect(rule.move).toBe('rest')

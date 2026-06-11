@@ -40,17 +40,22 @@ export type ExPredicate =
 
 export type ExMove = 'headToward' | 'retreat' | 'rest'
 
-export interface ExRule {
+// One exploration rule: WHEN <State> → DO <Move>. A single Protocol, mirroring a
+// combat Protocol in sim.ts (Procedure = Protocol[] there too).
+export interface ExProtocol {
   subject: ExSubject
   predicate: ExPredicate
   move: ExMove
   label: string
 }
 
-export type ExProtocol = ExRule[]
+// The party's whole exploration program: an ordered list of Protocols (priority =
+// order). The exploration twin of sim.ts's Procedure.
+export type ExProcedure = ExProtocol[]
 
-/** Default (hardcoded) protocol: beeline to the objective once seen, else explore. */
-export const DEFAULT_EXPLORATION: ExProtocol = [
+/** Default (hardcoded) exploration Procedure: beeline to the objective once seen,
+ *  else explore. */
+export const DEFAULT_EXPLORATION: ExProcedure = [
   { subject: { what: 'target' }, predicate: { p: 'known' }, move: 'headToward', label: 'Target · known → head toward' },
   { subject: { what: 'unexplored' }, predicate: { p: 'always' }, move: 'headToward', label: 'Unexplored · Always → head toward' },
 ]
@@ -76,7 +81,7 @@ export interface DelveState {
   facing: Dir
   explored: boolean[] // fog of war (length = cells.length)
   clearedRooms: boolean[] // length = rooms.length
-  exploration: ExProtocol
+  exploration: ExProcedure
   battle: GameState | null // active combat, or null when exploring
   status: DelveStatus
   turn: number
@@ -184,40 +189,40 @@ interface ExDecision {
   step: number // next cell to move to, or -1 if the rule yields no move
 }
 
-/** The move for one rule, or null if its State doesn't hold / yields no step. */
-function ruleStep(s: DelveState, rule: ExRule): ExDecision | null {
+/** The move for one Protocol, or null if its State doesn't hold / yields no step. */
+function protocolStep(s: DelveState, protocol: ExProtocol): ExDecision | null {
   const d = s.dungeon
   const known = (c: number): boolean => s.explored[c]
 
   // resolve the subject to a goal cell + whether it's currently "known"
   let goal = -1
-  if (rule.subject.what === 'exit') goal = entranceCell(d)
-  else if (rule.subject.what === 'target') goal = knownObjectiveCell(s)
+  if (protocol.subject.what === 'exit') goal = entranceCell(d)
+  else if (protocol.subject.what === 'target') goal = knownObjectiveCell(s)
   // 'unexplored' has no fixed goal — it's the frontier (handled by the move)
 
   const isKnown =
-    rule.subject.what === 'unexplored'
+    protocol.subject.what === 'unexplored'
       ? stepTowardFrontier(d, s.pos, s.explored) !== -1
       : goal !== -1
 
   // predicate
-  if (rule.predicate.p === 'known' && !isKnown) return null
-  if (rule.predicate.p === 'partyHpPctBelow' && partyHpPct(s.party) >= rule.predicate.value) return null
+  if (protocol.predicate.p === 'known' && !isKnown) return null
+  if (protocol.predicate.p === 'partyHpPctBelow' && partyHpPct(s.party) >= protocol.predicate.value) return null
 
   // move → step
   let step = -1
-  if (rule.move === 'rest') step = s.pos // rest in place (no move)
-  else if (rule.move === 'retreat') step = stepTowardKnown(d, s.pos, entranceCell(d), known)
-  else if (rule.subject.what === 'unexplored') step = stepTowardFrontier(d, s.pos, s.explored)
+  if (protocol.move === 'rest') step = s.pos // rest in place (no move)
+  else if (protocol.move === 'retreat') step = stepTowardKnown(d, s.pos, entranceCell(d), known)
+  else if (protocol.subject.what === 'unexplored') step = stepTowardFrontier(d, s.pos, s.explored)
   else if (goal !== -1) step = stepTowardKnown(d, s.pos, goal, known)
 
-  return step === -1 ? null : { reason: rule.label, step }
+  return step === -1 ? null : { reason: protocol.label, step }
 }
 
-/** Scan the protocol top-to-bottom; the first rule that yields a move wins. */
+/** Scan the Procedure top-to-bottom; the first Protocol that yields a move wins. */
 export function decideExploration(s: DelveState): ExDecision {
-  for (const rule of s.exploration) {
-    const decided = ruleStep(s, rule)
+  for (const protocol of s.exploration) {
+    const decided = protocolStep(s, protocol)
     if (decided !== null) return decided
   }
   return { reason: 'no rule applied', step: -1 }
@@ -228,7 +233,7 @@ export function decideExploration(s: DelveState): ExDecision {
 export function startDelve(
   party: Combatant[],
   seed: number,
-  exploration: ExProtocol = DEFAULT_EXPLORATION,
+  exploration: ExProcedure = DEFAULT_EXPLORATION,
   level: LevelConfig = LEVELS[0],
 ): DelveState {
   const { dungeon, rngState } = generateDungeon(seed, level)

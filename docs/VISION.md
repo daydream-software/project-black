@@ -26,16 +26,17 @@ rule language).
 
 ## Two programmable brains, one grammar
 
-The whole game is "program your party." You author **two** rule lists, both in the
-same `WHEN <State> → DO <X>` grammar — learn it once, apply it twice:
+The whole game is "program your party." You author **two** Procedures (ordered
+lists of Protocols — one rule each), both in the same `WHEN <State> → DO <X>`
+grammar — learn it once, apply it twice:
 
 - **Combat Procedure** — `WHEN <State = Subject + Predicate> → Maneuver` (built).
-- **Exploration Protocol** — `WHEN <dungeon State> → Move` (new). Subjects = rooms,
-  exits, loot, stairs, monsters-in-view; Predicates = unexplored, distance,
+- **Exploration Procedure** — `WHEN <dungeon State> → Move` (new). Subjects =
+  rooms, exits, loot, stairs, monsters-in-view; Predicates = unexplored, distance,
   estimated threat, chain-active; Moves = head toward / grab / rest / flee /
   descend / push the chain.
 
-The exploration Protocol **is** the party leader. At a branch it doesn't stop and
+The exploration Procedure **is** the party leader. At a branch it doesn't stop and
 ask — it consults your rules and picks. That is why the delve is autonomous, and
 why AFK is natural here (it was awkward before): you didn't remove the navigator,
 you **automated** it.
@@ -44,7 +45,7 @@ you **automated** it.
 
 ```
    TOWN ──descend──▶ DUNGEON (autonomous delve) ──target killed──▶ back to TOWN
-    ▲  active: program the 2 protocols,              │  loot; meta persists
+    ▲  active: program the 2 Procedures,              │  loot; meta persists
     │  equip loot, buy/unlock, manage party          │
     │                                                 └─ party wipes ──▶ back to 0
     │                                                         (meta kept)
@@ -52,10 +53,10 @@ you **automated** it.
 ```
 
 - **Town — active, you're present.** The *only* place you decide: edit both
-  protocols, equip what you found, buy/unlock new vocabulary & heroes, manage the
+  Procedures, equip what you found, buy/unlock new vocabulary & heroes, manage the
   party. This is where build choices are made.
 - **Dungeon — autonomous, hands-off.** The party delves a **seeded procedural**
-  dungeon by your protocols: navigates, fights packs (combat Procedure), chains
+  dungeon by your Procedures: navigates, fights packs (combat Procedure), chains
   kills, auto-collects loot, hunts the **target**. No live input — it runs itself
   in real time while the game is open; you idle or watch. **No offline progress:**
   close the game and the delve waits where it left off (time-away never advances it).
@@ -86,11 +87,11 @@ delve a goal and a natural length — not "explore until you die."
 
 ## Center of gravity
 
-The game you actually *play* is the **town** — writing the two protocols and
+The game you actually *play* is the **town** — writing the two Procedures and
 shaping the build. The dungeon is the **test bench**; the **journal/replay** is
 how you diagnose a wipe. The **deterministic, seeded simulation is load-bearing**:
 without it you can't reproduce a delve, diagnose it, or trust that a fix worked.
-(This is why `sim.ts`/`run.ts` stay pure; the seeded PRNG arrives with procedural
+(This is why `sim.ts`/`delve.ts` stay pure; the seeded PRNG arrives with procedural
 dungeons.)
 
 ## The shell (screens)
@@ -173,7 +174,7 @@ State/Maneuver, party, the first counter-mechanic wall — the "Hex Warden"), th
 **run-loop spine** (a fixed gauntlet — the forerunner of the dungeon), **save +
 resume** (offline catch-up was built, now being dropped — see pillar 3: no offline
 progress), a 3-track music director. These prove *mechanisms*. The
-**dungeon + exploration Protocol + town shell** are what turn them into the game
+**dungeon + exploration Procedure + town shell** are what turn them into the game
 above. Build them in tiny verified slices; never mistake a POC for the game.
 
 ## VISION vs ROADMAP
