@@ -1,12 +1,14 @@
-// Save / load + offline catch-up wiring.
+// Save / load wiring.
 //
 // localStorage persistence for the town roster (the editor's rows) AND the
-// current delve, stamped with a timestamp so that on the NEXT page load we can
-// fast-forward an in-progress delve by the elapsed wall-clock (offline progress).
+// current delve, stamped with a timestamp. There is no offline progress: an
+// in-progress delve resumes in real time exactly where it was saved (the timestamp
+// is just metadata for the slot-select screen's "x ago").
 //
-// This module owns all the time/storage I/O; the pure layers (sim.ts, delve.ts)
-// never see a clock. Loading is defensive: a stale-schema or corrupt blob is
-// ignored (start fresh), never throws — a bad save must not brick the game.
+// This module owns all the storage I/O; the pure layers (sim.ts, delve.ts) never
+// see a clock. Loading is defensive: a corrupt blob is ignored (start fresh) and a
+// stale-version blob keeps only its meta — never throws, a bad save must not brick
+// the game.
 
 import type { DelveState, DelveStatus } from './delve'
 import type { SkillId } from './sim'
@@ -113,7 +115,7 @@ export interface KVStore {
 export const SLOT_COUNT = 3
 const slotKey = (index: number): string => `${KEY}/slot/${index}`
 
-/** A peek at a slot for the slot-select screen — never runs offline catch-up. */
+/** A peek at a slot for the slot-select screen (no full load of the delve state). */
 export interface SlotInfo {
   index: number
   savedAt: number | null // null = empty slot
@@ -180,8 +182,8 @@ export function listSlots(store: KVStore = localStorage): SlotInfo[] {
 
 /**
  * One-shot migration: if slot 0 is empty and a legacy single-save blob exists,
- * move it into slot 0 *verbatim* (preserving its `savedAt`, so offline catch-up
- * still measures from the real moment of leaving) and drop the legacy key.
+ * move it into slot 0 *verbatim* (preserving its `savedAt`) and drop the legacy
+ * key.
  */
 export function importLegacy(store: KVStore = localStorage): void {
   if (loadSlot(0, store) !== null) return // slot 0 already in use — don't clobber

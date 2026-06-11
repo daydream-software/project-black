@@ -141,7 +141,8 @@ let lastDelveLog: DelveState['log'] = []
 
 /** When the current delve has just cleared, apply it to the meta: a FIRST clear
  *  adds the level and pays +1 Insight (a re-clear pays nothing). Called wherever a
- *  delve can reach 'cleared': the live ticker and offline catch-up on slot entry. */
+ *  delve can reach 'cleared': the live ticker, and on resuming a delve that was
+ *  already saved as cleared. */
 function maybeRecordClear(): void {
   if (delve !== null && delve.status === 'cleared' && delve.levelId) {
     const r = applyClear(clearedLevels, insight, delve.levelId)
@@ -287,9 +288,9 @@ function backToTown(): void {
   frame()
 }
 
-/** Persist the active slot, stamped with the current time (for offline catch-up).
- *  No-op on title/slots (no active profile) — a stray visibilitychange there
- *  must not write a blank slot. */
+/** Persist the active slot, stamped with the current time. No-op on title/slots
+ *  (no active profile) — a stray visibilitychange there must not write a blank
+ *  slot. */
 function saveNow(): void {
   if (activeSlot === null) return
   saveSlot(activeSlot, { roster, activeHero, exploration, clearedLevels, insight, unlocked, mode, delve })
@@ -367,7 +368,8 @@ function enterSlot(index: number): void {
 }
 
 /** Leave the game back to the slot picker — PAUSE, not abandon: the in-progress
- *  delve is saved as-is and resumes (with offline catch-up) on re-entry. */
+ *  delve is saved as-is and resumes in real time, exactly where it was, on
+ *  re-entry (time away never advances it). */
 function backToSlots(): void {
   saveNow() // persist current state into the slot BEFORE dropping activeSlot
   activeSlot = null
@@ -1137,7 +1139,8 @@ document.addEventListener('keydown', (e) => {
 })
 
 // Startup: no auto-resume. Surface any pre-9 single-save as slot 0, then show the
-// title — a profile loads (and an in-progress delve fast-forwards) on slot entry.
+// title — a profile loads, and an in-progress delve resumes in real time exactly
+// where it was, on slot entry.
 importLegacy()
 screen = 'title'
 renderScreens()
@@ -1209,7 +1212,7 @@ function tick(): void {
         renderRunBar() // surface "Back to town"
         saveNow() // persist the finished delve (+ any first-clear)
       } else if (now - lastSaveMs >= 1000) {
-        saveNow() // heartbeat: keep savedAt fresh so offline catch-up is accurate
+        saveNow() // periodic checkpoint: a crash/close mid-delve loses ~1s at most
         lastSaveMs = now
       }
     }
@@ -1224,9 +1227,9 @@ function tick(): void {
 }
 tickHandle = setTimeout(tick, EXPLORE_TICK_MS)
 
-// Persist immediately when the tab is hidden or unloaded — this stamps `savedAt`
-// at the moment of leaving, which is what offline catch-up measures from.
-// (visibilitychange/pagehide are reliable where beforeunload is not.)
+// Persist immediately when the tab is hidden or unloaded, so an in-progress delve
+// resumes exactly where it was left. (visibilitychange/pagehide are reliable where
+// beforeunload is not.)
 document.addEventListener('visibilitychange', () => {
   if (document.hidden) saveNow()
 })

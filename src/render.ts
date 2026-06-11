@@ -230,7 +230,9 @@ export function render(
   }
 
   // COMBAT — party on the left, the enemy group on the right. (Legacy: live fights
-  // now render through the delve corridor below; kept for completeness/tests.)
+  // now render through the delve corridor below. This branch is unreachable today —
+  // render() is only ever called with the enemy-less camp state — kept only as the
+  // reference layout for a possible standalone combat view.)
   ctx.font = `${Math.round(height * 0.033)}px system-ui, sans-serif`
   ctx.fillStyle = '#cfd6e0'
   ctx.fillText(`Round ${state.round + 1} · turn ${state.turn}`, 20, HUD_SAFE)
@@ -244,23 +246,6 @@ export function render(
   drawColumn(ctx, heroes, sprites.hero, margin, topY, gap, '#4fd1ff', SS)
   const slimeX = width - margin - sprites.slime.width * SS
   drawColumn(ctx, enemies, sprites.slime, slimeX, topY, gap, '#ff6b6b', SS)
-}
-
-/** Run-level HUD: which stage of the gauntlet we're on (top-right). */
-export function renderRunHud(ctx: CanvasRenderingContext2D, depth: number, total: number): void {
-  ctx.save()
-  ctx.textAlign = 'right'
-  ctx.textBaseline = 'top'
-  ctx.fillStyle = '#c78bff'
-  ctx.font = 'bold 15px system-ui, sans-serif'
-  ctx.fillText(`Stage ${depth + 1} / ${total}`, ctx.canvas.width - 16, HUD_SAFE)
-  ctx.restore()
-}
-
-/** Run-end banner, driven by the RUN status (not a single encounter's outcome). */
-export function renderRunEnd(ctx: CanvasRenderingContext2D, status: 'cleared' | 'dead'): void {
-  if (status === 'cleared') drawBanner(ctx, 'RUN CLEARED', 'Your program survived the gauntlet', '#9fe0a8')
-  else drawBanner(ctx, 'RUN OVER', 'Read the journal, fix your Procedures, run again', '#ff6b6b')
 }
 
 // ---------------------------------------------------------------------------
