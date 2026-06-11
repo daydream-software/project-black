@@ -16,6 +16,37 @@ body {
   color: #e6e9ef;
 }
 
+/* Themed scrollbars — the default light bar is jarring on the dark UI. */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: #2c3242 transparent;
+}
+
+*::-webkit-scrollbar {
+  width: 11px;
+  height: 11px;
+}
+
+*::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+*::-webkit-scrollbar-thumb {
+  background: #2c3242;
+  border-radius: 7px;
+  border: 3px solid transparent;
+  background-clip: padding-box;
+}
+
+*::-webkit-scrollbar-thumb:hover {
+  background: #3a5566;
+  background-clip: padding-box;
+}
+
+*::-webkit-scrollbar-corner {
+  background: transparent;
+}
+
 /* --- Integrated shell: full-bleed world (canvas) + floating UI overlay -------
    The canvas fills the viewport; #ui-overlay sits on top, click-through, so the
    world receives clicks except where a panel re-enables pointer-events. */
@@ -107,16 +138,164 @@ body {
   border-color: #9bdcff;
 }
 
-/* Docked work panel (U1 transitional — becomes a building modal in U2). */
-.dock {
+/* --- Buildings: entry buttons (bottom-centre) + full-screen modals ----------- */
+.buildings {
   position: absolute;
-  top: 70px;
-  right: 16px;
-  bottom: 16px;
-  width: 460px;
-  max-width: calc(100vw - 32px);
-  padding: 14px 16px;
+  left: 50%;
+  bottom: 18px;
+  transform: translateX(-50%);
+  display: flex;
+  gap: 10px;
+  pointer-events: none; /* the row is click-through; the buttons opt back in */
+}
+
+.building-btn {
+  pointer-events: auto;
+  background: rgba(18, 18, 28, 0.82);
+  color: #cfd6e0;
+  border: 1px solid #2c2c40;
+  border-radius: 10px;
+  backdrop-filter: blur(6px);
+  box-shadow: 0 8px 28px rgba(0, 0, 0, 0.45);
+  padding: 11px 18px;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: border-color 0.1s, color 0.1s, background 0.1s;
+}
+
+.building-btn:hover {
+  border-color: #4fd1ff;
+  color: #e6e9ef;
+}
+
+/* A building modal: a dim backdrop over the world + a centred work panel. */
+.modal {
+  position: absolute;
+  inset: 0;
+  z-index: 50;
+  pointer-events: auto;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 32px;
+  background: rgba(6, 6, 12, 0.62);
+  backdrop-filter: blur(2px);
+}
+
+.modal[hidden] {
+  display: none;
+}
+
+.modal-panel {
+  width: 100%;
+  max-width: 760px;
+  max-height: calc(100vh - 64px);
+  display: flex;
+  flex-direction: column;
+  padding: 0;
+  overflow: hidden;
+}
+
+.modal-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 16px 20px;
+  border-bottom: 1px solid #26263a;
+}
+
+.modal-head h2 {
+  margin: 0;
+  font-size: 18px;
+  font-weight: 700;
+  color: #e6e9ef;
+}
+
+.modal-head .sub {
+  font-weight: 400;
+  font-size: 12px;
+  color: #62687a;
+  margin-left: 8px;
+}
+
+.modal-close {
+  flex: none;
+  background: #14141f;
+  color: #8b90a0;
+  border: 1px solid #2c2c40;
+  border-radius: 8px;
+  width: 34px;
+  height: 34px;
+  font-size: 15px;
+  cursor: pointer;
+  transition: border-color 0.1s, color 0.1s;
+}
+
+.modal-close:hover {
+  border-color: #ff6b6b;
+  color: #ff6b6b;
+}
+
+.modal-body {
+  padding: 16px 20px 20px;
   overflow-y: auto;
+}
+
+.modal-body h3 {
+  font-size: 14px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: #8b90a0;
+  margin: 18px 0 8px;
+}
+
+.modal-body h3:first-child {
+  margin-top: 0;
+}
+
+.modal-body h3 .sub {
+  text-transform: none;
+  letter-spacing: 0;
+  font-weight: 400;
+  font-size: 11px;
+  color: #62687a;
+}
+
+/* Floating panel (the Journal): movable + resizable, NO backdrop — the world
+   stays visible and interactive behind it. */
+.float-panel {
+  position: absolute;
+  top: 84px;
+  right: 16px;
+  z-index: 50;
+  width: 440px;
+  height: 62vh;
+  min-width: 300px;
+  min-height: 220px;
+  max-width: 92vw;
+  max-height: 86vh;
+  display: flex;
+  flex-direction: column;
+  padding: 0;
+  overflow: hidden;
+  resize: both; /* drag the bottom-right corner to resize */
+}
+
+.float-panel[hidden] {
+  display: none;
+}
+
+.float-panel .modal-body {
+  flex: 1;
+  min-height: 0; /* let the body scroll instead of growing the panel */
+}
+
+.float-drag {
+  cursor: move;
+  user-select: none;
 }
 
 .wordmark {
@@ -202,26 +381,6 @@ canvas {
 .run-hint {
   color: #62687a;
   font-size: 12px;
-}
-
-.dock h2 {
-  font-size: 14px;
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
-  color: #8b90a0;
-  margin: 16px 0 8px;
-}
-
-.dock h2:first-child {
-  margin-top: 0;
-}
-
-.dock h2 .sub {
-  text-transform: none;
-  letter-spacing: 0;
-  font-weight: 400;
-  font-size: 11px;
-  color: #62687a;
 }
 
 .tabs {
@@ -746,39 +905,7 @@ canvas {
   display: none;
 }
 
-/* --- Stations: Planning / Trainer switcher + the Trainer shop (slice 10b-3) - */
-.station-switcher {
-  display: flex;
-  gap: 6px;
-  margin-bottom: 12px;
-}
-
-.station-switcher:empty {
-  display: none;
-}
-
-.station-btn {
-  background: #14141f;
-  color: #8b90a0;
-  border: 1px solid #26263a;
-  border-radius: 6px;
-  padding: 7px 14px;
-  font-size: 13px;
-  font-weight: 600;
-  cursor: pointer;
-  transition: border-color 0.1s, color 0.1s, background 0.1s;
-}
-
-.station-btn:hover {
-  border-color: #2f4a5a;
-}
-
-.station-btn.active {
-  border-color: #4fd1ff;
-  color: #e6e9ef;
-  background: #15202b;
-}
-
+/* --- The Library shop (vocabulary unlocks) ---------------------------------- */
 .trainer-item {
   display: flex;
   align-items: flex-start;

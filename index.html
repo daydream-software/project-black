@@ -41,31 +41,63 @@
           </div>
         </header>
 
+        <!-- Buildings you enter (bottom-centre). Each opens a full-screen modal;
+             in U3 these graduate to clickable buildings in the town scene. -->
+        <nav id="buildings" class="buildings">
+          <button id="open-workshop" class="building-btn" title="Inscribe your golems' cores">⚙ The Workshop</button>
+          <button id="open-library" class="building-btn" title="Spend Insight to study new vocabulary">📖 The Library</button>
+          <button id="open-journal" class="building-btn" title="Read the party's decisions">📜 Journal</button>
+        </nav>
+
         <!-- World-anchored actions (bottom-left): pick a level, descend / return. -->
         <div id="world-controls" class="world-controls">
           <div id="level-select" class="level-select"></div>
           <div id="run-bar" class="run-bar"></div>
         </div>
 
-        <!-- Docked work panel (U1 transitional — modalized into buildings in U2). -->
-        <aside id="dock" class="dock panel">
-          <div id="station-switcher" class="station-switcher"></div>
-          <div id="station-planning">
-            <h2>Procedure <span class="sub">per unit · priority: top → bottom</span></h2>
-            <div id="hero-tabs" class="tabs"></div>
-            <ul id="editor"></ul>
-            <button id="add-protocol">+ Add protocol</button>
-            <h2>Protocol <span class="sub">exploration · party · priority: top → bottom</span></h2>
-            <ul id="ex-editor"></ul>
-            <button id="ex-add">+ Add protocol</button>
-            <h2>Decision log</h2>
+        <!-- The Workshop — author both brains (full-screen modal, closed by default). -->
+        <div id="modal-workshop" class="modal" hidden>
+          <div class="modal-panel panel">
+            <header class="modal-head">
+              <h2>The Workshop <span class="sub">inscribe your golems' cores</span></h2>
+              <button class="modal-close" data-close-modal title="Back to the world">✕</button>
+            </header>
+            <div class="modal-body">
+              <h3>Procedure <span class="sub">per unit · priority: top → bottom</span></h3>
+              <div id="hero-tabs" class="tabs"></div>
+              <ul id="editor"></ul>
+              <button id="add-protocol">+ Add protocol</button>
+              <h3>Protocol <span class="sub">exploration · party · priority: top → bottom</span></h3>
+              <ul id="ex-editor"></ul>
+              <button id="ex-add">+ Add protocol</button>
+            </div>
+          </div>
+        </div>
+
+        <!-- The Library — spend Insight to study vocabulary (full-screen modal). -->
+        <div id="modal-library" class="modal" hidden>
+          <div class="modal-panel panel">
+            <header class="modal-head">
+              <h2>The Library <span class="sub">spend Insight to study new vocabulary</span></h2>
+              <button class="modal-close" data-close-modal title="Back to the world">✕</button>
+            </header>
+            <div class="modal-body">
+              <div id="trainer-list"></div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Journal — a floating, draggable, resizable panel (NOT a blocking modal):
+             you read it alongside the delve, which stays visible behind it. -->
+        <div id="modal-journal" class="float-panel panel" hidden>
+          <header class="modal-head float-drag">
+            <h2>Journal <span class="sub">drag to move · resize from a corner</span></h2>
+            <button class="modal-close" data-close-modal title="Close the journal">✕</button>
+          </header>
+          <div class="modal-body">
             <div id="log"></div>
           </div>
-          <div id="station-trainer" hidden>
-            <h2>Trainer <span class="sub">spend Insight to learn new vocabulary</span></h2>
-            <div id="trainer-list"></div>
-          </div>
-        </aside>
+        </div>
       </div>
     </main>
     <script type="module" src="/src/main.ts"></script>

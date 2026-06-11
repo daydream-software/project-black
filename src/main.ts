@@ -128,8 +128,13 @@ let insight = 0
 let unlocked: string[] = []
 // Which level the next Descend launches (town-only choice; defaults to the first).
 let selectedLevelId: string = LEVELS[0].id
-// Which Town station is showing: Planning (the editors) or Trainer (the shop).
-let station: 'planning' | 'trainer' = 'planning'
+// Which building modal is open over the world (null = just the world). Transient
+// UI state — never persisted.
+type Building = 'workshop' | 'library' | 'journal'
+let openBuilding: Building | null = null
+// The last finished delve's journal, kept readable in town so the loop "wipe →
+// read the journal → reprogram" works while you author. Transient (not saved).
+let lastDelveLog: DelveState['log'] = []
 
 /** When the current delve has just cleared, apply it to the meta: a FIRST clear
  *  adds the level and pays +1 Insight (a re-clear pays nothing). Called wherever a
@@ -185,9 +190,12 @@ const exAddBtn = requireElement('ex-add', HTMLButtonElement)
 const logEl = requireElement('log', HTMLDivElement)
 const musicBtn = requireElement('music-toggle', HTMLButtonElement)
 const insightEl = requireElement('insight', HTMLSpanElement)
-const switcherEl = requireElement('station-switcher', HTMLDivElement)
-const planningEl = requireElement('station-planning', HTMLDivElement)
-const trainerEl = requireElement('station-trainer', HTMLDivElement)
+const openWorkshopBtn = requireElement('open-workshop', HTMLButtonElement)
+const openLibraryBtn = requireElement('open-library', HTMLButtonElement)
+const openJournalBtn = requireElement('open-journal', HTMLButtonElement)
+const modalWorkshopEl = requireElement('modal-workshop', HTMLDivElement)
+const modalLibraryEl = requireElement('modal-library', HTMLDivElement)
+const modalJournalEl = requireElement('modal-journal', HTMLDivElement)
 const trainerListEl = requireElement('trainer-list', HTMLDivElement)
 const screenTitleEl = requireElement('screen-title', HTMLDivElement)
 const screenSlotsEl = requireElement('screen-slots', HTMLDivElement)
@@ -253,6 +261,7 @@ function newSeed(): number {
 }
 
 function descend(): void {
+  lastDelveLog = [] // a fresh run — the previous journal no longer applies
   delve = startDelve(party(), newSeed(), explorationProtocol(), levelById(selectedLevelId))
   mode = 'delve'
   saveNow()
@@ -260,11 +269,12 @@ function descend(): void {
   renderLevelSelect() // hide the picker during the delve
   renderEditor() // re-render so inputs pick up the locked state
   renderExEditor()
-  renderStation() // a delve forces the Planning view (watch the journal)
+  setBuilding(null) // close any modal so the delve world is in view
   frame()
 }
 
 function backToTown(): void {
+  if (delve !== null) lastDelveLog = delve.log // keep the run's journal readable in town
   delve = null
   mode = 'camp'
   saveNow()
@@ -272,7 +282,7 @@ function backToTown(): void {
   renderLevelSelect() // show the picker again, with refreshed cleared badges
   renderEditor()
   renderExEditor()
-  renderStation()
+  setBuilding(null) // back in town, world in view; building entries re-enabled
   frame()
 }
 
@@ -302,7 +312,9 @@ function enterGame(): void {
   renderTabs()
   renderEditor()
   renderExEditor()
-  renderStation()
+  openBuilding = null // enter on the world, no modal open
+  lastDelveLog = [] // don't carry a previous profile's journal into this slot
+  renderModals()
   frame()
 }
 
@@ -766,30 +778,74 @@ function renderLevelSelect(): void {
   }
 }
 
-// --- Town stations: Planning (editors) ↔ Trainer (shop) ---------------------
+// --- Buildings: full-screen modals over the world (Workshop / Library / Journal) --
 
-/** Show the right-column station. A delve forces Planning (so the journal shows);
- *  the switcher is town-only. */
-function renderStation(): void {
-  const effective: 'planning' | 'trainer' = mode === 'camp' ? station : 'planning'
-  planningEl.hidden = effective !== 'planning'
-  trainerEl.hidden = effective !== 'trainer'
+/** Open a building's modal (or close all when null). The Workshop & Library are
+ *  town activities (you author/shop between delves); the Journal is always
+ *  reachable — including from a wipe, the whole reprogram loop depends on it. */
+function setBuilding(b: Building | null): void {
+  openBuilding = b
+  renderModals()
+}
 
-  switcherEl.replaceChildren()
-  if (mode === 'camp') {
-    for (const s of ['planning', 'trainer'] as const) {
-      const btn = document.createElement('button')
-      btn.className = s === effective ? 'station-btn active' : 'station-btn'
-      btn.textContent = s === 'planning' ? 'Planning' : 'Trainer'
-      btn.addEventListener('click', () => {
-        station = s
-        renderStation()
-      })
-      switcherEl.append(btn)
+/** Reflect `openBuilding` into the DOM + refresh the open building's contents.
+ *  Workshop/Library entry is town-only; the Journal button is always available. */
+function renderModals(): void {
+  modalWorkshopEl.hidden = openBuilding !== 'workshop'
+  modalLibraryEl.hidden = openBuilding !== 'library'
+  modalJournalEl.hidden = openBuilding !== 'journal'
+
+  // Workshop & Library are between-delve activities; hide their entries mid-delve.
+  const inTown = mode === 'camp'
+  openWorkshopBtn.hidden = !inTown
+  openLibraryBtn.hidden = !inTown
+
+  if (openBuilding === 'library') renderTrainer()
+  if (openBuilding === 'journal') renderLog()
+}
+
+/** Make a floating panel draggable by `handle`, clamped to the viewport. Resizing
+ *  is handled by CSS (`resize: both`). Used for the Journal so it never blocks the
+ *  delve you're watching. */
+function makeDraggable(panel: HTMLElement, handle: HTMLElement | null): void {
+  if (handle === null) return
+  let ox = 0
+  let oy = 0
+  let sx = 0
+  let sy = 0
+  let dragging = false
+  handle.addEventListener('pointerdown', (e) => {
+    if (e.target instanceof HTMLElement && e.target.closest('[data-close-modal]')) return // the ✕ isn't a drag
+    dragging = true
+    const r = panel.getBoundingClientRect()
+    ox = r.left
+    oy = r.top
+    sx = e.clientX
+    sy = e.clientY
+    // switch from right/bottom anchoring to explicit left/top before we move it
+    panel.style.left = `${ox}px`
+    panel.style.top = `${oy}px`
+    panel.style.right = 'auto'
+    panel.style.bottom = 'auto'
+    handle.setPointerCapture(e.pointerId)
+  })
+  handle.addEventListener('pointermove', (e) => {
+    if (!dragging) return
+    const nx = Math.max(0, Math.min(ox + (e.clientX - sx), window.innerWidth - panel.offsetWidth))
+    const ny = Math.max(0, Math.min(oy + (e.clientY - sy), window.innerHeight - panel.offsetHeight))
+    panel.style.left = `${nx}px`
+    panel.style.top = `${ny}px`
+  })
+  const end = (e: PointerEvent): void => {
+    dragging = false
+    try {
+      handle.releasePointerCapture(e.pointerId)
+    } catch {
+      /* pointer already released */
     }
   }
-
-  if (effective === 'trainer') renderTrainer()
+  handle.addEventListener('pointerup', end)
+  handle.addEventListener('pointercancel', end)
 }
 
 /** The Trainer shop: each unlockable as name · description · cost / Learn / owned. */
@@ -949,7 +1005,7 @@ function renderExEditor(): void {
 const LOG_CLASS: Record<string, string> = { explore: 'defend', enter: 'flee', combat: 'attack', clear: 'heal', end: 'counter' }
 
 function renderLog(): void {
-  const entries = (delve?.log ?? []).slice(-14).reverse()
+  const entries = (delve?.log ?? lastDelveLog).slice(-14).reverse()
   logEl.innerHTML = entries
     .map(
       (e) =>
@@ -1028,6 +1084,29 @@ exAddBtn.addEventListener('click', () => {
 playBtn.addEventListener('click', goToSlots)
 slotsBackBtn.addEventListener('click', goToTitle)
 toSlotsBtn.addEventListener('click', backToSlots)
+
+// Building entries open their full-screen modal over the world.
+openWorkshopBtn.addEventListener('click', () => setBuilding('workshop'))
+openLibraryBtn.addEventListener('click', () => setBuilding('library'))
+openJournalBtn.addEventListener('click', () => setBuilding('journal'))
+
+// Workshop & Library are blocking modals: the dim backdrop or the ✕ closes them.
+for (const modal of [modalWorkshopEl, modalLibraryEl]) {
+  modal.addEventListener('click', (e) => {
+    const t = e.target
+    if (t === modal || (t instanceof HTMLElement && t.closest('[data-close-modal]'))) setBuilding(null)
+  })
+}
+// The Journal is a floating panel (no backdrop): only its ✕ closes it; it's drag-
+// gable by its header and resizable from the corner (CSS). The world stays visible.
+modalJournalEl.addEventListener('click', (e) => {
+  if (e.target instanceof HTMLElement && e.target.closest('[data-close-modal]')) setBuilding(null)
+})
+makeDraggable(modalJournalEl, modalJournalEl.querySelector('.float-drag'))
+
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape' && openBuilding !== null) setBuilding(null)
+})
 
 // Startup: no auto-resume. Surface any pre-9 single-save as slot 0, then show the
 // title — a profile loads (and an in-progress delve fast-forwards) on slot entry.
