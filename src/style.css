@@ -71,15 +71,40 @@ body {
   bottom: 16px;
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: 10px;
   max-width: 60vw;
 }
 
 /* The overlay is click-through; re-enable interaction on the actual controls
-   (not the wrappers) so empty space still passes clicks to the world. */
+   (not the wrappers) so empty space still passes clicks to the world. The launch
+   bar gets a panel backdrop so the primary action reads against the dark world. */
 .world-controls .level-select,
 .world-controls .run-bar {
   pointer-events: auto;
+}
+
+.world-controls .run-bar {
+  background: rgba(18, 18, 28, 0.82);
+  border: 1px solid #26263a;
+  border-radius: 10px;
+  backdrop-filter: blur(6px);
+  box-shadow: 0 8px 28px rgba(0, 0, 0, 0.45);
+  padding: 10px 14px;
+}
+
+/* Descend is THE primary action — a bright, filled, unmissable button. */
+.run-launch {
+  background: #2f9bdb;
+  color: #06121b;
+  border: 1px solid #6fc8ff;
+  font-size: 15px;
+  padding: 10px 22px;
+  box-shadow: 0 0 0 1px rgba(111, 200, 255, 0.25), 0 6px 18px rgba(47, 155, 219, 0.35);
+}
+
+.run-launch:hover {
+  background: #4bb0ee;
+  border-color: #9bdcff;
 }
 
 /* Docked work panel (U1 transitional — becomes a building modal in U2). */
