@@ -1,11 +1,14 @@
 // Pure view layer: draws the current GameState onto the canvas. It reads state,
 // it never mutates it. All game logic lives in sim.ts.
 //
-// The canvas buffer is sized to the window (responsive viewport — see main.ts),
-// so every size/position here is derived from `ctx.canvas.width/height` rather
-// than a fixed magic number: the scene fills any window without bars, crop or
-// distortion. Coordinates are CSS pixels (the buffer is the CSS size), so the
-// HUD safe-zone below is a fixed pixel offset matching the floating DOM HUD.
+// The canvas fills the window (responsive viewport — see main.ts), so every
+// size/position here is derived from the canvas's CSS size rather than a fixed
+// magic number: the scene fills any window without bars, crop or distortion. We
+// draw in **CSS pixels** — main.ts scales the backing store by devicePixelRatio
+// and applies a matching transform, so all coordinates here stay CSS px (and the
+// HUD safe-zone below is a fixed offset matching the floating DOM HUD). Read the
+// drawing size via `cssSize()`, NOT `ctx.canvas.width/height` (that's the larger,
+// device-pixel backing store).
 
 import type { Combatant, GameState } from './sim'
 import { DX, DY, roomAt, type Dir } from './dungeon'
@@ -13,6 +16,12 @@ import type { DelveState } from './delve'
 import { buildingRects, type BuildingId, type BuildingRect } from './buildings'
 
 const HUD_SAFE = 72 // px reserved at the top for the floating HUD bar (DOM)
+
+/** The canvas's CSS size — the coordinate space we draw in (the backing store is
+ *  devicePixelRatio× larger; the transform set in main.ts bridges the two). */
+function cssSize(ctx: CanvasRenderingContext2D): { width: number; height: number } {
+  return { width: ctx.canvas.clientWidth, height: ctx.canvas.clientHeight }
+}
 
 // Sprite block scale derived from canvas height, so units keep their on-screen
 // proportion at any window size (integer keeps the pixel art crisp).
@@ -108,7 +117,7 @@ function drawColumn(
 }
 
 function drawBanner(ctx: CanvasRenderingContext2D, title: string, subtitle: string, colour: string): void {
-  const { width, height } = ctx.canvas
+  const { width, height } = cssSize(ctx)
   ctx.fillStyle = 'rgba(10, 10, 16, 0.72)'
   ctx.fillRect(0, 0, width, height)
   ctx.textAlign = 'center'
@@ -190,7 +199,7 @@ export function render(
   sprites: Sprites,
   hovered: BuildingId | null = null,
 ): void {
-  const { width, height } = ctx.canvas
+  const { width, height } = cssSize(ctx)
   const groundH = Math.round(height * 0.17)
   const SS = unitScale(height)
 
@@ -230,7 +239,9 @@ export function render(
   }
 
   // COMBAT — party on the left, the enemy group on the right. (Legacy: live fights
-  // now render through the delve corridor below; kept for completeness/tests.)
+  // now render through the delve corridor below. This branch is unreachable today —
+  // render() is only ever called with the enemy-less camp state — kept only as the
+  // reference layout for a possible standalone combat view.)
   ctx.font = `${Math.round(height * 0.033)}px system-ui, sans-serif`
   ctx.fillStyle = '#cfd6e0'
   ctx.fillText(`Round ${state.round + 1} · turn ${state.turn}`, 20, HUD_SAFE)
@@ -244,23 +255,6 @@ export function render(
   drawColumn(ctx, heroes, sprites.hero, margin, topY, gap, '#4fd1ff', SS)
   const slimeX = width - margin - sprites.slime.width * SS
   drawColumn(ctx, enemies, sprites.slime, slimeX, topY, gap, '#ff6b6b', SS)
-}
-
-/** Run-level HUD: which stage of the gauntlet we're on (top-right). */
-export function renderRunHud(ctx: CanvasRenderingContext2D, depth: number, total: number): void {
-  ctx.save()
-  ctx.textAlign = 'right'
-  ctx.textBaseline = 'top'
-  ctx.fillStyle = '#c78bff'
-  ctx.font = 'bold 15px system-ui, sans-serif'
-  ctx.fillText(`Stage ${depth + 1} / ${total}`, ctx.canvas.width - 16, HUD_SAFE)
-  ctx.restore()
-}
-
-/** Run-end banner, driven by the RUN status (not a single encounter's outcome). */
-export function renderRunEnd(ctx: CanvasRenderingContext2D, status: 'cleared' | 'dead'): void {
-  if (status === 'cleared') drawBanner(ctx, 'RUN CLEARED', 'Your program survived the gauntlet', '#9fe0a8')
-  else drawBanner(ctx, 'RUN OVER', 'Read the journal, fix your Procedures, run again', '#ff6b6b')
 }
 
 // ---------------------------------------------------------------------------
@@ -277,7 +271,7 @@ function neighbourCell(d: DelveState['dungeon'], cell: number, dir: Dir): number
 }
 
 export function renderDelve(ctx: CanvasRenderingContext2D, delve: DelveState, sprites: Sprites): void {
-  const { width, height } = ctx.canvas
+  const { width, height } = cssSize(ctx)
   ctx.fillStyle = '#0e0e16'
   ctx.fillRect(0, 0, width, height)
 
@@ -301,7 +295,7 @@ function poly(ctx: CanvasRenderingContext2D, pts: number[], fill: string): void 
 // First-person "scrying" view: a perspective corridor with the party seen from
 // behind in the foreground (Nevergrind-style over-the-shoulder framing).
 function drawDungeonView(ctx: CanvasRenderingContext2D, delve: DelveState, sprites: Sprites): void {
-  const { width, height } = ctx.canvas
+  const { width, height } = cssSize(ctx)
   const SS = unitScale(height)
   const d = delve.dungeon
   const fwd = delve.facing
@@ -430,10 +424,11 @@ function drawDungeonView(ctx: CanvasRenderingContext2D, delve: DelveState, sprit
 
 function drawMinimap(ctx: CanvasRenderingContext2D, delve: DelveState): void {
   const d = delve.dungeon
-  const cs = Math.max(4, Math.round(ctx.canvas.height / 90))
+  const { width, height } = cssSize(ctx)
+  const cs = Math.max(4, Math.round(height / 90))
   const mw = d.width * cs
   const mh = d.height * cs
-  const x0 = ctx.canvas.width - mw - 14
+  const x0 = width - mw - 14
   const y0 = HUD_SAFE // clear the floating HUD bar at the top
   ctx.fillStyle = '#000000'
   ctx.fillRect(x0 - 2, y0 - 2, mw + 4, mh + 4)

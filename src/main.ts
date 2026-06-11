@@ -1,16 +1,6 @@
 import './style.css'
-import {
-  makeWarrior,
-  makeHealer,
-  type Combatant,
-  type GameState,
-  type Procedure,
-  type Protocol,
-  type State,
-  type Maneuver,
-  type SkillId,
-} from './sim'
-import { startDelve, stepDelve, type DelveState, type ExProtocol } from './delve'
+import { makeWarrior, makeHealer, type Combatant, type GameState } from './sim'
+import { startDelve, stepDelve, type DelveState, type ExProcedure } from './delve'
 import { LEVELS, applyClear, levelById, hasCleared } from './levels'
 import { UNLOCKABLES, buy, isOwned, canAfford } from './shop'
 import { toggleMusic, setMusicState, type TrackId } from './music'
@@ -18,12 +8,14 @@ import { setSfxEnabled, playSfx, type SfxId } from './sfx'
 import {
   saveSlot,
   loadSlot,
+  salvageMeta,
   listSlots,
   deleteSlot,
   importLegacy,
   type Hero,
   type ProtocolRow,
   type ExProtocolRow,
+  type SalvagedMeta,
   type SlotInfo,
 } from './save'
 import { makeHero, makeHeroBack, makeSlime } from './sprites'
@@ -31,61 +23,19 @@ import { render, renderDelve } from './render'
 import { buildingAt, type BuildingId } from './buildings'
 import { requireElement, require2dContext } from './dom'
 import {
-  byId,
   available,
   buildExploration,
+  procedureFor,
+  commandById,
+  SUBJECTS,
+  PREDICATES,
+  COMMANDS,
+  SKILLS,
   EX_SUBJECTS,
   EX_PREDICATES,
   EX_MOVES,
   DEFAULT_EX_ROWS,
-  type Option,
 } from './protocol'
-
-// --- Rule catalog: the composed vocabulary the player picks from. -----------
-// A Protocol is built from four dropdowns: Subject + Predicate (the State) and
-// Command + Object (the Maneuver). The Object dropdown only shows for "Use Skill".
-// The pure row→model compiler (+ the exploration catalogs) lives in protocol.ts.
-
-const SUBJECTS: Option<State['subject']>[] = [
-  { id: 'self', label: 'Self', make: () => ({ who: 'self' }) },
-  { id: 'ally_any', label: 'Ally · any', make: () => ({ who: 'ally', pick: 'first' }) },
-  { id: 'ally_low', label: 'Ally · low HP', make: () => ({ who: 'ally', pick: 'lowestHp' }) },
-  { id: 'enemy_near', label: 'Enemy · near', make: () => ({ who: 'enemy', pick: 'first' }) },
-  { id: 'enemy_low', label: 'Enemy · low HP', make: () => ({ who: 'enemy', pick: 'lowestHp' }) },
-  // Locked until learned at the Trainer (slice 10b): focus-fire the biggest threat.
-  { id: 'enemy_high', label: 'Enemy · most HP', make: () => ({ who: 'enemy', pick: 'highestHp' }), unlock: 'enemy-most-hp' },
-]
-
-const PREDICATES: Option<State['predicate']>[] = [
-  { id: 'always', label: 'Always', make: () => ({ p: 'always' }) },
-  { id: 'hp_lt_30', label: 'HP < 30%', make: () => ({ p: 'hpPctBelow', value: 30 }) },
-  { id: 'hp_lt_50', label: 'HP < 50%', make: () => ({ p: 'hpPctBelow', value: 50 }) },
-  { id: 'hp_full', label: 'HP = 100%', make: () => ({ p: 'hpFull' }) },
-]
-
-// Commands. "useSkill" carries an Object (a skill); "attack"/"flee" do not.
-// "useItem" exists in the model but waits on an item system, so it is omitted here.
-const COMMANDS: { id: 'attack' | 'useSkill' | 'flee'; label: string; hasObject: boolean }[] = [
-  { id: 'attack', label: 'Attack', hasObject: false },
-  { id: 'useSkill', label: 'Use Skill', hasObject: true },
-  { id: 'flee', label: 'Flee', hasObject: false },
-]
-
-const SKILLS: { id: SkillId; label: string }[] = [
-  { id: 'cure', label: 'Cure' },
-  { id: 'defend', label: 'Defend' },
-]
-
-function commandById(id: string): (typeof COMMANDS)[number] {
-  const found = COMMANDS.find((c) => c.id === id)
-  if (found === undefined) throw new Error(`Unknown command: ${id}`)
-  return found
-}
-
-function skillLabel(id: SkillId): string {
-  const found = SKILLS.find((s) => s.id === id)
-  return found?.label ?? id
-}
 
 // --- Editor state: per-hero rule lists (priority = order). ------------------
 // ProtocolRow / Hero are defined in save.ts (they're the persisted schema).
@@ -116,8 +66,9 @@ function freshRoster(): Hero[] {
 let roster: Hero[] = freshRoster()
 let activeHero = 0
 
-// The party-wide exploration Protocol rows (priority = order). `let` so a loaded
-// save can replace it; the defaults (protocol.ts) compile to DEFAULT_EXPLORATION.
+// The party-wide exploration Procedure's rows — one Protocol each, priority =
+// order. `let` so a loaded save can replace it; the defaults (protocol.ts) compile
+// to DEFAULT_EXPLORATION.
 let exploration: ExProtocolRow[] = DEFAULT_EX_ROWS.map((r) => ({ ...r }))
 
 // Profile meta (persisted per slot, survives a wipe): levels first-cleared, and
@@ -141,7 +92,8 @@ let lastDelveLog: DelveState['log'] = []
 
 /** When the current delve has just cleared, apply it to the meta: a FIRST clear
  *  adds the level and pays +1 Insight (a re-clear pays nothing). Called wherever a
- *  delve can reach 'cleared': the live ticker and offline catch-up on slot entry. */
+ *  delve can reach 'cleared': the live ticker, and on resuming a delve that was
+ *  already saved as cleared. */
 function maybeRecordClear(): void {
   if (delve !== null && delve.status === 'cleared' && delve.levelId) {
     const r = applyClear(clearedLevels, insight, delve.levelId)
@@ -150,35 +102,12 @@ function maybeRecordClear(): void {
   }
 }
 
-/** The live exploration Protocol fed to a delve (enabled rows, in priority order). */
-function explorationProtocol(): ExProtocol {
+/** The live exploration Procedure fed to a delve (enabled rows compiled to
+ *  Protocols, in priority order). */
+function explorationProcedure(): ExProcedure {
   return buildExploration(exploration)
 }
 
-function maneuverFor(row: ProtocolRow): Maneuver {
-  if (row.command === 'useSkill') return { command: 'useSkill', skill: row.skillId }
-  if (row.command === 'flee') return { command: 'flee' }
-  return { command: 'attack' }
-}
-
-function maneuverLabel(row: ProtocolRow): string {
-  if (row.command === 'useSkill') return `Use Skill · ${skillLabel(row.skillId)}`
-  return commandById(row.command).label
-}
-
-function rowToProtocol(row: ProtocolRow): Protocol {
-  const subject = byId(SUBJECTS, row.subjectId)
-  const pred = byId(PREDICATES, row.predId)
-  return {
-    state: { subject: subject.make(), predicate: pred.make() },
-    maneuver: maneuverFor(row),
-    label: `${subject.label} · ${pred.label} → ${maneuverLabel(row)}`,
-  }
-}
-
-function procedureFor(hero: Hero): Procedure {
-  return hero.rows.filter((r) => r.enabled).map(rowToProtocol)
-}
 
 // --- DOM + run wiring -------------------------------------------------------
 const canvas = requireElement('game', HTMLCanvasElement)
@@ -235,7 +164,13 @@ let enabledLis: HTMLLIElement[] = []
 const editingLocked = (): boolean => mode !== 'camp'
 
 function party(): Combatant[] {
-  return [makeWarrior(procedureFor(roster[0])), makeHealer(procedureFor(roster[1]))]
+  // The party is always Sentinel + Mender. Fall back to fresh heroes if a loaded
+  // roster is short a slot (a malformed save) — a missing entry must not crash the
+  // whole game on the first frame.
+  const fresh = freshRoster()
+  const sentinel = roster[0] ?? fresh[0]
+  const mender = roster[1] ?? fresh[1]
+  return [makeWarrior(procedureFor(sentinel)), makeHealer(procedureFor(mender))]
 }
 
 /** The town screen is just the party with no enemies (render shows "Camp"). */
@@ -263,7 +198,7 @@ function newSeed(): number {
 
 function descend(): void {
   lastDelveLog = [] // a fresh run — the previous journal no longer applies
-  delve = startDelve(party(), newSeed(), explorationProtocol(), levelById(selectedLevelId))
+  delve = startDelve(party(), newSeed(), explorationProcedure(), levelById(selectedLevelId))
   mode = 'delve'
   saveNow()
   renderRunBar()
@@ -287,9 +222,9 @@ function backToTown(): void {
   frame()
 }
 
-/** Persist the active slot, stamped with the current time (for offline catch-up).
- *  No-op on title/slots (no active profile) — a stray visibilitychange there
- *  must not write a blank slot. */
+/** Persist the active slot, stamped with the current time. No-op on title/slots
+ *  (no active profile) — a stray visibilitychange there must not write a blank
+ *  slot. */
 function saveNow(): void {
   if (activeSlot === null) return
   saveSlot(activeSlot, { roster, activeHero, exploration, clearedLevels, insight, unlocked, mode, delve })
@@ -319,14 +254,17 @@ function enterGame(): void {
   frame()
 }
 
-/** Start a brand-new profile in an empty slot. */
-function newGame(index: number): void {
+/** Start a brand-new profile in a slot. `carried` defaults to whatever meta we can
+ *  salvage from a blob already there — so a slot whose save-format we can no longer
+ *  load keeps its meta-progression (the run resets to fresh, but Insight / unlocks /
+ *  cleared levels survive). A genuinely empty slot salvages nothing → fresh. */
+function newGame(index: number, carried: SalvagedMeta | undefined = salvageMeta(index) ?? undefined): void {
   activeSlot = index
   roster = freshRoster()
   exploration = DEFAULT_EX_ROWS.map((r) => ({ ...r }))
-  clearedLevels = []
-  insight = 0
-  unlocked = []
+  clearedLevels = carried?.clearedLevels ?? []
+  insight = carried?.insight ?? 0
+  unlocked = carried?.unlocked ?? []
   activeHero = 0
   delve = null
   mode = 'camp'
@@ -342,6 +280,8 @@ function newGame(index: number): void {
 function enterSlot(index: number): void {
   const saved = loadSlot(index)
   if (saved === null) {
+    // A rejected blob (stale format / corrupt run state) still gives up its
+    // meta-progression — newGame salvages it so a format change never wipes unlocks.
     newGame(index)
     return
   }
@@ -367,7 +307,8 @@ function enterSlot(index: number): void {
 }
 
 /** Leave the game back to the slot picker — PAUSE, not abandon: the in-progress
- *  delve is saved as-is and resumes (with offline catch-up) on re-entry. */
+ *  delve is saved as-is and resumes in real time, exactly where it was, on
+ *  re-entry (time away never advances it). */
 function backToSlots(): void {
   saveNow() // persist current state into the slot BEFORE dropping activeSlot
   activeSlot = null
@@ -595,10 +536,10 @@ interface CardControls {
 }
 
 /**
- * A two-line rule card: the rule reads as a sentence ([✓] Subject · Predicate →
- * …) on the top line, with the priority + reorder/delete controls on a subtle
- * strip below. Shared by the combat Procedure and the exploration Protocol
- * editors, so the rule never has to fight the controls for horizontal space.
+ * A two-line Protocol card: the rule reads as a sentence ([✓] Subject · Predicate
+ * → …) on the top line, with the priority + reorder/delete controls on a subtle
+ * strip below. Shared by both Procedure editors (combat and exploration), so the
+ * rule never has to fight the controls for horizontal space.
  */
 function ruleCard(ruleEls: HTMLElement[], c: CardControls): HTMLLIElement {
   const li = document.createElement('li')
@@ -635,7 +576,8 @@ function ruleCard(ruleEls: HTMLElement[], c: CardControls): HTMLLIElement {
   return li
 }
 
-// One combat-Procedure row: Subject · Predicate → Command [· Object].
+// One row of the combat Procedure — a single Protocol: Subject · Predicate →
+// Command [· Object].
 function createRow(row: ProtocolRow, i: number): HTMLLIElement {
   const rows = roster[activeHero].rows
   const locked = editingLocked()
@@ -684,7 +626,11 @@ function createRow(row: ProtocolRow, i: number): HTMLLIElement {
     objSep.style.display = on ? '' : 'none'
     objSel.style.display = on ? '' : 'none'
   }
-  showObject(commandById(row.command).hasObject)
+  // Tolerant on a persisted command: a stale/absent id must not throw here (this
+  // runs during the editor render in enterGame, outside the tick try/catch — see
+  // the defensive compile path). An unknown command just hides the Object dropdown;
+  // makeSelect shows the raw id, and the compiler treats it as a plain attack.
+  showObject(COMMANDS.find((c) => c.id === row.command)?.hasObject ?? false)
 
   const cmdSel = makeSelect(
     COMMANDS.map((c) => ({ value: c.id, label: c.label })),
@@ -930,8 +876,9 @@ function renderEditor(): void {
   })
 }
 
-// One exploration-Protocol row: Subject · Predicate → Move. Party-wide (no hero
-// tabs); shares the two-line ruleCard with the combat editor.
+// One row of the exploration Procedure — a single Protocol: Subject · Predicate →
+// Move. Party-wide (no hero tabs); shares the two-line ruleCard with the combat
+// editor.
 function createExRow(row: ExProtocolRow, i: number): HTMLLIElement {
   const locked = editingLocked()
 
@@ -1032,17 +979,24 @@ function renderInsight(): void {
   insightEl.textContent = `✦ ${insight} Insight`
 }
 
-/** Responsive viewport: match the canvas buffer to its CSS box (the window), so
- *  the world fills any window with no bars, crop or distortion. The buffer is in
- *  CSS pixels (coords line up with the DOM overlay). No-op while hidden (size 0). */
+/** Responsive viewport: match the canvas backing store to its CSS box × the device
+ *  pixel ratio, so the world fills any window with no bars, crop or distortion AND
+ *  stays crisp on HiDPI displays. A transform maps drawing coords back to CSS px,
+ *  so render.ts and hit-testing keep working in CSS px (the buffer is dpr× larger).
+ *  dpr is capped so a 3–4× display doesn't allocate a huge buffer. No-op while
+ *  hidden (size 0). */
 function resizeCanvas(): void {
   const w = canvas.clientWidth
   const h = canvas.clientHeight
   if (w === 0 || h === 0) return
-  if (canvas.width !== w || canvas.height !== h) {
-    canvas.width = w
-    canvas.height = h
+  const dpr = Math.min(window.devicePixelRatio || 1, 3)
+  const bw = Math.round(w * dpr)
+  const bh = Math.round(h * dpr)
+  if (canvas.width !== bw || canvas.height !== bh) {
+    canvas.width = bw
+    canvas.height = bh
   }
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0) // draw in CSS px; backing store is device px
 }
 
 window.addEventListener('resize', () => {
@@ -1087,23 +1041,27 @@ toSlotsBtn.addEventListener('click', backToSlots)
 openJournalBtn.addEventListener('click', () => setBuilding('journal'))
 
 // The Workshop & Library are entered by clicking their buildings in the town scene.
-// Map a click in CSS pixels to canvas-space (buffer == CSS size, so ~1:1) and
-// hit-test the SAME rects the renderer draws. Town-only, and not while a modal is up.
+// Map a click to the renderer's CSS-pixel coordinate space (the backing store is
+// dpr× larger, but render.ts draws in CSS px), and hit-test the SAME rects the
+// renderer draws. Town-only, and not while a modal is up.
 function canvasPoint(e: MouseEvent): { x: number; y: number } {
   const rect = canvas.getBoundingClientRect()
   return {
-    x: ((e.clientX - rect.left) / rect.width) * canvas.width,
-    y: ((e.clientY - rect.top) / rect.height) * canvas.height,
+    x: ((e.clientX - rect.left) / rect.width) * canvas.clientWidth,
+    y: ((e.clientY - rect.top) / rect.height) * canvas.clientHeight,
   }
 }
 canvas.addEventListener('click', (e) => {
   if (mode !== 'camp' || openBuilding !== null) return
   const { x, y } = canvasPoint(e)
-  const b = buildingAt(x, y, canvas.width, canvas.height)
+  const b = buildingAt(x, y, canvas.clientWidth, canvas.clientHeight)
   if (b !== null) setBuilding(b)
 })
 canvas.addEventListener('mousemove', (e) => {
-  const over = mode === 'camp' && openBuilding === null ? buildingAt(canvasPoint(e).x, canvasPoint(e).y, canvas.width, canvas.height) : null
+  const over =
+    mode === 'camp' && openBuilding === null
+      ? buildingAt(canvasPoint(e).x, canvasPoint(e).y, canvas.clientWidth, canvas.clientHeight)
+      : null
   canvas.style.cursor = over !== null ? 'pointer' : 'default'
   if (over !== hoveredBuilding) {
     hoveredBuilding = over
@@ -1137,7 +1095,8 @@ document.addEventListener('keydown', (e) => {
 })
 
 // Startup: no auto-resume. Surface any pre-9 single-save as slot 0, then show the
-// title — a profile loads (and an in-progress delve fast-forwards) on slot entry.
+// title — a profile loads, and an in-progress delve resumes in real time exactly
+// where it was, on slot entry.
 importLegacy()
 screen = 'title'
 renderScreens()
@@ -1209,7 +1168,7 @@ function tick(): void {
         renderRunBar() // surface "Back to town"
         saveNow() // persist the finished delve (+ any first-clear)
       } else if (now - lastSaveMs >= 1000) {
-        saveNow() // heartbeat: keep savedAt fresh so offline catch-up is accurate
+        saveNow() // periodic checkpoint: a crash/close mid-delve loses ~1s at most
         lastSaveMs = now
       }
     }
@@ -1224,9 +1183,9 @@ function tick(): void {
 }
 tickHandle = setTimeout(tick, EXPLORE_TICK_MS)
 
-// Persist immediately when the tab is hidden or unloaded — this stamps `savedAt`
-// at the moment of leaving, which is what offline catch-up measures from.
-// (visibilitychange/pagehide are reliable where beforeunload is not.)
+// Persist immediately when the tab is hidden or unloaded, so an in-progress delve
+// resumes exactly where it was left. (visibilitychange/pagehide are reliable where
+// beforeunload is not.)
 document.addEventListener('visibilitychange', () => {
   if (document.hidden) saveNow()
 })

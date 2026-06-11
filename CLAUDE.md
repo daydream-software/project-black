@@ -5,8 +5,11 @@ Guidance for working in this repo. Keep it short — details live in `docs/`.
 ## What this is
 
 A web game where you don't steer adventurers — you **program** their brains, both
-how they **fight** (a combat **Procedure**) and how they **delve** (an exploration
-**Protocol**), in one `WHEN <State> → DO <X>` grammar. It's a **programmable, AFK,
+how they **fight** and how they **delve**, in one `WHEN <State> → DO <X>` grammar.
+Each is a **Procedure** — an ordered list of **Protocols** (one rule each); a
+combat Procedure per unit and one party-wide exploration Procedure. (Procedure =
+the list, Protocol = a single rule — a whole/part pair, *not* a combat/exploration
+split.) It's a **programmable, AFK,
 procedural dungeon-crawler roguelite** (Nevergrind Online's pacing × Gladiabots'
 AI-authoring × FF12 gambits): from **town** you program + manage, then **descend**;
 the party **auto-delves** a seeded dungeon (navigate, fight packs, loot, hunt the
@@ -50,7 +53,8 @@ generated in code.
 - **Prove changes by running the app** (browser screenshot), not by green tests
   alone. Tests must fail when logic breaks — cover boundaries, and mutation-check
   (flip the logic, see red, restore).
-- Keep game logic in `src/sim.ts` as **pure, deterministic** functions; the
-  renderer (`src/render.ts`) is a pure view. This keeps tests honest and makes AFK
-  offline catch-up cheap (replay `step` N times). Use a **seeded** PRNG when
-  randomness/dice arrive.
+- Keep game logic in `src/sim.ts`/`delve.ts`/`dungeon.ts` as **pure,
+  deterministic** functions; the renderer (`src/render.ts`) is a pure view. This
+  keeps tests honest and keeps a delve reproducible so the journal is trustworthy.
+  (There is **no offline progress** — a delve resumes in real time, not by
+  replay.) Use the **seeded** PRNG (`src/rng.ts`) for any randomness/dice.

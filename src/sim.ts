@@ -1,9 +1,10 @@
 // Deterministic combat simulation.
 //
 // This module is PURE: no DOM, no canvas, no timers, no randomness. Given the
-// same inputs it always produces the same outputs. That is what makes it
-// testable in a way that genuinely fails when the logic breaks — and what will
-// later make AFK offline-catch-up trivial (just replay `step` N times).
+// same inputs it always produces the same outputs. That is what makes it testable
+// in a way that genuinely fails when the logic breaks, and what keeps a delve
+// reproducible so the journal is trustworthy. (There is no offline catch-up — a
+// delve resumes in real time; see docs/ARCHITECTURE.md.)
 //
 // The rule language (see docs/VOCABULARY.md):
 //   Protocol  = WHEN <State> → DO <Maneuver>

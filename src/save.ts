@@ -1,12 +1,14 @@
-// Save / load + offline catch-up wiring.
+// Save / load wiring.
 //
 // localStorage persistence for the town roster (the editor's rows) AND the
-// current delve, stamped with a timestamp so that on the NEXT page load we can
-// fast-forward an in-progress delve by the elapsed wall-clock (offline progress).
+// current delve, stamped with a timestamp. There is no offline progress: an
+// in-progress delve resumes in real time exactly where it was saved (the timestamp
+// is just metadata for the slot-select screen's "x ago").
 //
-// This module owns all the time/storage I/O; the pure layers (sim.ts, delve.ts)
-// never see a clock. Loading is defensive: a stale-schema or corrupt blob is
-// ignored (start fresh), never throws — a bad save must not brick the game.
+// This module owns all the storage I/O; the pure layers (sim.ts, delve.ts) never
+// see a clock. Loading is defensive: a corrupt blob is ignored (start fresh) and a
+// stale-version blob keeps only its meta — never throws, a bad save must not brick
+// the game.
 
 import type { DelveState, DelveStatus } from './delve'
 import type { SkillId } from './sim'
@@ -68,6 +70,12 @@ function isObj(x: unknown): x is Record<string, unknown> {
   return typeof x === 'object' && x !== null
 }
 
+/** A persisted hero must carry a rows array — `party()`/`procedureFor` index into
+ *  it, so a malformed entry would crash on the first frame. */
+function isHero(x: unknown): x is Hero {
+  return isObj(x) && Array.isArray(x.rows)
+}
+
 function isDelveState(x: unknown): x is DelveState {
   return (
     isObj(x) &&
@@ -87,6 +95,8 @@ function isSaveData(x: unknown): x is SaveData {
     x.version === VERSION &&
     typeof x.savedAt === 'number' &&
     Array.isArray(x.roster) &&
+    x.roster.length >= 2 &&
+    x.roster.every(isHero) &&
     typeof x.activeHero === 'number' &&
     (x.exploration === undefined || Array.isArray(x.exploration)) &&
     (x.clearedLevels === undefined || Array.isArray(x.clearedLevels)) &&
@@ -113,7 +123,7 @@ export interface KVStore {
 export const SLOT_COUNT = 3
 const slotKey = (index: number): string => `${KEY}/slot/${index}`
 
-/** A peek at a slot for the slot-select screen — never runs offline catch-up. */
+/** A peek at a slot for the slot-select screen (no full load of the delve state). */
 export interface SlotInfo {
   index: number
   savedAt: number | null // null = empty slot
@@ -134,6 +144,45 @@ export function saveSlot(
   } catch {
     /* storage full or unavailable — non-fatal */
   }
+}
+
+/** The meta-progression that survives a wipe (and must survive a save-format
+ *  change too): levels first-cleared, Insight, and learned vocabulary. */
+export interface SalvagedMeta {
+  clearedLevels: string[]
+  insight: number
+  unlocked: string[]
+}
+
+/**
+ * Rescue the meta-progression off a slot blob that `loadSlot` *rejected* (a stale
+ * version, or a run-state shape we no longer understand), so a save-format change
+ * never silently wipes a player's unlocks. We deliberately salvage only the
+ * primitive, format-stable meta — never the roster / Procedures / delve, which are
+ * the parts that churn and could brick. The caller rebuilds a fresh run around it.
+ * Returns null when there's nothing worth carrying (empty/corrupt/no-meta blob).
+ */
+export function salvageMeta(index: number, store: KVStore = localStorage): SalvagedMeta | null {
+  let raw: string | null
+  try {
+    raw = store.getItem(slotKey(index))
+  } catch {
+    return null
+  }
+  if (raw === null) return null
+  let parsed: unknown
+  try {
+    parsed = JSON.parse(raw)
+  } catch {
+    return null
+  }
+  if (!isObj(parsed)) return null
+  const strings = (v: unknown): string[] => (Array.isArray(v) ? v.filter((s): s is string => typeof s === 'string') : [])
+  const clearedLevels = strings(parsed.clearedLevels)
+  const insight = typeof parsed.insight === 'number' && parsed.insight >= 0 ? parsed.insight : 0
+  const unlocked = strings(parsed.unlocked)
+  if (clearedLevels.length === 0 && insight === 0 && unlocked.length === 0) return null
+  return { clearedLevels, insight, unlocked }
 }
 
 /** Load one slot, or null if empty / corrupt / stale. Never throws. */
@@ -180,8 +229,8 @@ export function listSlots(store: KVStore = localStorage): SlotInfo[] {
 
 /**
  * One-shot migration: if slot 0 is empty and a legacy single-save blob exists,
- * move it into slot 0 *verbatim* (preserving its `savedAt`, so offline catch-up
- * still measures from the real moment of leaving) and drop the legacy key.
+ * move it into slot 0 *verbatim* (preserving its `savedAt`) and drop the legacy
+ * key.
  */
 export function importLegacy(store: KVStore = localStorage): void {
   if (loadSlot(0, store) !== null) return // slot 0 already in use — don't clobber

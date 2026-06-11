@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { startDelve, stepDelve, DEFAULT_EXPLORATION, type ExProtocol, type DelveState } from './delve'
+import { startDelve, stepDelve, DEFAULT_EXPLORATION, type ExProcedure, type DelveState } from './delve'
 import { makeWarrior, makeHealer, type Combatant, type Procedure } from './sim'
 
 const attack: Procedure = [
@@ -21,7 +21,7 @@ const advance = (s: DelveState, n = 5000): DelveState => {
   return r
 }
 
-const runToEnd = (seed: number, proto: ExProtocol = DEFAULT_EXPLORATION) =>
+const runToEnd = (seed: number, proto: ExProcedure = DEFAULT_EXPLORATION) =>
   advance(startDelve(strongParty(), seed, proto))
 
 describe('delve — the party crawls and hunts the objective', () => {
@@ -63,7 +63,7 @@ describe('delve — the party crawls and hunts the objective', () => {
     // into every room, the objective included) but never FEWER steps than the
     // default, which beelines as soon as the objective is seen — and strictly
     // more on at least one seed. That proves the target rule changes navigation.
-    const exploreOnly: ExProtocol = [
+    const exploreOnly: ExProcedure = [
       { subject: { what: 'unexplored' }, predicate: { p: 'always' }, move: 'headToward', label: 'Unexplored · Always → head toward' },
     ]
     let strictlyFasterSomewhere = false

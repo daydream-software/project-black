@@ -174,7 +174,8 @@ empty result means the State does not hold.
 
 ## Currently shipped subset (slices 1–3)
 
-A 2-hero party (Warrior, Healer) fights a group of three slimes; each unit runs
+A 2-hero party (Sentinel, Mender — internally still `makeWarrior`/`makeHealer`)
+fights a group of three slimes; each unit runs
 its **own** Procedure, units act in turn order, and the fight resolves to
 victory/defeat.
 

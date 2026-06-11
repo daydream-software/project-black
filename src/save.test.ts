@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest'
 import {
   saveSlot,
   loadSlot,
+  salvageMeta,
   deleteSlot,
   listSlots,
   importLegacy,
@@ -85,8 +86,48 @@ describe('save — slots', () => {
     expect(listSlots(store)[0].savedAt).toBeNull()
   })
 
+  it('salvages meta-progression from a stale-version blob that loadSlot rejects', () => {
+    // A future/old save format we can no longer fully load: loadSlot returns null,
+    // but the player's unlocks/insight/cleared levels must not be silently wiped.
+    const stale = {
+      version: 999, // unknown format → isSaveData rejects it
+      savedAt: 1,
+      roster: [{ simId: 'a', name: 'X', rows: [] }],
+      somethingWeNoLongerUnderstand: true,
+      clearedLevels: ['lvl-1', 'lvl-2'],
+      insight: 4,
+      unlocked: ['enemy-most-hp'],
+    }
+    const store = fakeStore({ 'project-black/save/slot/0': JSON.stringify(stale) })
+    expect(loadSlot(0, store)).toBeNull() // we can't load the run state...
+    expect(salvageMeta(0, store)).toEqual({ clearedLevels: ['lvl-1', 'lvl-2'], insight: 4, unlocked: ['enemy-most-hp'] })
+  })
+
+  it('salvageMeta returns null when there is nothing worth carrying', () => {
+    const store = fakeStore({
+      'project-black/save/slot/0': '{not json',
+      'project-black/save/slot/1': JSON.stringify({ version: 1, roster: [], insight: 0 }), // no meta
+    })
+    expect(salvageMeta(0, store)).toBeNull() // corrupt
+    expect(salvageMeta(1, store)).toBeNull() // parseable but empty meta
+    expect(salvageMeta(2, store)).toBeNull() // empty slot
+  })
+
+  it('rejects a malformed roster (fewer than two heroes, or a hero with no rows array)', () => {
+    // party() indexes roster[0] and roster[1] and reads .rows — a short or shapeless
+    // roster must not load and crash on the first frame; it loads as null instead.
+    const tooShort = { version: 3, savedAt: 1, roster: [{ simId: 'h', name: 'X', rows: [] }], activeHero: 0, mode: 'camp', delve: null }
+    const noRows = { version: 3, savedAt: 1, roster: [{ simId: 'a' }, { simId: 'b' }], activeHero: 0, mode: 'camp', delve: null }
+    const store = fakeStore({
+      'project-black/save/slot/0': JSON.stringify(tooShort),
+      'project-black/save/slot/1': JSON.stringify(noRows),
+    })
+    expect(loadSlot(0, store)).toBeNull()
+    expect(loadSlot(1, store)).toBeNull()
+  })
+
   it('importLegacy moves an old single-save blob into slot 0, preserving savedAt', () => {
-    const legacy: SaveData = { version: 3, savedAt: 12345, roster: [], activeHero: 0, mode: 'camp', delve: null }
+    const legacy: SaveData = { version: 3, savedAt: 12345, ...snap(2) }
     const store = fakeStore({ 'project-black/save': JSON.stringify(legacy) })
     importLegacy(store)
     expect(loadSlot(0, store)?.savedAt).toBe(12345) // verbatim — not re-stamped
@@ -94,7 +135,7 @@ describe('save — slots', () => {
   })
 
   it('importLegacy does not clobber an occupied slot 0', () => {
-    const legacy: SaveData = { version: 3, savedAt: 12345, roster: [], activeHero: 0, mode: 'camp', delve: null }
+    const legacy: SaveData = { version: 3, savedAt: 12345, ...snap(2) }
     const store = fakeStore({ 'project-black/save': JSON.stringify(legacy) })
     saveSlot(0, snap(5), store) // slot 0 already has a profile
     importLegacy(store)

@@ -5,9 +5,9 @@
 
 ## Vision (summary — see [VISION.md](VISION.md))
 
-You are not a hero — you **program** the heroes' brains: how they **fight** (a
-combat **Procedure**) and how they **delve** (an exploration **Protocol**), in one
-`WHEN State → DO X` grammar. The game is a **programmable, AFK, procedural
+You are not a hero — you **program** the heroes' brains: how they **fight** and
+how they **delve**, each a **Procedure** (an ordered list of **Protocols** — one
+rule each) in one `WHEN State → DO X` grammar. The game is a **programmable, AFK, procedural
 dungeon-crawler roguelite** (Nevergrind Online's pacing × Gladiabots × FF12
 gambits): from **town** you program and manage, then **descend**; the party
 **auto-delves** a seeded dungeon (navigate, fight packs, loot, hunt the target);
@@ -42,8 +42,8 @@ and deterministic. English codebase. See [ARCHITECTURE.md](ARCHITECTURE.md).
 | 2 | Interactive rule editor (reorder, on/off, add/remove); live re-sim; Defend; death if non-viable | ✅ done & verified |
 | 3 | Composite rules (State = Subject+Predicate, Maneuver = Command+Object), 2-hero party w/ per-unit Procedures vs a 3-enemy group, filter-then-pick targeting, victory/defeat | ✅ done & verified |
 | 4 | The first "wall": Hex Warden counters every heal; naive cure-Procedure loses, disabling the cure rule wins. Encounter selector (Slime Pack / Hex Warden) | ✅ done & verified |
-| RL | **Run-loop POC** (the roguelite spine): pure `run.ts` layer above the encounter — camp → launch → auto-advance a gauntlet (party HP/deaths carry: attrition) → defeat ends the run → back to camp. Editor locked during a run (no rescue); stage HUD; journal. | ✅ done & verified |
-| 5 | **Save + offline catch-up:** `localStorage` persists the camp roster and an in-progress run; on load, an in-progress run fast-forwards by elapsed wall-clock (`catchUp`) — finishing offline lands on RUN OVER. Defensive load (versioned, never bricks). | ✅ done & verified |
+| RL | **Run-loop POC** (the roguelite spine): pure `run.ts` layer above the encounter — camp → launch → auto-advance a gauntlet (party HP/deaths carry: attrition) → defeat ends the run → back to camp. Editor locked during a run (no rescue); stage HUD; journal. | ✅ done · *later superseded by the delve layer; `run.ts` removed* |
+| 5 | **Save + offline catch-up:** `localStorage` persists the camp roster and an in-progress run; on load, an in-progress run fast-forwards by elapsed wall-clock (`catchUp`) — finishing offline lands on RUN OVER. Defensive load (versioned, never bricks). | ✅ done · *offline catch-up later removed — a delve now resumes in real time; save/defensive-load kept* |
 | 6 | **Ship it live (GitHub Pages):** `gh-pages`-branch deploy (org bans nested unpinned actions); the game is playable on the web | ✅ done & verified |
 | 7 | **Seeded PRNG foundation:** `rng.ts` (resumable mulberry32) + tests; `RunState.seed` set per launch, shown in the run bar, persisted (save v2) | ✅ done & verified |
 
@@ -74,15 +74,15 @@ tests pin determinism + resumability. **No sim consumer yet** — slice 8's dung
 generation is the first; the rng is mutable for ergonomics but its state is
 captured back into the immutable game state to keep the sim pure.
 
-### Slice 8 — The delve: exploration Protocol + a procedural dungeon *(the new core)*
+### Slice 8 — The delve: exploration Procedure + a procedural dungeon *(the new core)*
 Replace the fixed gauntlet with a **seeded procedural dungeon** the party
-**auto-delves** by an **exploration Protocol** — the same `WHEN <State> → DO <Move>`
+**auto-delves** by an **exploration Procedure** — the same `WHEN <State> → DO <Move>`
 grammar, now over dungeon Subjects/Predicates and Moves (head toward / retreat /
 rest). The party navigates the **spatial grid**, the existing combat sim fires in
 monster rooms, and the delve ends at the **target** (win) or a wipe. Locked
 direction: a **spatial grid** rendered **first-person ("scrying eye / drone")** —
 the diegetic frame for the "you watch, don't control" identity and the fog of war.
-**Done when:** a party with a trivial exploration Protocol auto-delves a generated
+**Done when:** a party with a trivial exploration Procedure auto-delves a generated
 dungeon, fights along the way, and reaches & kills the target — proven in-browser,
 with the navigation choices visible in the journal. Built in sub-slices:
 
@@ -93,7 +93,7 @@ with the navigation choices visible in the journal. Built in sub-slices:
   exploration (navigate only the seen; `target` gated by `known`), fights on
   entering rooms (reuse `sim`), guaranteed termination (cleared/dead/stuck + cap),
   JSON-serialisable, decision-logging journal. 8 tests incl. a discriminator that
-  the protocol genuinely drives navigation. Headless — additive, nothing wires it.
+  the Procedure genuinely drives navigation. Headless — additive, nothing wires it.
 - **8b** ✅ *(done & verified)* — the stylized first-person **"scrying" view**
   (the room ahead + exits, party-from-behind + HP, a fog-of-war minimap; reuses
   the combat view during fights) and the **wiring**: the run/gauntlet is replaced
@@ -102,19 +102,19 @@ with the navigation choices visible in the journal. Built in sub-slices:
   party auto-delves a seeded dungeon, the journal shows the exploration decisions
   + fights, it reaches the objective, and — with the cure rule disabled so the
   Hex Warden's counter can't trap it — **kills the target (DELVE CLEARED)**
-  (`docs/progress/slice8b-*.png`). `run.ts` is now superseded (dead but still
-  tested) — to be removed in a cleanup.
-- **8c** ✅ *(done & verified)* — the exploration-Protocol **editor** in Town: a
+  (`docs/progress/slice8b-*.png`). `run.ts` (the superseded gauntlet layer) and its
+  tests have since been removed.
+- **8c** ✅ *(done & verified)* — the exploration-Procedure **editor** in Town: a
   second, **party-wide** rule list (`Subject · Predicate → Move`) under the combat
   Procedure, built with the same composed-dropdown UI (reorder / enable / add /
-  remove, locked during a delve). The authored rows are mapped to an `ExProtocol`
+  remove, locked during a delve). The authored rows are mapped to an `ExProcedure`
   and fed to `startDelve` (replacing the hardcoded `DEFAULT_EXPLORATION`), and
   persisted in the save (`exploration` — an **additive, optional** field; no
   version bump, so a live player's combat Procedure survives, and pre-8c saves
-  default it). Proven in-browser: the editor renders both protocols
+  default it). Proven in-browser: the editor renders both Procedures
   (`docs/progress/slice8c-town-two-editors.png`); disabling the *Unexplored → head
   toward* frontier rule makes the delve go **STUCK on turn 1** ("no path forward")
-  — the discriminating proof that the **authored** Protocol drives the delve, not
+  — the discriminating proof that the **authored** Procedure drives the delve, not
   the default (`docs/progress/slice8c-authored-protocol-drives-delve.png`). The
   testable part — the row→`ExProtocol` **rule compiler** + the exploration
   catalogs — lives in a pure `src/protocol.ts` (no DOM); `protocol.test.ts` (6
@@ -124,7 +124,7 @@ with the navigation choices visible in the journal. Built in sub-slices:
 
 ### Slice 9 — The shell: Title → Save slots → Town → Dungeon ✅ *(done & verified)*
 The screen frame: a **title** screen, **multiple save slots** (independent
-roguelite profiles, extending `save.ts`), a **Town** (edit both protocols, manage
+roguelite profiles, extending `save.ts`), a **Town** (edit both Procedures, manage
 the party — today's "camp" grows up), and the **Dungeon** delve view.
 **Done when:** pick a slot → Town → descend → Dungeon → return, and slots persist
 independently. Built in two sub-slices:
@@ -214,8 +214,8 @@ Gear and unlocked vocabulary persist across delves (roguelite).
   **Town = a village hub** (the spend surface). Each building is a progression
   category: **Trainer** (learn vocabulary — "the language grows"; built in 10b),
   later **Smith/Forge** (gear, slice 11+), **Tavern/Guild** (recruit heroes),
-  Library (rule-slot capacity). The editors (Procedure/Protocol) are the
-  **Planning** station — you *arrange* there; buildings *expand* what you can put
+  Library (rule-slot capacity). The two Procedure editors (combat + exploration)
+  are the **Planning** station — you *arrange* there; buildings *expand* what you put
   in. Navigation is **light + theme-agnostic for now** — a station switcher
   (Planning · Trainer · …) that swaps the work area — because the immersive
   town-map skin is theme-dependent (theme still open); it graduates to a real
@@ -242,7 +242,7 @@ the capped common currency (slice 11+); theme/fiction & resource naming.
 Richer exploration vocabulary (threat estimation; loot / rest / elite / boss
 rooms) and the Nevergrind **chain-combo** as a *programmable* risk/reward lever
 (`WHEN chain active AND HP>60% → push` vs `WHEN HP<40% → break and rest`).
-**Done when:** the same dungeon, run with two exploration Protocols (greedy-chain
+**Done when:** the same dungeon, run with two exploration Procedures (greedy-chain
 vs. cautious), produces visibly different outcomes.
 
 ## Shipped slices — detail
@@ -292,6 +292,12 @@ in-progress run is fast-forwarded by `catchUp(run, elapsedSteps)` (pure, in
 interval already advances an open tab). Load is defensive (versioned + try/catch →
 ignore corrupt/stale, never bricks). Verified in-browser: edit→reload persists; an
 injected old `savedAt`→reload fast-forwards the run to its end.
+
+> **Superseded:** the **offline catch-up** described above was later removed
+> (the run layer became the delve). A delve now **resumes in real time** exactly
+> where it was saved — time away never advances it (VISION.md pillar 3). The save
+> persistence and defensive/versioned load remain; `savedAt` is now only the
+> slot-picker's "x ago" stamp, not a replay input.
 **PRNG deferred:** the sim has zero randomness today, so catch-up is *already*
 reproducible — a seeded PRNG would be infra with no consumer. It lands with the
 first dice/randomness (D&D flavour), where the seed will live in `RunState`.

@@ -1,0 +1,8 @@
+{
+  "enabledPlugins": {
+    "dm-game@dark-matter-marketplace": true,
+    "dm-lang@dark-matter-marketplace": true,
+    "suno-song-creator@suno-tools": true,
+    "suno-upload@suno-tools": true
+  }
+}
