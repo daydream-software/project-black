@@ -146,6 +146,45 @@ export function saveSlot(
   }
 }
 
+/** The meta-progression that survives a wipe (and must survive a save-format
+ *  change too): levels first-cleared, Insight, and learned vocabulary. */
+export interface SalvagedMeta {
+  clearedLevels: string[]
+  insight: number
+  unlocked: string[]
+}
+
+/**
+ * Rescue the meta-progression off a slot blob that `loadSlot` *rejected* (a stale
+ * version, or a run-state shape we no longer understand), so a save-format change
+ * never silently wipes a player's unlocks. We deliberately salvage only the
+ * primitive, format-stable meta — never the roster / Procedures / delve, which are
+ * the parts that churn and could brick. The caller rebuilds a fresh run around it.
+ * Returns null when there's nothing worth carrying (empty/corrupt/no-meta blob).
+ */
+export function salvageMeta(index: number, store: KVStore = localStorage): SalvagedMeta | null {
+  let raw: string | null
+  try {
+    raw = store.getItem(slotKey(index))
+  } catch {
+    return null
+  }
+  if (raw === null) return null
+  let parsed: unknown
+  try {
+    parsed = JSON.parse(raw)
+  } catch {
+    return null
+  }
+  if (!isObj(parsed)) return null
+  const strings = (v: unknown): string[] => (Array.isArray(v) ? v.filter((s): s is string => typeof s === 'string') : [])
+  const clearedLevels = strings(parsed.clearedLevels)
+  const insight = typeof parsed.insight === 'number' && parsed.insight >= 0 ? parsed.insight : 0
+  const unlocked = strings(parsed.unlocked)
+  if (clearedLevels.length === 0 && insight === 0 && unlocked.length === 0) return null
+  return { clearedLevels, insight, unlocked }
+}
+
 /** Load one slot, or null if empty / corrupt / stale. Never throws. */
 export function loadSlot(index: number, store: KVStore = localStorage): SaveData | null {
   let raw: string | null

@@ -8,12 +8,14 @@ import { setSfxEnabled, playSfx, type SfxId } from './sfx'
 import {
   saveSlot,
   loadSlot,
+  salvageMeta,
   listSlots,
   deleteSlot,
   importLegacy,
   type Hero,
   type ProtocolRow,
   type ExProtocolRow,
+  type SalvagedMeta,
   type SlotInfo,
 } from './save'
 import { makeHero, makeHeroBack, makeSlime } from './sprites'
@@ -252,14 +254,17 @@ function enterGame(): void {
   frame()
 }
 
-/** Start a brand-new profile in an empty slot. */
-function newGame(index: number): void {
+/** Start a brand-new profile in a slot. `carried` defaults to whatever meta we can
+ *  salvage from a blob already there — so a slot whose save-format we can no longer
+ *  load keeps its meta-progression (the run resets to fresh, but Insight / unlocks /
+ *  cleared levels survive). A genuinely empty slot salvages nothing → fresh. */
+function newGame(index: number, carried: SalvagedMeta | undefined = salvageMeta(index) ?? undefined): void {
   activeSlot = index
   roster = freshRoster()
   exploration = DEFAULT_EX_ROWS.map((r) => ({ ...r }))
-  clearedLevels = []
-  insight = 0
-  unlocked = []
+  clearedLevels = carried?.clearedLevels ?? []
+  insight = carried?.insight ?? 0
+  unlocked = carried?.unlocked ?? []
   activeHero = 0
   delve = null
   mode = 'camp'
@@ -275,6 +280,8 @@ function newGame(index: number): void {
 function enterSlot(index: number): void {
   const saved = loadSlot(index)
   if (saved === null) {
+    // A rejected blob (stale format / corrupt run state) still gives up its
+    // meta-progression — newGame salvages it so a format change never wipes unlocks.
     newGame(index)
     return
   }
