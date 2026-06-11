@@ -16,21 +16,82 @@ body {
   color: #e6e9ef;
 }
 
-.app {
-  display: flex;
-  gap: 28px;
-  align-items: flex-start;
-  padding: 24px;
-  max-width: 1120px;
-  margin: 0 auto;
+/* --- Integrated shell: full-bleed world (canvas) + floating UI overlay -------
+   The canvas fills the viewport; #ui-overlay sits on top, click-through, so the
+   world receives clicks except where a panel re-enables pointer-events. */
+#screen-game {
+  position: fixed;
+  inset: 0;
+  overflow: hidden;
+  background: #0a0a10;
 }
 
-.game-bar {
+#game {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  border: none;
+  border-radius: 0;
+  background: #0e0e16;
+}
+
+#ui-overlay {
+  position: absolute;
+  inset: 0;
+  pointer-events: none; /* click-through to the world… */
+  display: block;
+}
+
+/* …each floating panel re-enables interaction and gets the shared chrome. */
+.panel {
+  pointer-events: auto;
+  background: rgba(18, 18, 28, 0.82);
+  border: 1px solid #26263a;
+  border-radius: 10px;
+  backdrop-filter: blur(6px);
+  box-shadow: 0 8px 28px rgba(0, 0, 0, 0.45);
+}
+
+.hud {
+  position: absolute;
+  top: 16px;
+  left: 16px;
+  right: 16px;
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 12px;
-  margin: 0 0 14px;
+  padding: 10px 16px;
+}
+
+.world-controls {
+  position: absolute;
+  left: 16px;
+  bottom: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  max-width: 60vw;
+}
+
+/* The overlay is click-through; re-enable interaction on the actual controls
+   (not the wrappers) so empty space still passes clicks to the world. */
+.world-controls .level-select,
+.world-controls .run-bar {
+  pointer-events: auto;
+}
+
+/* Docked work panel (U1 transitional — becomes a building modal in U2). */
+.dock {
+  position: absolute;
+  top: 70px;
+  right: 16px;
+  bottom: 16px;
+  width: 460px;
+  max-width: calc(100vw - 32px);
+  padding: 14px 16px;
+  overflow-y: auto;
 }
 
 .wordmark {
@@ -118,12 +179,7 @@ canvas {
   font-size: 12px;
 }
 
-.right {
-  flex: 1;
-  min-width: 300px;
-}
-
-.right h2 {
+.dock h2 {
   font-size: 14px;
   text-transform: uppercase;
   letter-spacing: 0.05em;
@@ -131,7 +187,11 @@ canvas {
   margin: 16px 0 8px;
 }
 
-.right h2 .sub {
+.dock h2:first-child {
+  margin-top: 0;
+}
+
+.dock h2 .sub {
   text-transform: none;
   letter-spacing: 0;
   font-weight: 400;

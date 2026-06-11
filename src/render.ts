@@ -1,11 +1,26 @@
 // Pure view layer: draws the current GameState onto the canvas. It reads state,
 // it never mutates it. All game logic lives in sim.ts.
+//
+// The canvas buffer is sized to the window (responsive viewport — see main.ts),
+// so every size/position here is derived from `ctx.canvas.width/height` rather
+// than a fixed magic number: the scene fills any window without bars, crop or
+// distortion. Coordinates are CSS pixels (the buffer is the CSS size), so the
+// HUD safe-zone below is a fixed pixel offset matching the floating DOM HUD.
 
 import type { Combatant, GameState } from './sim'
 import { DX, DY, roomAt, type Dir } from './dungeon'
 import type { DelveState } from './delve'
 
-const SCALE = 5 // each sprite pixel becomes a 5x5 block (smaller — more units on screen)
+const HUD_SAFE = 72 // px reserved at the top for the floating HUD bar (DOM)
+
+// Sprite block scale derived from canvas height, so units keep their on-screen
+// proportion at any window size (integer keeps the pixel art crisp).
+function unitScale(height: number): number {
+  return Math.max(4, Math.round(height / 68))
+}
+function bossOf(scale: number): number {
+  return Math.round(scale * 1.75) // a boss reads bigger than the rank-and-file
+}
 
 interface Sprites {
   hero: HTMLCanvasElement
@@ -45,8 +60,9 @@ function drawUnit(
   x: number,
   baseY: number,
   fill: string,
+  baseScale: number,
 ): void {
-  const scale = unit.isBoss === true ? 9 : SCALE
+  const scale = unit.isBoss === true ? bossOf(baseScale) : baseScale
   const w = sprite.width * scale
   const h = sprite.height * scale
   const dead = unit.hp <= 0
@@ -58,16 +74,16 @@ function drawUnit(
   ctx.restore()
 
   if (!dead) {
-    drawHpBar(ctx, { x, y: baseY - 14, w, frac: unit.hp / unit.maxHp, fill: barFill })
+    drawHpBar(ctx, { x, y: baseY - Math.round(scale * 1.8), w, frac: unit.hp / unit.maxHp, fill: barFill })
     if (unit.defending) {
       // small shield tick to show the Defend status is active
       ctx.fillStyle = '#4fd1ff'
-      ctx.fillText('🛡', x + w + 2, baseY - 16)
+      ctx.fillText('🛡', x + w + 2, baseY - Math.round(scale * 2))
     }
   }
 
   ctx.fillStyle = dead ? '#5a5f70' : '#cfd6e0'
-  ctx.font = '12px system-ui, sans-serif'
+  ctx.font = '13px system-ui, sans-serif'
   const label = dead ? `${unit.name}  ✕` : `${unit.name}  ${unit.hp}/${unit.maxHp}`
   ctx.fillText(label, x, baseY + h + 4)
 }
@@ -80,12 +96,13 @@ function drawColumn(
   topY: number,
   gap: number,
   fill: string,
+  baseScale: number,
 ): void {
   // Right-align each unit so a wider boss sprite still hugs the right edge.
   units.forEach((u, i) => {
-    const scale = u.isBoss === true ? 9 : SCALE
-    const drawX = x + (sprite.width * SCALE - sprite.width * scale)
-    drawUnit(ctx, u, sprite, drawX, topY + i * gap, fill)
+    const scale = u.isBoss === true ? bossOf(baseScale) : baseScale
+    const drawX = x + (sprite.width * baseScale - sprite.width * scale)
+    drawUnit(ctx, u, sprite, drawX, topY + i * gap, fill, baseScale)
   })
 }
 
@@ -96,23 +113,25 @@ function drawBanner(ctx: CanvasRenderingContext2D, title: string, subtitle: stri
   ctx.textAlign = 'center'
   ctx.textBaseline = 'middle'
   ctx.fillStyle = colour
-  ctx.font = 'bold 30px system-ui, sans-serif'
-  ctx.fillText(title, width / 2, height / 2 - 14)
+  ctx.font = `bold ${Math.round(height * 0.08)}px system-ui, sans-serif`
+  ctx.fillText(title, width / 2, height / 2 - Math.round(height * 0.04))
   ctx.fillStyle = '#cfd6e0'
-  ctx.font = '14px system-ui, sans-serif'
-  ctx.fillText(subtitle, width / 2, height / 2 + 18)
+  ctx.font = `${Math.round(height * 0.033)}px system-ui, sans-serif`
+  ctx.fillText(subtitle, width / 2, height / 2 + Math.round(height * 0.05))
   ctx.textAlign = 'left'
   ctx.textBaseline = 'top'
 }
 
 export function render(ctx: CanvasRenderingContext2D, state: GameState, sprites: Sprites): void {
   const { width, height } = ctx.canvas
+  const groundH = Math.round(height * 0.17)
+  const SS = unitScale(height)
 
   // background
   ctx.fillStyle = '#12121a'
   ctx.fillRect(0, 0, width, height)
   ctx.fillStyle = '#1b1b2a'
-  ctx.fillRect(0, height - 60, width, 60) // ground band
+  ctx.fillRect(0, height - groundH, width, groundH) // ground band
 
   const heroes = state.units.filter((u) => u.side === 'hero')
   const enemies = state.units.filter((u) => u.side === 'enemy')
@@ -123,35 +142,37 @@ export function render(ctx: CanvasRenderingContext2D, state: GameState, sprites:
   if (enemies.length === 0) {
     ctx.textAlign = 'center'
     ctx.fillStyle = '#e6e9ef'
-    ctx.font = 'bold 22px system-ui, sans-serif'
-    ctx.fillText('TOWN', width / 2, 22)
+    ctx.font = `bold ${Math.round(height * 0.06)}px system-ui, sans-serif`
+    ctx.fillText('TOWN', width / 2, HUD_SAFE) // below the floating HUD bar
     ctx.fillStyle = '#62687a'
-    ctx.font = '13px system-ui, sans-serif'
-    ctx.fillText('Your party rests — program their brains, then descend', width / 2, 52)
+    ctx.font = `${Math.round(height * 0.03)}px system-ui, sans-serif`
+    ctx.fillText('Your party rests — program their brains, then descend', width / 2, HUD_SAFE + Math.round(height * 0.08))
     ctx.textAlign = 'left'
 
-    const heroW = sprites.hero.width * SCALE
-    const heroH = sprites.hero.height * SCALE
-    const slot = 150
+    const heroW = sprites.hero.width * SS
+    const heroH = sprites.hero.height * SS
+    const slot = Math.max(heroW * 1.6, Math.round(width * 0.2))
     const startX = (width - heroes.length * slot) / 2 + (slot - heroW) / 2
-    const baseY = height - 60 - heroH // feet on the ground band
-    heroes.forEach((u, i) => drawUnit(ctx, u, sprites.hero, startX + i * slot, baseY, '#4fd1ff'))
+    const baseY = height - groundH - heroH // feet on the ground band
+    heroes.forEach((u, i) => drawUnit(ctx, u, sprites.hero, startX + i * slot, baseY, '#4fd1ff', SS))
     return
   }
 
-  // COMBAT — party on the left, the enemy group on the right.
-  ctx.font = '15px system-ui, sans-serif'
+  // COMBAT — party on the left, the enemy group on the right. (Legacy: live fights
+  // now render through the delve corridor below; kept for completeness/tests.)
+  ctx.font = `${Math.round(height * 0.033)}px system-ui, sans-serif`
   ctx.fillStyle = '#cfd6e0'
-  ctx.fillText(`Round ${state.round + 1} · turn ${state.turn}`, 16, 12)
+  ctx.fillText(`Round ${state.round + 1} · turn ${state.turn}`, 20, HUD_SAFE)
   const enemiesLeft = enemies.filter((u) => u.hp > 0).length
   ctx.fillStyle = '#9fe0a8'
-  ctx.fillText(`Enemies left: ${enemiesLeft}/${enemies.length}`, 16, 34)
+  ctx.fillText(`Enemies left: ${enemiesLeft}/${enemies.length}`, 20, HUD_SAFE + Math.round(height * 0.045))
 
-  const gap = 78
-  const topY = 70
-  drawColumn(ctx, heroes, sprites.hero, 50, topY, gap, '#4fd1ff')
-  const slimeX = width - 50 - sprites.slime.width * SCALE
-  drawColumn(ctx, enemies, sprites.slime, slimeX, topY, gap, '#ff6b6b')
+  const gap = Math.round(sprites.hero.height * SS * 0.75 + height * 0.04)
+  const topY = HUD_SAFE + Math.round(height * 0.1)
+  const margin = Math.round(width * 0.08)
+  drawColumn(ctx, heroes, sprites.hero, margin, topY, gap, '#4fd1ff', SS)
+  const slimeX = width - margin - sprites.slime.width * SS
+  drawColumn(ctx, enemies, sprites.slime, slimeX, topY, gap, '#ff6b6b', SS)
 }
 
 /** Run-level HUD: which stage of the gauntlet we're on (top-right). */
@@ -161,7 +182,7 @@ export function renderRunHud(ctx: CanvasRenderingContext2D, depth: number, total
   ctx.textBaseline = 'top'
   ctx.fillStyle = '#c78bff'
   ctx.font = 'bold 15px system-ui, sans-serif'
-  ctx.fillText(`Stage ${depth + 1} / ${total}`, ctx.canvas.width - 16, 14)
+  ctx.fillText(`Stage ${depth + 1} / ${total}`, ctx.canvas.width - 16, HUD_SAFE)
   ctx.restore()
 }
 
@@ -210,6 +231,7 @@ function poly(ctx: CanvasRenderingContext2D, pts: number[], fill: string): void 
 // behind in the foreground (Nevergrind-style over-the-shoulder framing).
 function drawDungeonView(ctx: CanvasRenderingContext2D, delve: DelveState, sprites: Sprites): void {
   const { width, height } = ctx.canvas
+  const SS = unitScale(height)
   const d = delve.dungeon
   const fwd = delve.facing
   const aheadCell = neighbourCell(d, delve.pos, fwd)
@@ -221,11 +243,11 @@ function drawDungeonView(ctx: CanvasRenderingContext2D, delve: DelveState, sprit
   const exitL = leftCell >= 0 && d.cells[leftCell]
   const exitR = rightCell >= 0 && d.cells[rightCell]
 
-  // near frame + vanishing point of the corridor tunnel
-  const nx0 = 30
-  const nx1 = width - 30
-  const ny0 = 18
-  const ny1 = height - 34
+  // near frame + vanishing point of the corridor tunnel (all proportional)
+  const nx0 = Math.round(width * 0.05)
+  const nx1 = width - nx0
+  const ny0 = Math.round(height * 0.05)
+  const ny1 = height - Math.round(height * 0.09)
   const vx = (nx0 + nx1) / 2
   const vy = ny0 + (ny1 - ny0) * 0.4
 
@@ -236,12 +258,15 @@ function drawDungeonView(ctx: CanvasRenderingContext2D, delve: DelveState, sprit
   poly(ctx, [nx1, ny0, nx1, ny1, vx, vy], wallShade) // right wall
 
   // doorways carved into the side walls where there's an exit that way
-  if (exitL) poly(ctx, [nx0, ny0 + 46, nx0, ny1 - 46, vx - 34, vy + 20, vx - 34, vy - 20], '#05050a')
-  if (exitR) poly(ctx, [nx1, ny0 + 46, nx1, ny1 - 46, vx + 34, vy + 20, vx + 34, vy - 20], '#05050a')
+  const dvy = Math.round(height * 0.12) // doorway half-extent at the near frame
+  const dvx = Math.round(width * 0.048) // doorway inset toward the vanishing point
+  const dvh = Math.round(height * 0.05)
+  if (exitL) poly(ctx, [nx0, ny0 + dvy, nx0, ny1 - dvy, vx - dvx, vy + dvh, vx - dvx, vy - dvh], '#05050a')
+  if (exitR) poly(ctx, [nx1, ny0 + dvy, nx1, ny1 - dvy, vx + dvx, vy + dvh, vx + dvx, vy - dvh], '#05050a')
 
   // the far end at the vanishing point
-  const fw2 = 24
-  const fh2 = 20
+  const fw2 = Math.round(width * 0.033)
+  const fh2 = Math.round(height * 0.05)
   ctx.fillStyle = !aheadFloor ? '#2a2a40' : !aheadSeen ? '#040409' : '#08080f'
   ctx.fillRect(vx - fw2, vy - fh2, fw2 * 2, fh2 * 2)
 
@@ -263,12 +288,12 @@ function drawDungeonView(ctx: CanvasRenderingContext2D, delve: DelveState, sprit
     enemies.forEach((e, i) => {
       const dead = e.hp <= 0
       const boss = e.isBoss === true
-      const sc = boss ? 9 : 5
+      const sc = boss ? bossOf(SS) : SS
       const ew = sprites.slime.width * sc
-      const gap = 12
+      const gap = Math.round(SS * 2.2)
       const totalW = enemies.length * ew + (enemies.length - 1) * gap
       const ex = vx - totalW / 2 + i * (ew + gap)
-      const ey = vy - (boss ? 30 : 10)
+      const ey = vy - (boss ? Math.round(SS * 5.5) : Math.round(SS * 1.8))
       if (boss) {
         ctx.fillStyle = 'rgba(199,139,255,0.16)'
         ctx.beginPath()
@@ -284,26 +309,26 @@ function drawDungeonView(ctx: CanvasRenderingContext2D, delve: DelveState, sprit
   } else if (aheadSeen && aheadRoom >= 0 && !delve.clearedRooms[aheadRoom]) {
     const t = d.rooms[aheadRoom].type
     if (t === 'monster') {
-      drawSprite(ctx, sprites.slime, vx - 36, vy - 2, 4)
-      drawSprite(ctx, sprites.slime, vx + 6, vy + 2, 5)
+      drawSprite(ctx, sprites.slime, vx - Math.round(SS * 6.5), vy - 4, Math.round(SS * 0.75))
+      drawSprite(ctx, sprites.slime, vx + SS, vy + 2, SS)
     } else if (t === 'target') {
       ctx.fillStyle = 'rgba(199,139,255,0.18)'
       ctx.beginPath()
-      ctx.arc(vx, vy + 8, 42, 0, Math.PI * 2)
+      ctx.arc(vx, vy + Math.round(SS * 1.5), SS * 8, 0, Math.PI * 2)
       ctx.fill()
-      drawSprite(ctx, sprites.slime, vx - 32, vy - 22, 8)
+      drawSprite(ctx, sprites.slime, vx - Math.round(SS * 6.5), vy - Math.round(SS * 4.5), bossOf(SS))
     }
   }
 
   // --- the party, seen from BEHIND, in the foreground (live HP if fighting) ---
   const heroes = delve.battle !== null ? delve.battle.units.filter((u) => u.side === 'hero') : delve.party
   const back = sprites.heroBack
-  const scale = 7
+  const scale = Math.round(SS * 1.3)
   const spW = back.width * scale
   const spH = back.height * scale
   heroes.forEach((h, i) => {
-    const x = vx + (i === 0 ? -spW - 8 : 8)
-    const y = ny1 + 6 - spH
+    const x = vx + (i === 0 ? -spW - Math.round(SS * 1.5) : Math.round(SS * 1.5))
+    const y = ny1 + Math.round(SS) - spH
     const dead = h.hp <= 0
     ctx.save()
     ctx.globalAlpha = dead ? 0.3 : 1
@@ -311,9 +336,9 @@ function drawDungeonView(ctx: CanvasRenderingContext2D, delve: DelveState, sprit
     ctx.restore()
     drawHpBar(ctx, { x, y: y - 10, w: spW, frac: Math.max(0, h.hp) / h.maxHp, fill: dead ? '#5a5f70' : '#4fd1ff' })
     ctx.fillStyle = dead ? '#5a5f70' : '#cfd6e0'
-    ctx.font = '11px system-ui, sans-serif'
+    ctx.font = '14px system-ui, sans-serif'
     ctx.textAlign = 'center'
-    ctx.fillText(`${h.name} ${Math.max(0, h.hp)}/${h.maxHp}`, x + spW / 2, y + spH + 2)
+    ctx.fillText(`${h.name} ${Math.max(0, h.hp)}/${h.maxHp}`, x + spW / 2, y + spH + 4)
     ctx.textAlign = 'left'
   })
 
@@ -324,21 +349,21 @@ function drawDungeonView(ctx: CanvasRenderingContext2D, delve: DelveState, sprit
   ctx.fillStyle = vg
   ctx.fillRect(0, 0, width, height)
 
-  // header overlay
+  // header overlay (below the floating HUD bar)
   ctx.textAlign = 'left'
   ctx.textBaseline = 'top'
   ctx.fillStyle = '#9aa0b0'
-  ctx.font = '12px system-ui, sans-serif'
-  ctx.fillText(`Scrying · turn ${delve.turn} · facing ${DIR_LABEL[fwd]}${exitL ? ' · ◄ exit' : ''}${exitR ? ' · exit ►' : ''}`, 12, 10)
+  ctx.font = '15px system-ui, sans-serif'
+  ctx.fillText(`Scrying · turn ${delve.turn} · facing ${DIR_LABEL[fwd]}${exitL ? ' · ◄ exit' : ''}${exitR ? ' · exit ►' : ''}`, 16, HUD_SAFE)
 }
 
 function drawMinimap(ctx: CanvasRenderingContext2D, delve: DelveState): void {
   const d = delve.dungeon
-  const cs = 4
+  const cs = Math.max(4, Math.round(ctx.canvas.height / 90))
   const mw = d.width * cs
   const mh = d.height * cs
-  const x0 = ctx.canvas.width - mw - 10
-  const y0 = 8
+  const x0 = ctx.canvas.width - mw - 14
+  const y0 = HUD_SAFE // clear the floating HUD bar at the top
   ctx.fillStyle = '#000000'
   ctx.fillRect(x0 - 2, y0 - 2, mw + 4, mh + 4)
   for (let y = 0; y < d.height; y++) {
@@ -362,8 +387,8 @@ function drawMinimap(ctx: CanvasRenderingContext2D, delve: DelveState): void {
   ctx.fillStyle = '#4fd1ff'
   ctx.fillRect(x0 + px * cs, y0 + py * cs, cs - 1, cs - 1)
   ctx.fillStyle = '#cfd6e0'
-  ctx.font = '10px system-ui, sans-serif'
+  ctx.font = '13px system-ui, sans-serif'
   ctx.textAlign = 'center'
-  ctx.fillText(['↑', '→', '↓', '←'][delve.facing], x0 + px * cs + cs / 2 - 0.5, y0 + py * cs - 1)
+  ctx.fillText(['↑', '→', '↓', '←'][delve.facing], x0 + px * cs + cs / 2 - 0.5, y0 + py * cs - 2)
   ctx.textAlign = 'left'
 }

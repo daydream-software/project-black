@@ -25,42 +25,48 @@
       </div>
     </div>
 
-    <main class="app" id="screen-game" hidden>
-      <section class="left">
-        <header class="game-bar">
+    <!-- The game screen is a full-bleed world (canvas) with the UI floating over
+         it: #ui-overlay is click-through (pointer-events:none); each panel inside
+         re-enables pointer-events. This is what makes it read as one integrated
+         game instead of "canvas on the left, controls on the right". -->
+    <main id="screen-game" hidden>
+      <canvas id="game" width="960" height="540"></canvas>
+      <div id="ui-overlay">
+        <header id="hud" class="hud panel">
           <span class="wordmark">PROJECT&nbsp;BLACK</span>
           <div class="title-actions">
-            <span id="insight" class="insight-counter" title="Insight — earned on a level's first clear; spent at the Trainer"></span>
+            <span id="insight" class="insight-counter" title="Insight — earned on a level's first clear; spent at the Library"></span>
             <button id="to-slots" class="link-btn" title="Save and return to the slot picker">← Slots</button>
             <button id="music-toggle" class="music-toggle" title="Toggle music">♪ Music: off</button>
           </div>
         </header>
-        <canvas id="game" width="520" height="360"></canvas>
-        <div id="level-select" class="level-select"></div>
-        <div id="run-bar" class="run-bar"></div>
-        <p class="hint">
-          Program your party's two brains — how they <em>fight</em> and how they <em>delve</em> — then
-          descend. A wipe sends you back; read the <em>journal</em> and reprogram.
-        </p>
-      </section>
-      <section class="right">
-        <div id="station-switcher" class="station-switcher"></div>
-        <div id="station-planning">
-          <h2>Procedure <span class="sub">per unit · priority: top → bottom</span></h2>
-          <div id="hero-tabs" class="tabs"></div>
-          <ul id="editor"></ul>
-          <button id="add-protocol">+ Add protocol</button>
-          <h2>Protocol <span class="sub">exploration · party · priority: top → bottom</span></h2>
-          <ul id="ex-editor"></ul>
-          <button id="ex-add">+ Add protocol</button>
-          <h2>Decision log</h2>
-          <div id="log"></div>
+
+        <!-- World-anchored actions (bottom-left): pick a level, descend / return. -->
+        <div id="world-controls" class="world-controls">
+          <div id="level-select" class="level-select"></div>
+          <div id="run-bar" class="run-bar"></div>
         </div>
-        <div id="station-trainer" hidden>
-          <h2>Trainer <span class="sub">spend Insight to learn new vocabulary</span></h2>
-          <div id="trainer-list"></div>
-        </div>
-      </section>
+
+        <!-- Docked work panel (U1 transitional — modalized into buildings in U2). -->
+        <aside id="dock" class="dock panel">
+          <div id="station-switcher" class="station-switcher"></div>
+          <div id="station-planning">
+            <h2>Procedure <span class="sub">per unit · priority: top → bottom</span></h2>
+            <div id="hero-tabs" class="tabs"></div>
+            <ul id="editor"></ul>
+            <button id="add-protocol">+ Add protocol</button>
+            <h2>Protocol <span class="sub">exploration · party · priority: top → bottom</span></h2>
+            <ul id="ex-editor"></ul>
+            <button id="ex-add">+ Add protocol</button>
+            <h2>Decision log</h2>
+            <div id="log"></div>
+          </div>
+          <div id="station-trainer" hidden>
+            <h2>Trainer <span class="sub">spend Insight to learn new vocabulary</span></h2>
+            <div id="trainer-list"></div>
+          </div>
+        </aside>
+      </div>
     </main>
     <script type="module" src="/src/main.ts"></script>
   </body>

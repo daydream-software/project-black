@@ -296,6 +296,7 @@ function renderScreens(): void {
 function enterGame(): void {
   screen = 'game'
   renderScreens()
+  resizeCanvas() // the canvas is laid out now (no longer display:none) — size its buffer
   renderRunBar()
   renderLevelSelect()
   renderTabs()
@@ -976,6 +977,25 @@ function musicTrack(): TrackId {
 function renderInsight(): void {
   insightEl.textContent = `✦ ${insight} Insight`
 }
+
+/** Responsive viewport: match the canvas buffer to its CSS box (the window), so
+ *  the world fills any window with no bars, crop or distortion. The buffer is in
+ *  CSS pixels (coords line up with the DOM overlay). No-op while hidden (size 0). */
+function resizeCanvas(): void {
+  const w = canvas.clientWidth
+  const h = canvas.clientHeight
+  if (w === 0 || h === 0) return
+  if (canvas.width !== w || canvas.height !== h) {
+    canvas.width = w
+    canvas.height = h
+  }
+}
+
+window.addEventListener('resize', () => {
+  if (screen !== 'game') return
+  resizeCanvas()
+  frame()
+})
 
 function frame(): void {
   if (mode === 'camp' || delve === null) render(ctx, campState(), sprites)
