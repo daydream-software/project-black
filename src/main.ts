@@ -21,6 +21,7 @@ import {
 import { makeHero, makeHeroBack, makeSlime } from './sprites'
 import { render, renderDelve } from './render'
 import { buildingAt, type BuildingId } from './buildings'
+import foyerUrl from './assets/town-foyer.png'
 import { requireElement, require2dContext } from './dom'
 import {
   available,
@@ -144,6 +145,12 @@ musicBtn.addEventListener('click', () => {
 })
 
 const sprites = { hero: makeHero(), heroBack: makeHeroBack(), slime: makeSlime() }
+
+// The town hub backdrop (the Artificer's tower foyer). Preloaded; repaint once it
+// lands so the foyer replaces the drawn-placeholder town.
+const foyerImg = new Image()
+foyerImg.src = foyerUrl
+foyerImg.onload = () => frame()
 
 // The screen shell sits above the in-game mode: title → slots → game (where the
 // game's own town/delve `mode` lives). `activeSlot` is the profile every save
@@ -1006,7 +1013,7 @@ window.addEventListener('resize', () => {
 })
 
 function frame(): void {
-  if (mode === 'camp' || delve === null) render(ctx, campState(), sprites, hoveredBuilding)
+  if (mode === 'camp' || delve === null) render(ctx, campState(), sprites, hoveredBuilding, foyerImg)
   else renderDelve(ctx, delve, sprites)
   renderLog()
   renderTabs()

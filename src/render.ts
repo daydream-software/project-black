@@ -13,7 +13,7 @@
 import type { Combatant, GameState } from './sim'
 import { DX, DY, roomAt, type Dir } from './dungeon'
 import type { DelveState } from './delve'
-import { buildingRects, type BuildingId, type BuildingRect } from './buildings'
+import { buildingRects, foyerLayout, type BuildingId, type BuildingRect } from './buildings'
 
 const HUD_SAFE = 72 // px reserved at the top for the floating HUD bar (DOM)
 
@@ -193,11 +193,41 @@ function drawBuilding(ctx: CanvasRenderingContext2D, r: BuildingRect, on: boolea
   ctx.textBaseline = 'top'
 }
 
+/** Hover affordance over a clickable foyer zone: a soft teal glow outline + the
+ *  room's name, so the player sees what they're about to enter. */
+function drawZoneHighlight(ctx: CanvasRenderingContext2D, r: BuildingRect): void {
+  ctx.save()
+  ctx.fillStyle = 'rgba(120,245,235,0.12)'
+  ctx.fillRect(r.x, r.y, r.w, r.h)
+  ctx.strokeStyle = 'rgba(150,250,240,0.95)'
+  ctx.lineWidth = 3
+  ctx.shadowColor = 'rgba(120,245,235,0.6)'
+  ctx.shadowBlur = 22
+  ctx.strokeRect(r.x, r.y, r.w, r.h)
+  ctx.restore()
+
+  ctx.save()
+  ctx.textAlign = 'center'
+  ctx.textBaseline = 'top'
+  ctx.font = `700 ${Math.max(14, Math.round(r.w * 0.11))}px system-ui, sans-serif`
+  ctx.lineWidth = 4
+  ctx.strokeStyle = 'rgba(8,6,16,0.85)'
+  ctx.fillStyle = '#e6fffb'
+  const tx = r.x + r.w / 2
+  const ty = r.y + 10
+  ctx.strokeText('▶ ' + r.label, tx, ty)
+  ctx.fillText('▶ ' + r.label, tx, ty)
+  ctx.restore()
+  ctx.textAlign = 'left'
+  ctx.textBaseline = 'top'
+}
+
 export function render(
   ctx: CanvasRenderingContext2D,
   state: GameState,
   sprites: Sprites,
   hovered: BuildingId | null = null,
+  foyer: HTMLImageElement | null = null,
 ): void {
   const { width, height } = cssSize(ctx)
   const groundH = Math.round(height * 0.17)
@@ -214,8 +244,34 @@ export function render(
 
   ctx.textBaseline = 'top'
 
-  // TOWN — a state with no enemies: a centred roster lineup standing on the ground.
+  // TOWN — a state with no enemies. The hub is the Artificer's tower foyer: a
+  // backdrop you click into (Workshop / Library). The drawn placeholder below is
+  // the fallback until the image loads.
   if (enemies.length === 0) {
+    if (foyer && foyer.complete && foyer.naturalWidth > 0) {
+      const { ix, iy, iw, ih } = foyerLayout(width, height)
+      // The artwork is square; on a wide screen a contain-fit leaves side bars.
+      // Fill them with a blurred, darkened cover-copy of the foyer so it reads
+      // full-bleed without cropping the signage off the sharp image.
+      ctx.fillStyle = '#140c1e'
+      ctx.fillRect(0, 0, width, height)
+      const cscale = Math.max(width / foyer.naturalWidth, height / foyer.naturalHeight)
+      const cw = foyer.naturalWidth * cscale
+      const ch = foyer.naturalHeight * cscale
+      ctx.save()
+      ctx.filter = 'blur(26px)'
+      ctx.drawImage(foyer, (width - cw) / 2, (height - ch) / 2, cw, ch)
+      ctx.restore()
+      ctx.fillStyle = 'rgba(10,6,16,0.5)' // recede the backdrop so the sharp art pops
+      ctx.fillRect(0, 0, width, height)
+      // the sharp, whole foyer centred — signage + floor intact
+      ctx.drawImage(foyer, ix, iy, iw, ih)
+      if (hovered !== null) {
+        const r = buildingRects(width, height).find((b) => b.id === hovered)
+        if (r) drawZoneHighlight(ctx, r)
+      }
+      return
+    }
     ctx.textAlign = 'center'
     ctx.fillStyle = '#e6e9ef'
     ctx.font = `bold ${Math.round(height * 0.06)}px system-ui, sans-serif`
