@@ -975,17 +975,24 @@ function renderInsight(): void {
   insightEl.textContent = `✦ ${insight} Insight`
 }
 
-/** Responsive viewport: match the canvas buffer to its CSS box (the window), so
- *  the world fills any window with no bars, crop or distortion. The buffer is in
- *  CSS pixels (coords line up with the DOM overlay). No-op while hidden (size 0). */
+/** Responsive viewport: match the canvas backing store to its CSS box × the device
+ *  pixel ratio, so the world fills any window with no bars, crop or distortion AND
+ *  stays crisp on HiDPI displays. A transform maps drawing coords back to CSS px,
+ *  so render.ts and hit-testing keep working in CSS px (the buffer is dpr× larger).
+ *  dpr is capped so a 3–4× display doesn't allocate a huge buffer. No-op while
+ *  hidden (size 0). */
 function resizeCanvas(): void {
   const w = canvas.clientWidth
   const h = canvas.clientHeight
   if (w === 0 || h === 0) return
-  if (canvas.width !== w || canvas.height !== h) {
-    canvas.width = w
-    canvas.height = h
+  const dpr = Math.min(window.devicePixelRatio || 1, 3)
+  const bw = Math.round(w * dpr)
+  const bh = Math.round(h * dpr)
+  if (canvas.width !== bw || canvas.height !== bh) {
+    canvas.width = bw
+    canvas.height = bh
   }
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0) // draw in CSS px; backing store is device px
 }
 
 window.addEventListener('resize', () => {
@@ -1030,23 +1037,27 @@ toSlotsBtn.addEventListener('click', backToSlots)
 openJournalBtn.addEventListener('click', () => setBuilding('journal'))
 
 // The Workshop & Library are entered by clicking their buildings in the town scene.
-// Map a click in CSS pixels to canvas-space (buffer == CSS size, so ~1:1) and
-// hit-test the SAME rects the renderer draws. Town-only, and not while a modal is up.
+// Map a click to the renderer's CSS-pixel coordinate space (the backing store is
+// dpr× larger, but render.ts draws in CSS px), and hit-test the SAME rects the
+// renderer draws. Town-only, and not while a modal is up.
 function canvasPoint(e: MouseEvent): { x: number; y: number } {
   const rect = canvas.getBoundingClientRect()
   return {
-    x: ((e.clientX - rect.left) / rect.width) * canvas.width,
-    y: ((e.clientY - rect.top) / rect.height) * canvas.height,
+    x: ((e.clientX - rect.left) / rect.width) * canvas.clientWidth,
+    y: ((e.clientY - rect.top) / rect.height) * canvas.clientHeight,
   }
 }
 canvas.addEventListener('click', (e) => {
   if (mode !== 'camp' || openBuilding !== null) return
   const { x, y } = canvasPoint(e)
-  const b = buildingAt(x, y, canvas.width, canvas.height)
+  const b = buildingAt(x, y, canvas.clientWidth, canvas.clientHeight)
   if (b !== null) setBuilding(b)
 })
 canvas.addEventListener('mousemove', (e) => {
-  const over = mode === 'camp' && openBuilding === null ? buildingAt(canvasPoint(e).x, canvasPoint(e).y, canvas.width, canvas.height) : null
+  const over =
+    mode === 'camp' && openBuilding === null
+      ? buildingAt(canvasPoint(e).x, canvasPoint(e).y, canvas.clientWidth, canvas.clientHeight)
+      : null
   canvas.style.cursor = over !== null ? 'pointer' : 'default'
   if (over !== hoveredBuilding) {
     hoveredBuilding = over
