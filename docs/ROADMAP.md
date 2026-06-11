@@ -42,8 +42,8 @@ and deterministic. English codebase. See [ARCHITECTURE.md](ARCHITECTURE.md).
 | 2 | Interactive rule editor (reorder, on/off, add/remove); live re-sim; Defend; death if non-viable | ✅ done & verified |
 | 3 | Composite rules (State = Subject+Predicate, Maneuver = Command+Object), 2-hero party w/ per-unit Procedures vs a 3-enemy group, filter-then-pick targeting, victory/defeat | ✅ done & verified |
 | 4 | The first "wall": Hex Warden counters every heal; naive cure-Procedure loses, disabling the cure rule wins. Encounter selector (Slime Pack / Hex Warden) | ✅ done & verified |
-| RL | **Run-loop POC** (the roguelite spine): pure `run.ts` layer above the encounter — camp → launch → auto-advance a gauntlet (party HP/deaths carry: attrition) → defeat ends the run → back to camp. Editor locked during a run (no rescue); stage HUD; journal. | ✅ done & verified |
-| 5 | **Save + offline catch-up:** `localStorage` persists the camp roster and an in-progress run; on load, an in-progress run fast-forwards by elapsed wall-clock (`catchUp`) — finishing offline lands on RUN OVER. Defensive load (versioned, never bricks). | ✅ done & verified |
+| RL | **Run-loop POC** (the roguelite spine): pure `run.ts` layer above the encounter — camp → launch → auto-advance a gauntlet (party HP/deaths carry: attrition) → defeat ends the run → back to camp. Editor locked during a run (no rescue); stage HUD; journal. | ✅ done · *later superseded by the delve layer; `run.ts` removed* |
+| 5 | **Save + offline catch-up:** `localStorage` persists the camp roster and an in-progress run; on load, an in-progress run fast-forwards by elapsed wall-clock (`catchUp`) — finishing offline lands on RUN OVER. Defensive load (versioned, never bricks). | ✅ done · *offline catch-up later removed — a delve now resumes in real time; save/defensive-load kept* |
 | 6 | **Ship it live (GitHub Pages):** `gh-pages`-branch deploy (org bans nested unpinned actions); the game is playable on the web | ✅ done & verified |
 | 7 | **Seeded PRNG foundation:** `rng.ts` (resumable mulberry32) + tests; `RunState.seed` set per launch, shown in the run bar, persisted (save v2) | ✅ done & verified |
 
@@ -292,6 +292,12 @@ in-progress run is fast-forwarded by `catchUp(run, elapsedSteps)` (pure, in
 interval already advances an open tab). Load is defensive (versioned + try/catch →
 ignore corrupt/stale, never bricks). Verified in-browser: edit→reload persists; an
 injected old `savedAt`→reload fast-forwards the run to its end.
+
+> **Superseded:** the **offline catch-up** described above was later removed
+> (the run layer became the delve). A delve now **resumes in real time** exactly
+> where it was saved — time away never advances it (VISION.md pillar 3). The save
+> persistence and defensive/versioned load remain; `savedAt` is now only the
+> slot-picker's "x ago" stamp, not a replay input.
 **PRNG deferred:** the sim has zero randomness today, so catch-up is *already*
 reproducible — a seeded PRNG would be infra with no consumer. It lands with the
 first dice/randomness (D&D flavour), where the seed will live in `RunState`.
