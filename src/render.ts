@@ -10,6 +10,7 @@
 import type { Combatant, GameState } from './sim'
 import { DX, DY, roomAt, type Dir } from './dungeon'
 import type { DelveState } from './delve'
+import { buildingRects, type BuildingId, type BuildingRect } from './buildings'
 
 const HUD_SAFE = 72 // px reserved at the top for the floating HUD bar (DOM)
 
@@ -122,7 +123,73 @@ function drawBanner(ctx: CanvasRenderingContext2D, title: string, subtitle: stri
   ctx.textBaseline = 'top'
 }
 
-export function render(ctx: CanvasRenderingContext2D, state: GameState, sprites: Sprites): void {
+/** A clickable town building: a little house (roof + door + glyph) with its label
+ *  below; hovering lights it up and shows a "click to enter" hint. */
+function drawBuilding(ctx: CanvasRenderingContext2D, r: BuildingRect, on: boolean): void {
+  const roofH = Math.round(r.h * 0.28)
+  const bodyY = r.y + roofH
+  const bodyH = r.h - roofH
+
+  if (on) {
+    ctx.save()
+    ctx.shadowColor = 'rgba(79,209,255,0.45)'
+    ctx.shadowBlur = 26
+  }
+  // body + roof (a trapezoid that overhangs the walls)
+  ctx.fillStyle = on ? '#1b2738' : '#161622'
+  ctx.fillRect(r.x, bodyY, r.w, bodyH)
+  ctx.fillStyle = on ? '#26405a' : '#20202e'
+  ctx.beginPath()
+  ctx.moveTo(r.x - 6, bodyY)
+  ctx.lineTo(r.x + r.w + 6, bodyY)
+  ctx.lineTo(r.x + r.w - Math.round(r.w * 0.18), r.y)
+  ctx.lineTo(r.x + Math.round(r.w * 0.18), r.y)
+  ctx.closePath()
+  ctx.fill()
+  if (on) ctx.restore()
+
+  ctx.strokeStyle = on ? '#4fd1ff' : '#2c2c40'
+  ctx.lineWidth = 2
+  ctx.strokeRect(r.x + 1, bodyY + 1, r.w - 2, bodyH - 2)
+
+  // a distinguishing glyph on the wall (gear = Workshop, shelves = Library)
+  ctx.fillStyle = on ? '#9bdcff' : '#5a6072'
+  ctx.font = `${Math.round(r.w * 0.2)}px system-ui, sans-serif`
+  ctx.textAlign = 'center'
+  ctx.textBaseline = 'middle'
+  ctx.fillText(r.id === 'workshop' ? '⚙' : '▤', r.x + r.w / 2, bodyY + bodyH * 0.36)
+
+  // door
+  const dw = Math.round(r.w * 0.26)
+  const dh = Math.round(bodyH * 0.46)
+  const dx = r.x + (r.w - dw) / 2
+  const dy = bodyY + bodyH - dh
+  ctx.fillStyle = on ? '#0d1f2b' : '#0a0a12'
+  ctx.fillRect(dx, dy, dw, dh)
+  ctx.strokeStyle = on ? '#4fd1ff' : '#3a3a52'
+  ctx.lineWidth = 1.5
+  ctx.strokeRect(dx, dy, dw, dh)
+
+  // label + hover hint
+  ctx.textBaseline = 'top'
+  ctx.fillStyle = on ? '#e6e9ef' : '#9aa0b0'
+  ctx.font = `600 ${Math.max(13, Math.round(r.h * 0.1))}px system-ui, sans-serif`
+  ctx.fillText(r.label, r.x + r.w / 2, r.y + r.h + 8)
+  if (on) {
+    ctx.fillStyle = '#4fd1ff'
+    ctx.font = `${Math.max(11, Math.round(r.h * 0.072))}px system-ui, sans-serif`
+    ctx.fillText('click to enter', r.x + r.w / 2, r.y + r.h + 8 + Math.round(r.h * 0.13))
+  }
+  ctx.textAlign = 'left'
+  ctx.textBaseline = 'top'
+}
+
+export function render(
+  ctx: CanvasRenderingContext2D,
+  state: GameState,
+  sprites: Sprites,
+  hovered: BuildingId | null = null,
+): void {
   const { width, height } = ctx.canvas
   const groundH = Math.round(height * 0.17)
   const SS = unitScale(height)
@@ -146,8 +213,12 @@ export function render(ctx: CanvasRenderingContext2D, state: GameState, sprites:
     ctx.fillText('TOWN', width / 2, HUD_SAFE) // below the floating HUD bar
     ctx.fillStyle = '#62687a'
     ctx.font = `${Math.round(height * 0.03)}px system-ui, sans-serif`
-    ctx.fillText('Your party rests — program their brains, then descend', width / 2, HUD_SAFE + Math.round(height * 0.08))
+    ctx.fillText('Your party rests — enter a building, or descend', width / 2, HUD_SAFE + Math.round(height * 0.08))
     ctx.textAlign = 'left'
+
+    // Buildings you can click to enter (Workshop / Library). Same rects the click
+    // handler hit-tests (src/buildings.ts), so drawn ≡ clickable.
+    for (const r of buildingRects(width, height)) drawBuilding(ctx, r, hovered === r.id)
 
     const heroW = sprites.hero.width * SS
     const heroH = sprites.hero.height * SS

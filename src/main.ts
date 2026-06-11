@@ -28,6 +28,7 @@ import {
 } from './save'
 import { makeHero, makeHeroBack, makeSlime } from './sprites'
 import { render, renderDelve } from './render'
+import { buildingAt, type BuildingId } from './buildings'
 import { requireElement, require2dContext } from './dom'
 import {
   byId,
@@ -132,6 +133,8 @@ let selectedLevelId: string = LEVELS[0].id
 // UI state — never persisted.
 type Building = 'workshop' | 'library' | 'journal'
 let openBuilding: Building | null = null
+// Which town building the cursor is over (for the hover highlight). Town-only.
+let hoveredBuilding: BuildingId | null = null
 // The last finished delve's journal, kept readable in town so the loop "wipe →
 // read the journal → reprogram" works while you author. Transient (not saved).
 let lastDelveLog: DelveState['log'] = []
@@ -190,8 +193,6 @@ const exAddBtn = requireElement('ex-add', HTMLButtonElement)
 const logEl = requireElement('log', HTMLDivElement)
 const musicBtn = requireElement('music-toggle', HTMLButtonElement)
 const insightEl = requireElement('insight', HTMLSpanElement)
-const openWorkshopBtn = requireElement('open-workshop', HTMLButtonElement)
-const openLibraryBtn = requireElement('open-library', HTMLButtonElement)
 const openJournalBtn = requireElement('open-journal', HTMLButtonElement)
 const modalWorkshopEl = requireElement('modal-workshop', HTMLDivElement)
 const modalLibraryEl = requireElement('modal-library', HTMLDivElement)
@@ -795,11 +796,6 @@ function renderModals(): void {
   modalLibraryEl.hidden = openBuilding !== 'library'
   modalJournalEl.hidden = openBuilding !== 'journal'
 
-  // Workshop & Library are between-delve activities; hide their entries mid-delve.
-  const inTown = mode === 'camp'
-  openWorkshopBtn.hidden = !inTown
-  openLibraryBtn.hidden = !inTown
-
   if (openBuilding === 'library') renderTrainer()
   if (openBuilding === 'journal') renderLog()
 }
@@ -1054,7 +1050,7 @@ window.addEventListener('resize', () => {
 })
 
 function frame(): void {
-  if (mode === 'camp' || delve === null) render(ctx, campState(), sprites)
+  if (mode === 'camp' || delve === null) render(ctx, campState(), sprites, hoveredBuilding)
   else renderDelve(ctx, delve, sprites)
   renderLog()
   renderTabs()
@@ -1085,10 +1081,40 @@ playBtn.addEventListener('click', goToSlots)
 slotsBackBtn.addEventListener('click', goToTitle)
 toSlotsBtn.addEventListener('click', backToSlots)
 
-// Building entries open their full-screen modal over the world.
-openWorkshopBtn.addEventListener('click', () => setBuilding('workshop'))
-openLibraryBtn.addEventListener('click', () => setBuilding('library'))
+// The Journal opens from its always-available button (it's readable mid-delve too).
 openJournalBtn.addEventListener('click', () => setBuilding('journal'))
+
+// The Workshop & Library are entered by clicking their buildings in the town scene.
+// Map a click in CSS pixels to canvas-space (buffer == CSS size, so ~1:1) and
+// hit-test the SAME rects the renderer draws. Town-only, and not while a modal is up.
+function canvasPoint(e: MouseEvent): { x: number; y: number } {
+  const rect = canvas.getBoundingClientRect()
+  return {
+    x: ((e.clientX - rect.left) / rect.width) * canvas.width,
+    y: ((e.clientY - rect.top) / rect.height) * canvas.height,
+  }
+}
+canvas.addEventListener('click', (e) => {
+  if (mode !== 'camp' || openBuilding !== null) return
+  const { x, y } = canvasPoint(e)
+  const b = buildingAt(x, y, canvas.width, canvas.height)
+  if (b !== null) setBuilding(b)
+})
+canvas.addEventListener('mousemove', (e) => {
+  const over = mode === 'camp' && openBuilding === null ? buildingAt(canvasPoint(e).x, canvasPoint(e).y, canvas.width, canvas.height) : null
+  canvas.style.cursor = over !== null ? 'pointer' : 'default'
+  if (over !== hoveredBuilding) {
+    hoveredBuilding = over
+    frame() // repaint only on change — light up the hovered building
+  }
+})
+canvas.addEventListener('mouseleave', () => {
+  if (hoveredBuilding !== null) {
+    hoveredBuilding = null
+    canvas.style.cursor = 'default'
+    frame()
+  }
+})
 
 // Workshop & Library are blocking modals: the dim backdrop or the ✕ closes them.
 for (const modal of [modalWorkshopEl, modalLibraryEl]) {
