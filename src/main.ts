@@ -96,7 +96,7 @@ function freshRoster(): Hero[] {
   return [
     {
       simId: 'hero-1',
-      name: 'Warrior',
+      name: 'Sentinel',
       rows: [
         { subjectId: 'self', predId: 'hp_lt_30', command: 'useSkill', skillId: 'defend', enabled: true },
         { subjectId: 'enemy_near', predId: 'always', command: 'attack', skillId: 'cure', enabled: true },
@@ -104,7 +104,7 @@ function freshRoster(): Hero[] {
     },
     {
       simId: 'hero-2',
-      name: 'Healer',
+      name: 'Mender',
       rows: [
         { subjectId: 'ally_low', predId: 'hp_lt_50', command: 'useSkill', skillId: 'cure', enabled: true },
         { subjectId: 'enemy_near', predId: 'always', command: 'attack', skillId: 'cure', enabled: true },
@@ -406,10 +406,10 @@ function slotSummary(info: SlotInfo): string {
         : info.delveStatus === 'cleared'
           ? 'Delve cleared'
           : info.delveStatus === 'dead'
-            ? 'Party wiped'
+            ? 'Golems wiped'
             : 'Delve stuck'
       : 'In town'
-  return `${where} · ${info.heroCount} heroes · ${relTime(info.savedAt)}`
+  return `${where} · ${info.heroCount} golems · ${relTime(info.savedAt)}`
 }
 
 function renderSlots(): void {
@@ -727,13 +727,13 @@ function makeHint(text: string): HTMLSpanElement {
 function renderRunBar(): void {
   runBarEl.replaceChildren()
   if (mode === 'camp' || delve === null) {
-    const launch = makeButton('▶ Descend', 'Send your party delving into the selected level', descend)
+    const launch = makeButton('▶ Descend', 'Send your golems delving into the chosen depths', descend)
     launch.className = 'run-launch'
-    runBarEl.append(launch, makeHint(`${levelById(selectedLevelId).name} — a fresh seeded layout each run`))
+    runBarEl.append(launch, makeHint(`${levelById(selectedLevelId).name} — never the same twice`))
   } else if (delve.status === 'delving') {
     const abandon = makeButton('✕ Abandon delve', 'Give up and return to town', backToTown)
     abandon.className = 'run-abandon'
-    runBarEl.append(abandon, makeHint(`Delving — editing locked · seed ${delve.seed}`))
+    runBarEl.append(abandon, makeHint('Delving — your golems are on their own now'))
   } else {
     const back = makeButton('↩ Back to town', 'Return to town to revise your Procedures', backToTown)
     back.className = 'run-launch'
@@ -742,7 +742,7 @@ function renderRunBar(): void {
         ? 'Delve cleared!'
         : delve.status === 'stuck'
           ? 'The delve got stuck — read the journal'
-          : 'The party was wiped — read the journal'
+          : 'Your golems were wiped — read the journal'
     runBarEl.append(back, makeHint(msg))
   }
 }
@@ -905,7 +905,9 @@ function renderTabs(): void {
     tab.className = i === activeHero ? 'tab active' : 'tab'
     const unit = units.find((u) => u.id === hero.simId)
     const hp = unit ? `${Math.max(0, unit.hp)}/${unit.maxHp}` : ''
-    tab.textContent = `${hero.name}  ${hp}`
+    // Prefer the sim unit's name (always current) over the saved roster name, so a
+    // pre-U4 profile shows the golem names too without migrating the save.
+    tab.textContent = `${unit?.name ?? hero.name}  ${hp}`
     tab.addEventListener('click', () => {
       activeHero = i
       renderTabs()
@@ -964,7 +966,7 @@ function createExRow(row: ExProtocolRow, i: number): HTMLLIElement {
     },
     locked,
   )
-  moveSel.title = 'Move — what the party does'
+  moveSel.title = 'Move — what your golems do'
 
   return ruleCard([subjSel, sep('·'), predSel, sep('→', 'arrow'), moveSel], {
     index: i,

@@ -156,12 +156,12 @@ describe('step — one unit-action of the simulation', () => {
     return initialState(warrior, healer)
   }
 
-  it('the Warrior acts first and attacks the first slime', () => {
+  it('the Sentinel acts first and attacks the first slime', () => {
     const s = step(freshBattle())
     expect(s.turn).toBe(1)
     const slime1 = s.units.find((u) => u.id === 'enemy-1')
-    expect(slime1?.hp).toBe(26 - 11) // warrior atk 11
-    expect(s.log.at(-1)?.actorName).toBe('Warrior')
+    expect(slime1?.hp).toBe(26 - 11) // Sentinel atk 11
+    expect(s.log.at(-1)?.actorName).toBe('Sentinel')
     expect(s.log.at(-1)?.targetName).toBe('Slime #1')
   })
 
@@ -172,8 +172,8 @@ describe('step — one unit-action of the simulation', () => {
       s = step(s)
       actors.push(s.log.at(-1)?.actorName ?? '?')
     }
-    expect(actors.slice(0, 5)).toEqual(['Warrior', 'Healer', 'Slime #1', 'Slime #2', 'Slime #3'])
-    expect(actors[5]).toBe('Warrior') // round 2 begins
+    expect(actors.slice(0, 5)).toEqual(['Sentinel', 'Mender', 'Slime #1', 'Slime #2', 'Slime #3'])
+    expect(actors[5]).toBe('Sentinel') // round 2 begins
     expect(s.round).toBe(1) // 0-based: the wrap incremented it once
   })
 
@@ -190,7 +190,7 @@ describe('step — one unit-action of the simulation', () => {
   })
 
   it('Defend halves the damage the unit takes before its next turn', () => {
-    // Warrior defends; a single slime then hits it for half.
+    // The Sentinel defends; a single slime then hits it for half.
     const warrior: Procedure = [{ state: { subject: { who: 'self' }, predicate: { p: 'always' } }, maneuver: DEFEND, label: 'defend' }]
     const w = makeWarrior(warrior)
     const slime = { ...makeWarrior([]), side: 'enemy' as const, id: 'enemy-1', name: 'Slime', hp: 26, maxHp: 26, atk: 8 }

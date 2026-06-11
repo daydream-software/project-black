@@ -13,8 +13,8 @@ export interface LevelConfig extends GenConfig {
 }
 
 export const LEVELS: LevelConfig[] = [
-  { id: 'lvl-1', name: 'Level 1', width: 21, height: 15, rooms: [3, 7], packs: [1, 2] },
-  { id: 'lvl-2', name: 'Level 2', width: 31, height: 23, rooms: [6, 9], packs: [2, 3] },
+  { id: 'lvl-1', name: 'The Ruin', width: 21, height: 15, rooms: [3, 7], packs: [1, 2] },
+  { id: 'lvl-2', name: 'The Vault', width: 31, height: 23, rooms: [6, 9], packs: [2, 3] },
 ]
 
 /** The level with this id, or the first level as a safe fallback. */

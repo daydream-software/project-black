@@ -31,7 +31,7 @@ describe('run — the gauntlet plays itself', () => {
     expect(r.depth).toBe(1) // advanced
     expect(r.status).toBe('fighting')
     const warrior = r.battle.units.find((u) => u.id === 'hero-1')
-    expect(warrior?.name).toBe('Warrior') // same hero, not a fresh one
+    expect(warrior?.name).toBe('Sentinel') // same golem, not a fresh one
     expect(warrior?.hp).toBeLessThan(120) // it took damage in encounter 1 and kept it
     expect(warrior?.hp ?? 0).toBeGreaterThan(0)
     // Fresh enemies for the new encounter, full HP, clean log.

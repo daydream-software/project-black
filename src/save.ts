@@ -22,7 +22,7 @@ export interface ProtocolRow {
 }
 
 export interface Hero {
-  simId: string // matches the id sim.ts assigns (hero-1 = Warrior, hero-2 = Healer)
+  simId: string // matches the id sim.ts assigns (hero-1 = Sentinel, hero-2 = Mender)
   name: string
   rows: ProtocolRow[]
 }

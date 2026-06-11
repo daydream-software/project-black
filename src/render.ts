@@ -213,7 +213,7 @@ export function render(
     ctx.fillText('TOWN', width / 2, HUD_SAFE) // below the floating HUD bar
     ctx.fillStyle = '#62687a'
     ctx.font = `${Math.round(height * 0.03)}px system-ui, sans-serif`
-    ctx.fillText('Your party rests — enter a building, or descend', width / 2, HUD_SAFE + Math.round(height * 0.08))
+    ctx.fillText('Your golems wait — enter a building, or descend', width / 2, HUD_SAFE + Math.round(height * 0.08))
     ctx.textAlign = 'left'
 
     // Buildings you can click to enter (Workshop / Library). Same rects the click
@@ -285,8 +285,8 @@ export function renderDelve(ctx: CanvasRenderingContext2D, delve: DelveState, sp
   drawMinimap(ctx, delve)
 
   if (delve.status === 'cleared') drawBanner(ctx, 'DELVE CLEARED', 'The objective is slain', '#9fe0a8')
-  else if (delve.status === 'dead') drawBanner(ctx, 'PARTY WIPED', 'Read the journal, reprogram, delve again', '#ff6b6b')
-  else if (delve.status === 'stuck') drawBanner(ctx, 'STUCK', 'The party found no way forward', '#ffb454')
+  else if (delve.status === 'dead') drawBanner(ctx, 'GOLEMS WIPED', 'Read the journal, reprogram, delve again', '#ff6b6b')
+  else if (delve.status === 'stuck') drawBanner(ctx, 'STUCK', 'Your golems found no way forward', '#ffb454')
 }
 
 function poly(ctx: CanvasRenderingContext2D, pts: number[], fill: string): void {

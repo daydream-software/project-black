@@ -246,8 +246,8 @@ export function makeEnemy(index: number): Combatant {
  * The slice-4 "wall": a single boss that punishes restorative magic. Every time
  * a hero is healed, the Warden strikes the healed unit for `counterHeal`, which
  * more than undoes the Cure — so the naive "Cure when an ally is low" Procedure
- * is a trap. The only fix in the shipped vocabulary is for the Healer to STOP
- * curing and add its damage to the race instead (the Warrior tanks on its own
+ * is a trap. The only fix in the shipped vocabulary is for the Mender to STOP
+ * curing and add its damage to the race instead (the Sentinel tanks on its own
  * Self·HP<30%→Defend rule). Tuned so the cure-spam default genuinely wipes.
  */
 export function makeWarden(): Combatant {
@@ -265,13 +265,13 @@ export function makeWarden(): Combatant {
   }
 }
 
-/** Default party: a Warrior (tanky, hits hard) and a Healer (fragile, cures). */
+/** Default golems: a Sentinel (tanky, hits hard) and a Mender (fragile, cures). */
 export function makeWarrior(procedure: Procedure): Combatant {
-  return { id: 'hero-1', name: 'Warrior', side: 'hero', hp: 120, maxHp: 120, atk: 11, defending: false, procedure }
+  return { id: 'hero-1', name: 'Sentinel', side: 'hero', hp: 120, maxHp: 120, atk: 11, defending: false, procedure }
 }
 
 export function makeHealer(procedure: Procedure): Combatant {
-  return { id: 'hero-2', name: 'Healer', side: 'hero', hp: 80, maxHp: 80, atk: 6, defending: false, procedure }
+  return { id: 'hero-2', name: 'Mender', side: 'hero', hp: 80, maxHp: 80, atk: 6, defending: false, procedure }
 }
 
 export type EncounterId = 'duo' | 'pack' | 'warden'
