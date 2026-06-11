@@ -70,6 +70,12 @@ function isObj(x: unknown): x is Record<string, unknown> {
   return typeof x === 'object' && x !== null
 }
 
+/** A persisted hero must carry a rows array — `party()`/`procedureFor` index into
+ *  it, so a malformed entry would crash on the first frame. */
+function isHero(x: unknown): x is Hero {
+  return isObj(x) && Array.isArray(x.rows)
+}
+
 function isDelveState(x: unknown): x is DelveState {
   return (
     isObj(x) &&
@@ -89,6 +95,8 @@ function isSaveData(x: unknown): x is SaveData {
     x.version === VERSION &&
     typeof x.savedAt === 'number' &&
     Array.isArray(x.roster) &&
+    x.roster.length >= 2 &&
+    x.roster.every(isHero) &&
     typeof x.activeHero === 'number' &&
     (x.exploration === undefined || Array.isArray(x.exploration)) &&
     (x.clearedLevels === undefined || Array.isArray(x.clearedLevels)) &&

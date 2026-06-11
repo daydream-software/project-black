@@ -3,15 +3,24 @@ import { DEFAULT_EXPLORATION } from './delve'
 import {
   buildExploration,
   exRowToRule,
+  exRowResolves,
   DEFAULT_EX_ROWS,
   EX_SUBJECTS,
   EX_PREDICATES,
   EX_MOVES,
+  procedureFor,
+  rowToProtocol,
+  rowResolves,
+  commandById,
+  SUBJECTS,
+  PREDICATES,
+  COMMANDS,
+  SKILLS,
   byId,
   available,
   type Option,
 } from './protocol'
-import type { ExProtocolRow } from './save'
+import type { ExProtocolRow, Hero, ProtocolRow } from './save'
 
 describe('protocol — exploration rule compiler', () => {
   it('compiles the default editor rows into exactly DEFAULT_EXPLORATION', () => {
@@ -65,5 +74,76 @@ describe('protocol — exploration rule compiler', () => {
     expect(available(opts, ['buy-b']).map((o) => o.id)).toEqual(['a', 'b']) // purchased → offered
     // byId still resolves a locked id (an already-authored rule must keep working)
     expect(byId(opts, 'b').label).toBe('B')
+  })
+
+  it('drops an exploration row whose id no longer resolves instead of throwing', () => {
+    // A save authored before the vocabulary churned: 'sprint' is not an EX_MOVES id.
+    const rows: ExProtocolRow[] = [
+      { subjectId: 'target', predId: 'known', moveId: 'head', enabled: true },
+      { subjectId: 'unexplored', predId: 'always', moveId: 'sprint', enabled: true }, // stale move
+    ]
+    expect(exRowResolves(rows[1])).toBe(false)
+    const compiled = buildExploration(rows)
+    expect(compiled).toHaveLength(1) // the stale row is skipped, the good one survives
+    expect(compiled[0].label).toBe('Target · known → head toward')
+  })
+})
+
+describe('protocol — combat rule compiler', () => {
+  const hero = (rows: ProtocolRow[]): Hero => ({ simId: 'hero-1', name: 'Test', rows })
+
+  it('compiles a hero’s enabled rows into Protocols, in priority order, with labels', () => {
+    const h = hero([
+      { subjectId: 'self', predId: 'hp_lt_30', command: 'useSkill', skillId: 'defend', enabled: true },
+      { subjectId: 'enemy_near', predId: 'always', command: 'attack', skillId: 'cure', enabled: true },
+    ])
+    const proc = procedureFor(h)
+    expect(proc).toHaveLength(2)
+    expect(proc[0].label).toBe('Self · HP < 30% → Use Skill · Defend')
+    expect(proc[1].label).toBe('Enemy · near · Always → Attack')
+    expect(proc[0].state).toEqual({ subject: { who: 'self' }, predicate: { p: 'hpPctBelow', value: 30 } })
+    expect(proc[0].maneuver).toEqual({ command: 'useSkill', skill: 'defend' })
+    expect(proc[1].maneuver).toEqual({ command: 'attack' })
+  })
+
+  it('drops disabled rows and preserves priority order', () => {
+    const h = hero([
+      { subjectId: 'enemy_low', predId: 'always', command: 'attack', skillId: 'cure', enabled: false },
+      { subjectId: 'self', predId: 'hp_full', command: 'flee', skillId: 'cure', enabled: true },
+    ])
+    const proc = procedureFor(h)
+    expect(proc).toHaveLength(1)
+    expect(proc[0].maneuver).toEqual({ command: 'flee' })
+  })
+
+  it('drops a row whose State id no longer resolves instead of throwing (stale save)', () => {
+    // The brick path the defensive compile fixes: an old save with a renamed id
+    // must field a party, not crash enterGame. 'enemy_biggest' is not a SUBJECTS id.
+    const h = hero([
+      { subjectId: 'enemy_biggest', predId: 'always', command: 'attack', skillId: 'cure', enabled: true }, // stale
+      { subjectId: 'enemy_near', predId: 'always', command: 'attack', skillId: 'cure', enabled: true },
+    ])
+    expect(rowResolves(h.rows[0])).toBe(false)
+    const proc = procedureFor(h)
+    expect(proc).toHaveLength(1) // the stale row is gone, the valid one remains
+    expect(proc[0].state.subject).toEqual({ who: 'enemy', pick: 'first' })
+  })
+
+  it('rowToProtocol maps each dropdown id to the right model value', () => {
+    const p = rowToProtocol({ subjectId: 'ally_low', predId: 'hp_lt_50', command: 'useSkill', skillId: 'cure', enabled: true })
+    expect(p.state.subject).toEqual({ who: 'ally', pick: 'lowestHp' })
+    expect(p.state.predicate).toEqual({ p: 'hpPctBelow', value: 50 })
+    expect(p.maneuver).toEqual({ command: 'useSkill', skill: 'cure' })
+  })
+
+  it('every combat catalog option has a unique id', () => {
+    for (const cat of [SUBJECTS, PREDICATES, COMMANDS, SKILLS]) {
+      const ids = cat.map((o) => o.id)
+      expect(new Set(ids).size).toBe(ids.length)
+    }
+  })
+
+  it('commandById throws on an unknown command (a genuine wiring error, not stale data)', () => {
+    expect(() => commandById('parry')).toThrow(/Unknown command/)
   })
 })

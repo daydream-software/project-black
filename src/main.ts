@@ -1,15 +1,5 @@
 import './style.css'
-import {
-  makeWarrior,
-  makeHealer,
-  type Combatant,
-  type GameState,
-  type Procedure,
-  type Protocol,
-  type State,
-  type Maneuver,
-  type SkillId,
-} from './sim'
+import { makeWarrior, makeHealer, type Combatant, type GameState } from './sim'
 import { startDelve, stepDelve, type DelveState, type ExProtocol } from './delve'
 import { LEVELS, applyClear, levelById, hasCleared } from './levels'
 import { UNLOCKABLES, buy, isOwned, canAfford } from './shop'
@@ -31,61 +21,19 @@ import { render, renderDelve } from './render'
 import { buildingAt, type BuildingId } from './buildings'
 import { requireElement, require2dContext } from './dom'
 import {
-  byId,
   available,
   buildExploration,
+  procedureFor,
+  commandById,
+  SUBJECTS,
+  PREDICATES,
+  COMMANDS,
+  SKILLS,
   EX_SUBJECTS,
   EX_PREDICATES,
   EX_MOVES,
   DEFAULT_EX_ROWS,
-  type Option,
 } from './protocol'
-
-// --- Rule catalog: the composed vocabulary the player picks from. -----------
-// A Protocol is built from four dropdowns: Subject + Predicate (the State) and
-// Command + Object (the Maneuver). The Object dropdown only shows for "Use Skill".
-// The pure row→model compiler (+ the exploration catalogs) lives in protocol.ts.
-
-const SUBJECTS: Option<State['subject']>[] = [
-  { id: 'self', label: 'Self', make: () => ({ who: 'self' }) },
-  { id: 'ally_any', label: 'Ally · any', make: () => ({ who: 'ally', pick: 'first' }) },
-  { id: 'ally_low', label: 'Ally · low HP', make: () => ({ who: 'ally', pick: 'lowestHp' }) },
-  { id: 'enemy_near', label: 'Enemy · near', make: () => ({ who: 'enemy', pick: 'first' }) },
-  { id: 'enemy_low', label: 'Enemy · low HP', make: () => ({ who: 'enemy', pick: 'lowestHp' }) },
-  // Locked until learned at the Trainer (slice 10b): focus-fire the biggest threat.
-  { id: 'enemy_high', label: 'Enemy · most HP', make: () => ({ who: 'enemy', pick: 'highestHp' }), unlock: 'enemy-most-hp' },
-]
-
-const PREDICATES: Option<State['predicate']>[] = [
-  { id: 'always', label: 'Always', make: () => ({ p: 'always' }) },
-  { id: 'hp_lt_30', label: 'HP < 30%', make: () => ({ p: 'hpPctBelow', value: 30 }) },
-  { id: 'hp_lt_50', label: 'HP < 50%', make: () => ({ p: 'hpPctBelow', value: 50 }) },
-  { id: 'hp_full', label: 'HP = 100%', make: () => ({ p: 'hpFull' }) },
-]
-
-// Commands. "useSkill" carries an Object (a skill); "attack"/"flee" do not.
-// "useItem" exists in the model but waits on an item system, so it is omitted here.
-const COMMANDS: { id: 'attack' | 'useSkill' | 'flee'; label: string; hasObject: boolean }[] = [
-  { id: 'attack', label: 'Attack', hasObject: false },
-  { id: 'useSkill', label: 'Use Skill', hasObject: true },
-  { id: 'flee', label: 'Flee', hasObject: false },
-]
-
-const SKILLS: { id: SkillId; label: string }[] = [
-  { id: 'cure', label: 'Cure' },
-  { id: 'defend', label: 'Defend' },
-]
-
-function commandById(id: string): (typeof COMMANDS)[number] {
-  const found = COMMANDS.find((c) => c.id === id)
-  if (found === undefined) throw new Error(`Unknown command: ${id}`)
-  return found
-}
-
-function skillLabel(id: SkillId): string {
-  const found = SKILLS.find((s) => s.id === id)
-  return found?.label ?? id
-}
 
 // --- Editor state: per-hero rule lists (priority = order). ------------------
 // ProtocolRow / Hero are defined in save.ts (they're the persisted schema).
@@ -156,30 +104,6 @@ function explorationProtocol(): ExProtocol {
   return buildExploration(exploration)
 }
 
-function maneuverFor(row: ProtocolRow): Maneuver {
-  if (row.command === 'useSkill') return { command: 'useSkill', skill: row.skillId }
-  if (row.command === 'flee') return { command: 'flee' }
-  return { command: 'attack' }
-}
-
-function maneuverLabel(row: ProtocolRow): string {
-  if (row.command === 'useSkill') return `Use Skill · ${skillLabel(row.skillId)}`
-  return commandById(row.command).label
-}
-
-function rowToProtocol(row: ProtocolRow): Protocol {
-  const subject = byId(SUBJECTS, row.subjectId)
-  const pred = byId(PREDICATES, row.predId)
-  return {
-    state: { subject: subject.make(), predicate: pred.make() },
-    maneuver: maneuverFor(row),
-    label: `${subject.label} · ${pred.label} → ${maneuverLabel(row)}`,
-  }
-}
-
-function procedureFor(hero: Hero): Procedure {
-  return hero.rows.filter((r) => r.enabled).map(rowToProtocol)
-}
 
 // --- DOM + run wiring -------------------------------------------------------
 const canvas = requireElement('game', HTMLCanvasElement)
@@ -236,7 +160,13 @@ let enabledLis: HTMLLIElement[] = []
 const editingLocked = (): boolean => mode !== 'camp'
 
 function party(): Combatant[] {
-  return [makeWarrior(procedureFor(roster[0])), makeHealer(procedureFor(roster[1]))]
+  // The party is always Sentinel + Mender. Fall back to fresh heroes if a loaded
+  // roster is short a slot (a malformed save) — a missing entry must not crash the
+  // whole game on the first frame.
+  const fresh = freshRoster()
+  const sentinel = roster[0] ?? fresh[0]
+  const mender = roster[1] ?? fresh[1]
+  return [makeWarrior(procedureFor(sentinel)), makeHealer(procedureFor(mender))]
 }
 
 /** The town screen is just the party with no enemies (render shows "Camp"). */
