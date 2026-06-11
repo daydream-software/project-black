@@ -688,6 +688,56 @@ canvas {
   display: none;
 }
 
+/* The title screen wears the Artificer's-tower key art: art fills the top, the
+   title + Play sit low over a darkening scrim so the text stays legible. */
+/* Both shell screens wear the Artificer's-tower key art. */
+#screen-title,
+#screen-slots {
+  background: url('./assets/title-bg.png') center / cover no-repeat;
+  image-rendering: pixelated;
+  position: relative;
+}
+#screen-title {
+  align-items: flex-end;
+  padding-bottom: 9vh;
+}
+/* Slots: same art, dimmed harder so the slot cards read; content stays centred. */
+#screen-slots::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: rgba(10, 6, 18, 0.78);
+  pointer-events: none;
+}
+#screen-slots .screen-inner {
+  position: relative;
+  z-index: 1;
+}
+#screen-title::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(
+    180deg,
+    rgba(10, 6, 18, 0.2) 0%,
+    rgba(10, 6, 18, 0) 28%,
+    rgba(10, 6, 18, 0.5) 64%,
+    rgba(10, 6, 18, 0.95) 100%
+  );
+  pointer-events: none;
+}
+#screen-title .screen-inner {
+  position: relative;
+  z-index: 1;
+}
+#screen-title .game-title {
+  text-shadow: 0 0 28px rgba(120, 245, 235, 0.4), 0 3px 10px rgba(0, 0, 0, 0.75);
+}
+#screen-title .tagline {
+  color: #cdc7da;
+  text-shadow: 0 1px 6px rgba(0, 0, 0, 0.85);
+}
+
 .screen-inner {
   width: 100%;
   max-width: 560px;
