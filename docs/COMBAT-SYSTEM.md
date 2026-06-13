@@ -135,13 +135,71 @@ glass-cannon is top-heavy. The shape *signals what kind of wall it is* — and t
 rule language can read it (`Enemy · most HP` today; `Enemy · armored / fast`
 later). Difficulty = stat shape × pack count × mechanics, not just bigger numbers.
 
-## Balance method (cadence-first)
+## Cadence — the tempos, and how Celerity is felt
 
-1. Set **cadence targets** — e.g. a trash fight ≈ N turns / ~S seconds, a room-hop
-   ≈ T seconds, a boss ≈ M turns.
-2. **Derive** base Force / Ward / Fortitude / Celerity from those targets.
-3. Tune against the **targets and the progression as a whole**, never one level in
-   isolation (you'd only re-tune it later against the full curve).
+Cadence has **two independent dials**, and conflating them is the trap:
+
+- **Tempo** = wall-clock seconds per action/step — the *feel*, deliberately
+  **contemplative**. SFX is designed *around* the tempo, not the reverse.
+  - **Combat: ~2.0 s per action.** Slow on purpose — not as an SFX floor but so
+    **Celerity is legible**: at this spacing you watch a fast golem take extra
+    turns while a slow one waits. Faster would make Celerity invisible math.
+  - **Exploration: ~0.9 s per step** (up from 0.45). A measured walk. **Pairs with
+    adding exploration SFX** (footstep / room-reveal / scrying hum) — slowing the
+    walk without audio is dead air.
+- **Drama** = number of actions per fight — the *length*, set by the **stats**, not
+  the tempo. So combats can breathe (2 s/blow) without dragging (few blows):
+
+  | Fight | Target actions | ≈ wall-clock |
+  |---|---|---|
+  | Trash pack | ~8 | ~16 s |
+  | Elite / mini | ~14 | ~28 s |
+  | Boss | ~24 | ~48 s |
+
+  Trash stays brisk — a contemplative delve gets its length from *more rooms /
+  fights and the measured walk*, never from padded trash.
+
+**Session (emergent, not padded):** Level 1 ≈ 2–2.5 min; deep levels ≈ 4–5 min.
+
+### Celerity = a CTB turn scheduler (FFX-style, not a filling ATB bar)
+
+Turn order is **not fixed** — and it is **not** a real-time gauge you wait on
+(FF4–9 ATB). It is **FFX-style CTB**: a deterministic scheduler where each unit's
+**Celerity** sets how soon its next turn comes back. Two things are deliberately
+kept separate:
+
+| | Fixed or dynamic? | Driven by |
+|---|---|---|
+| **Order** — who acts, in what sequence | **dynamic** | Celerity |
+| **Spacing** — wall-clock between on-screen actions | **fixed ~2 s** | the beat (for SFX) |
+
+So every ~2 s *someone* acts (constant spacing → SFX breathes), but **who** comes
+from the scheduler, not a fixed list. Celerity 12 / 10 / 8 → a **6 : 5 : 4** share
+of turns: in the time the slow mob acts 4×, the Mender acts 6× and the Sentinel 5×.
+The old round-robin dissolves into a stream of "next to act".
+
+- **Deterministic** — pure scheduling math, ties broken by a fixed rule (e.g. lower
+  index). No RNG; the journal stays trustworthy.
+- **Celerity is a real build lever** — a fast Mender = responsive heals; a fast
+  Sentinel = more tank actions. Programmable around (`WHEN …`).
+- **Presentation: a turn-order carousel** (an FFX-style upcoming-turns strip). For a
+  game you *watch*, showing what acts next makes Celerity legible and the autonomous
+  combat readable instead of opaque. *(The model is CTB; the carousel — or even
+  climbing bars — is just how it's drawn.)*
+- **Door it opens** (noted, not decided): per-action **recovery cost** — a Heavy
+  Strike pushes your next turn further out — a deterministic, programmable tradeoff
+  that fits the burst idea.
+
+This replaces today's fixed order (heroes then enemies, round-robin).
+
+### Deriving stats from the targets (cadence-first)
+
+1. Pick the **target action-count** for a fight (trash ~8, boss ~24).
+2. Solve the **stats** so it resolves in that many actions —
+   *enemy Fortitude ≈ (hits-to-kill) × hero Force*, minus Ward; a high-Ward enemy
+   needs more hits; Celerity shifts how many of those hits are *yours*.
+3. Tune against the **targets and the whole progression**, never one level alone
+   (you'd only re-tune it later against the full curve).
 
 ## Where the code is today
 
@@ -155,7 +213,7 @@ point, not the model:
 | Ward | — (only a temporary `defending` flag halves damage for one turn) |
 | Attunement | — (`Mend`/`cure` heals a flat `HEAL_AMOUNT`) |
 | Poise | — (skills are free; no Strain) |
-| Celerity | — (turn order is fixed: heroes then enemies, round-robin) |
+| Celerity | — (turn order fixed: heroes then enemies, round-robin → target: CTB turn scheduler) |
 
 The slice-4 `counterHeal` trait (Hex Warden) is an **ad-hoc mechanic**, not a stat
 — exactly the kind of thing the wall taxonomy (deferred) will systematise.
