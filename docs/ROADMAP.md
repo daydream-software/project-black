@@ -321,6 +321,15 @@ from that branch. Pushes to `main` auto-deploy.
 - **Wipe model (decide during slice 10):** full roguelite reset (lose the delve's
   gains, keep meta) vs. Nevergrind-style persistent characters (keep gear/levels,
   return to town). Leaning roguelite.
+  **Candidate (2026-06-12) — the tower siege.** The reset is diegetic: every **N
+  delves** the Artificer is **raided**; fail to defend the tower and he triggers a
+  failsafe (the *McGuffin*) — the run resets to 0 but **seeds some resources** to
+  retry. **Meta that persists = unlocks/capacity** (Insight & resource caps,
+  vocabulary, and the build **budget + golem-count caps** — so each cycle you can
+  build bigger). **Two failure scales:** a delve-wipe loses only the haul; a failed
+  siege is the full reset. Defending **reuses the combat sim** (an inbound
+  encounter vs. your golems + Procedures). Open: exact N, how the raid scales with
+  delves survived, what the seed contains. See `docs/COMBAT-SYSTEM.md`.
 - **Progression depth:** limited **Procedure / Protocol capacity** (rule-list
   length) you unlock/grow; buy/unlock new Subjects, Predicates, Skills, Moves,
   Items & heroes (FF12 shop feel) as meta. Dungeons may impose a slot budget as a

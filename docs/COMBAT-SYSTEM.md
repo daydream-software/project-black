@@ -36,7 +36,7 @@ distinct lever — a stat exists only if it controls something the others don't.
 
 | Concept | Governs | Cadence role |
 |---|---|---|
-| **Force** | physical damage dealt by `Attack` | combat length (offense) |
+| **Might** | physical damage dealt by `Attack` | combat length (offense) |
 | **Ward** | **flat** reduction on *all* incoming damage, physical **and** arcane | combat length (survival) |
 | **Fortitude** | health pool — damage absorbed before the golem is **decommissioned** | combat length (survival) |
 | **Attunement** | **potency** of skills (the strength of `Mend` and other arcane Maneuvers) | how much each magic action accomplishes |
@@ -44,6 +44,11 @@ distinct lever — a stat exists only if it controls something the others don't.
 | **Celerity** | action frequency / turn order | **the cadence itself** (combat *and* room-to-room) |
 
 So each stat owns a slice of cadence — that is the system, not a pile of numbers.
+
+**Shorthand:** `M · W · F · A · P · C` (Might / Ward / Fortitude / Attunement /
+Poise / Celerity) — each the stat's initial, all distinct (Might, not "Force", so
+it never collides with Fortitude's F). A build writes as e.g.
+`[M5 F5 C2] + [A4 P4 F4]` (a bruiser + a mender).
 
 ### Design decisions baked into the table
 
@@ -55,6 +60,17 @@ So each stat owns a slice of cadence — that is the system, not a pile of numbe
   from `Poise` (how *much* you can cast) so builds can diverge — a glass-cannon
   channeler (high Attunement, low Poise) vs. a steady supporter (low Attunement,
   high Poise).
+
+### Stat scale — compact, every point visible
+
+Stats live on a **compact scale (~0–10** at start; caps rise with meta). A point is
+defined by its **cadence effect**, so the displayed number *is* the impact — no
+`150` sitting next to `3`. Combat numbers stay small (hits ~1–4, heals ~2–5). The
+trade-off is **breakpoints**: a single point of Might can turn a 3-hit kill into a
+2-hit one. That is a *feature* for the build puzzle (optimise toward thresholds),
+tuned to avoid dead zones. `0` is fine — it just means *not invested* (a
+pure-physical golem has Attunement 0). **Monsters are exempt from the player's
+scale/caps** (see below).
 
 ## The magic model — strain, not a battery (the "flip")
 
@@ -104,17 +120,17 @@ together produce smooth **lobes**; scattering correlated stats would make jagged
 stars. The arrangement gives **two free readings**.
 
 ```
-                Force
+                Might
             ╱          ╲
    Attunement            Celerity      ← upper half = OFFENSE
-       │                    │             (Force · Attunement · Celerity)
+       │                    │             (Might · Attunement · Celerity)
      Poise               Fortitude     ← lower half = SUSTAIN
             ╲          ╱                  (Ward · Fortitude · Poise)
                 Ward
 ```
 
 - **Edges = build archetypes** (adjacent = stacked together → a clean lobe):
-  - **Force + Celerity** → the **Assailant** (hits hard × hits often = DPS)
+  - **Might + Celerity** → the **Assailant** (hits hard × hits often = DPS)
   - **Ward + Fortitude** → the **Bulwark** (deflects × endures = tank)
   - **Attunement + Poise** → the **Channeler** (potency × sustain = caster) —
     placed straddling the offense/sustain line, so a caster who stacks both magic
@@ -122,9 +138,39 @@ stars. The arrangement gives **two free readings**.
 - **Halves = posture:** an aggressive build is top-heavy, a defensive build
   bottom-heavy, a balanced build roughly regular.
 
-*(Later option, not decided: make the hexagon **mechanically** meaningful — a
-point-buy where boosting a stat is cheaper when its opposite is low, forcing
-specialization so the hexagon becomes a real build space. For now it is visual.)*
+## Authoring a party — the point-buy
+
+**The hexagon IS the build space (decided).** There are **no predefined golems** —
+the player **authors** the whole team by spending a **build budget**, and that
+includes **committing to how many golems** the team has. Only **monsters** are
+predefined.
+
+The model (numbers are a strawman, to tune against a reference build in-app):
+
+- A **build budget** — strawman **24 points**.
+- **Fielding a golem costs** — strawman **3 points** (a "chassis" cost). It grants
+  **nothing** — no free baseline stats; it is pure cost.
+- The **remainder is spent on stats**, distributed **freely** across the golems
+  (even or uneven). On the compact **0–12** scale, 1 point = 1 stat point, **flat
+  cost** for now (we weight a stat only if play shows it dominates).
+
+So with 24 points and 4 golems: 12 goes to chassis, **12 left** for stats —
+`3/3/3/3`, or `4/4/2/2`, or whatever you choose.
+
+| Golems | Chassis | Stat points left |
+|---|---|---|
+| 1 (titan) | 3 | **21** |
+| 2 (duo) | 6 | **18** |
+| 3 | 9 | **15** |
+| 4 (swarm) | 12 | **12** |
+
+The committed trade-off: **bodies** (action-economy via CTB, redundancy against
+focus-fire, more Procedures to author) vs. **concentration** (each golem strong but
+fragile, one Procedure). A 3-point swarm golem is deliberately feeble — that is the
+*cost* of going wide, and judging "viable or not" is the player's call. There is **no
+opposition malus** — just budget and cost, the hexagon shape emerges. The **budget,
+the per-stat caps and the golem-count cap all grow via meta-progression** (raid
+cycles — see `ROADMAP.md`).
 
 ## Monsters use the same model
 
@@ -134,6 +180,18 @@ acts often, a high-Fortitude monster is a damage sponge (bottom-heavy), a
 glass-cannon is top-heavy. The shape *signals what kind of wall it is* — and the
 rule language can read it (`Enemy · most HP` today; `Enemy · armored / fast`
 later). Difficulty = stat shape × pack count × mechanics, not just bigger numbers.
+
+Two ways monsters differ from golems:
+
+- **Off-balance and unbounded.** Monsters are tuned freely and are **not bound by
+  the player's budget or scale caps** — a designer can push any stat past what a
+  player could buy.
+- **A long boss is built by composition, not a giant HP bar.** Several units in one
+  encounter (e.g. *2 slimes + 1 slime* for a pack; *boss slime + enraged boss slime*
+  for a boss), reusing the **multi-enemy sim** — so no single number is large, and
+  killing the first unit reads as a natural **phase transition**. A boss
+  encounter's ~24-action target is met by the *composition*, each unit staying
+  compact.
 
 ## Cadence — the tempos, and how Celerity is felt
 
@@ -196,7 +254,7 @@ This replaces today's fixed order (heroes then enemies, round-robin).
 
 1. Pick the **target action-count** for a fight (trash ~8, boss ~24).
 2. Solve the **stats** so it resolves in that many actions —
-   *enemy Fortitude ≈ (hits-to-kill) × hero Force*, minus Ward; a high-Ward enemy
+   *enemy Fortitude ≈ (hits-to-kill) × hero Might*, minus Ward; a high-Ward enemy
    needs more hits; Celerity shifts how many of those hits are *yours*.
 3. Tune against the **targets and the whole progression**, never one level alone
    (you'd only re-tune it later against the full curve).
@@ -208,7 +266,7 @@ point, not the model:
 
 | Model stat | Today in `sim.ts` |
 |---|---|
-| Force | `atk` |
+| Might | `atk` |
 | Fortitude | `maxHp` / `hp` |
 | Ward | — (only a temporary `defending` flag halves damage for one turn) |
 | Attunement | — (`Mend`/`cure` heals a flat `HEAL_AMOUNT`) |
@@ -232,4 +290,10 @@ The slice-4 `counterHeal` trait (Hex Warden) is an **ad-hoc mechanic**, not a st
 - **Strain reset rules** — cools at the tower for sure; does it vent between fights?
 - **Ward as flat** — confirm the exact reduction model and whether a floor (min 1
   damage) is needed so high Ward can't make a unit unkillable.
-- **Hexagon: visual only, or a mechanical point-buy?**
+- **Point-buy tuning** — the model is decided (budget − flat chassis per golem →
+  stat points spent freely, flat cost, 0–12); the *numbers* (budget 24, chassis 3,
+  caps, golem-count range) are a strawman to tune against a reference build in-app.
+  Open fallback: **weighted** per-stat cost if play shows one stat dominates.
+- **Wipe model** — leading candidate is the *tower siege* (raid every N delves; a
+  failed defence resets to 0 but seeds resources; meta-capacity unlocks persist).
+  See `ROADMAP.md`. Open: N, raid scaling, the seed's contents.
