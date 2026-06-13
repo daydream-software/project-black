@@ -95,7 +95,7 @@ describe('protocol — combat rule compiler', () => {
   it('compiles a hero’s enabled rows into Protocols, in priority order, with labels', () => {
     const h = hero([
       { subjectId: 'self', predId: 'hp_lt_30', command: 'useSkill', skillId: 'defend', enabled: true },
-      { subjectId: 'enemy_near', predId: 'always', command: 'attack', skillId: 'cure', enabled: true },
+      { subjectId: 'enemy_near', predId: 'always', command: 'attack', skillId: 'mend', enabled: true },
     ])
     const proc = procedureFor(h)
     expect(proc).toHaveLength(2)
@@ -108,8 +108,8 @@ describe('protocol — combat rule compiler', () => {
 
   it('drops disabled rows and preserves priority order', () => {
     const h = hero([
-      { subjectId: 'enemy_low', predId: 'always', command: 'attack', skillId: 'cure', enabled: false },
-      { subjectId: 'self', predId: 'hp_full', command: 'flee', skillId: 'cure', enabled: true },
+      { subjectId: 'enemy_low', predId: 'always', command: 'attack', skillId: 'mend', enabled: false },
+      { subjectId: 'self', predId: 'hp_full', command: 'flee', skillId: 'mend', enabled: true },
     ])
     const proc = procedureFor(h)
     expect(proc).toHaveLength(1)
@@ -120,8 +120,8 @@ describe('protocol — combat rule compiler', () => {
     // The brick path the defensive compile fixes: an old save with a renamed id
     // must field a party, not crash enterGame. 'enemy_biggest' is not a SUBJECTS id.
     const h = hero([
-      { subjectId: 'enemy_biggest', predId: 'always', command: 'attack', skillId: 'cure', enabled: true }, // stale
-      { subjectId: 'enemy_near', predId: 'always', command: 'attack', skillId: 'cure', enabled: true },
+      { subjectId: 'enemy_biggest', predId: 'always', command: 'attack', skillId: 'mend', enabled: true }, // stale
+      { subjectId: 'enemy_near', predId: 'always', command: 'attack', skillId: 'mend', enabled: true },
     ])
     expect(rowResolves(h.rows[0])).toBe(false)
     const proc = procedureFor(h)
@@ -130,10 +130,10 @@ describe('protocol — combat rule compiler', () => {
   })
 
   it('rowToProtocol maps each dropdown id to the right model value', () => {
-    const p = rowToProtocol({ subjectId: 'ally_low', predId: 'hp_lt_50', command: 'useSkill', skillId: 'cure', enabled: true })
+    const p = rowToProtocol({ subjectId: 'ally_low', predId: 'hp_lt_50', command: 'useSkill', skillId: 'mend', enabled: true })
     expect(p.state.subject).toEqual({ who: 'ally', pick: 'lowestHp' })
     expect(p.state.predicate).toEqual({ p: 'hpPctBelow', value: 50 })
-    expect(p.maneuver).toEqual({ command: 'useSkill', skill: 'cure' })
+    expect(p.maneuver).toEqual({ command: 'useSkill', skill: 'mend' })
   })
 
   it('every combat catalog option has a unique id', () => {

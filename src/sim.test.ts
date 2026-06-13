@@ -9,6 +9,11 @@ import {
   makeHealer,
   makeWarden,
   makeEnemy,
+  attackDamage,
+  overdraw,
+  restToConvergence,
+  upcomingTurns,
+  MEND_STRAIN,
   type Combatant,
   type Procedure,
   type State,
@@ -19,17 +24,185 @@ import {
 let counter = 0
 function unit(side: 'hero' | 'enemy', hp: number, maxHp: number, procedure: Procedure = []): Combatant {
   counter += 1
-  return { id: `${side}-${counter}`, name: `${side}${counter}`, side, hp, maxHp, atk: 10, defending: false, procedure }
+  // Might 10 / Ward 0 keeps any unit()-based attack dealing exactly its Might, so
+  // the targeting tests (which only care about HP ratios) read unchanged.
+  return {
+    id: `${side}-${counter}`, name: `${side}${counter}`, side, hp, maxHp, defending: false, procedure,
+    might: 10, ward: 0, fortitude: Math.ceil(maxHp / 4), attunement: 5, poise: 0, celerity: 5,
+  }
 }
 
 // Common Maneuvers / States, spelled out so tests read like the rule language.
 const ATTACK = { command: 'attack' } as const
-const CURE = { command: 'useSkill', skill: 'cure' } as const
+const MEND = { command: 'useSkill', skill: 'mend' } as const
 const DEFEND = { command: 'useSkill', skill: 'defend' } as const
 
 const enemyNearest: State = { subject: { who: 'enemy', pick: 'first' }, predicate: { p: 'always' } }
 const allyLowestHurt: State = { subject: { who: 'ally', pick: 'lowestHp' }, predicate: { p: 'hpPctBelow', value: 50 } }
 const selfLow: State = { subject: { who: 'self' }, predicate: { p: 'hpPctBelow', value: 30 } }
+
+// --- The six stats: Ward is flat, anti-swarm damage reduction ---------------
+
+describe('attackDamage — Might minus flat Ward, floored at 1', () => {
+  it('the same attacker deals LESS to a higher-Ward target (Ward is the only difference)', () => {
+    const slime = makeEnemy(1) // Might 3
+    const sentinel = makeWarrior([]) // Ward 2
+    const mender = makeHealer([]) // Ward 0
+    // The done-when: the slime's chip is shrugged by the Bulwark but bites the Channeler.
+    expect(attackDamage(slime, sentinel)).toBe(1) // 3 − 2
+    expect(attackDamage(slime, mender)).toBe(3) // 3 − 0
+    expect(attackDamage(slime, sentinel)).toBeLessThan(attackDamage(slime, mender))
+  })
+
+  it('Ward never makes a unit unkillable — damage floors at 1 even when Ward ≥ Might', () => {
+    const slime = makeEnemy(1) // Might 3
+    const fortress: Combatant = { ...makeWarrior([]), ward: 9 } // Ward 9 > Might 3
+    // Without the MIN_DAMAGE floor this would be max(1, 3−9) = 1, not −6.
+    expect(attackDamage(slime, fortress)).toBe(1)
+  })
+
+  it('Defending halves the post-Ward damage (rounded up)', () => {
+    const warden = makeWarden() // Might 6
+    const mender: Combatant = { ...makeHealer([]), defending: true } // Ward 0
+    expect(attackDamage(warden, mender)).toBe(Math.ceil(6 / 2)) // (6 − 0) halved = 3
+  })
+})
+
+// --- Poise / Strain: casting is free until it frays your own Fortitude --------
+
+describe('overdraw — Strain past Poise bites Fortitude (proportional to the overshoot)', () => {
+  it('is zero while the cast stays within Poise', () => {
+    expect(overdraw(0, 6, 2)).toBe(0) // 0→2, under 6
+    expect(overdraw(4, 6, 2)).toBe(0) // 4→6, exactly at the cap is still free
+  })
+  it('charges only the portion of THIS cast above Poise', () => {
+    expect(overdraw(5, 6, 2)).toBe(1) // 5→7, only the 1 point above 6 is paid
+    expect(overdraw(6, 6, 2)).toBe(2) // 6→8, fully over → the whole cast is paid
+    expect(overdraw(10, 6, 2)).toBe(2) // deep over → still just this cast's 2
+  })
+})
+
+describe('Strain in combat — a Mender that over-casts hurts itself', () => {
+  const mendSelf: Procedure = [
+    { state: { subject: { who: 'self' }, predicate: { p: 'always' } }, maneuver: { command: 'useSkill', skill: 'mend' }, label: 'mend self' },
+  ]
+  // A Mender (Poise 6, MEND_STRAIN 2 → 3 free casts) mends a dummy ally each turn.
+  function menderCuring(poise: number) {
+    const mender: Combatant = { ...makeHealer(mendSelf), hp: 30, maxHp: 40, poise, strain: 0 }
+    const dummy = { ...makeWarrior([]), side: 'enemy' as const, id: 'enemy-1', name: 'E', might: 0 } // Might 0 → never kills
+    return { ...initialState([], []), units: [mender, dummy] }
+  }
+
+  it('accrues Strain on each cast and only overdraws once Poise is exceeded', () => {
+    let s = menderCuring(6)
+    const strainOf = (st: typeof s) => st.units[0].strain
+    s = step(s) // cast 1: strain 0→2, no bite
+    expect(strainOf(s)).toBe(2)
+    const hpAfter1 = s.units[0].hp
+    s = step(s) // enemy acts (Might 0, no damage)
+    s = step(s) // cast 2: strain 2→4
+    expect(strainOf(s)).toBe(4)
+    s = step(s)
+    s = step(s) // cast 3: strain 4→6 (still ≤ Poise, free)
+    expect(strainOf(s)).toBe(6)
+    expect(s.log.some((e) => e.detail.includes('OVERDRAW'))).toBe(false) // no bite yet
+    s = step(s)
+    s = step(s) // cast 4: strain 6→8 — now 2 over → −2 Fortitude
+    expect(strainOf(s)).toBe(8)
+    expect(s.log.at(-1)?.detail).toContain('OVERDRAW −2')
+    // The bite is real: with a healthier dummy this cast cost the Mender HP it
+    // would otherwise keep. (hpAfter1 is just a sanity anchor that casts happened.)
+    expect(hpAfter1).toBeGreaterThan(0)
+  })
+
+  it('a single cast under Poise is unchanged — no Strain side effects leak into existing balance', () => {
+    const s = step(menderCuring(6))
+    expect(s.units[0].strain).toBe(MEND_STRAIN)
+    expect(s.log.at(-1)?.detail).not.toContain('OVERDRAW')
+  })
+})
+
+describe('restToConvergence — a rest IS off-combat Mend, bounded by Strain', () => {
+  const mendAllyLow: Procedure = [
+    { state: allyLowestHurt, maneuver: { command: 'useSkill', skill: 'mend' }, label: 'mend hurt ally' },
+  ]
+
+  it('the party runs its own Mend rules to convergence (heals the hurt ally above threshold)', () => {
+    const sentinel = { ...makeWarrior([]), hp: 4 } // 4/40 — well below 50%
+    const mender = makeHealer(mendAllyLow) // Attunement 5, Poise 6
+    const { units, mends } = restToConvergence([sentinel, mender])
+    expect(mends).toBeGreaterThan(0)
+    // Sentinel is pulled to/above the 50% threshold the Mend rule targets (20/40).
+    expect(units[0].hp).toBeGreaterThanOrEqual(20)
+    // and it converges — it does NOT heal to full (the rule stops at the threshold).
+    expect(units[0].hp).toBeLessThan(40)
+  })
+
+  it('Strain accrues at rest and overdraws past Poise — resting is not free', () => {
+    const sentinel = { ...makeWarrior([]), hp: 4 }
+    const mender = makeHealer(mendAllyLow)
+    const { units } = restToConvergence([sentinel, mender])
+    // 4→20 needs 4 mends (+5 each), so Strain = 4 × MEND_STRAIN = 8, past Poise 6.
+    expect(units[1].strain).toBe(4 * MEND_STRAIN)
+    expect(units[1].strain).toBeGreaterThan(units[1].poise) // overdrew
+    expect(units[1].hp).toBeLessThan(units[1].maxHp) // the overdraw bit its own Fortitude
+  })
+
+  it('a party with no healer gets nothing from a rest (emergent from the build)', () => {
+    const a = { ...makeWarrior([]), hp: 4 } // attack-only / no Mend rule
+    const b = { ...makeHealer([]), hp: 6 }
+    const { units, mends } = restToConvergence([a, b])
+    expect(mends).toBe(0)
+    expect(units[0].hp).toBe(4) // unchanged
+    expect(units[1].hp).toBe(6)
+  })
+})
+
+// --- Celerity: the CTB scheduler — faster units act more often ---------------
+
+describe('CTB scheduler — turn frequency scales with Celerity', () => {
+  // Two sparring units that never die (huge HP), so 200 steps measure pure cadence.
+  function spar(celA: number, celB: number) {
+    const mk = (id: string, side: 'hero' | 'enemy', cel: number): Combatant => ({
+      ...makeWarrior([{ state: enemyNearest, maneuver: ATTACK, label: 'x' }]),
+      id, name: id, side, hp: 9999, maxHp: 9999, celerity: cel,
+    })
+    let s = { ...initialState([], []), units: [mk('A', 'hero', celA), mk('B', 'enemy', celB)] }
+    const count: Record<string, number> = { A: 0, B: 0 }
+    for (let i = 0; i < 200; i++) {
+      s = step(s)
+      const id = s.log.at(-1)?.actorId ?? ''
+      if (id in count) count[id] += 1
+    }
+    return count
+  }
+
+  it('Celerity 12 acts about twice as often as Celerity 6 (mutation-checked)', () => {
+    const c = spar(12, 6)
+    const ratio = c.A / c.B
+    // 12:6 → recovery 10:20 → a 2:1 share. Allow a little slack for integer cadence.
+    expect(ratio).toBeGreaterThan(1.7)
+    expect(ratio).toBeLessThan(2.3)
+  })
+
+  it('equal Celerity → an even share (ties broken deterministically by index)', () => {
+    const c = spar(8, 8)
+    expect(Math.abs(c.A - c.B)).toBeLessThanOrEqual(1)
+  })
+
+  it('upcomingTurns previews the schedule without mutating, agreeing with step', () => {
+    const warrior: Procedure = [{ state: enemyNearest, maneuver: ATTACK, label: 'attack' }]
+    const battle = initialState(warrior, [{ state: allyLowestHurt, maneuver: MEND, label: 'm' }, { state: enemyNearest, maneuver: ATTACK, label: 'a' }])
+    const preview = upcomingTurns(battle.units, 5)
+    // Replaying step() must produce the SAME first-5 actor ids (preview = real schedule).
+    let s = battle
+    const real: string[] = []
+    for (let i = 0; i < 5; i++) { s = step(s); real.push(s.log.at(-1)?.actorId ?? '') }
+    expect(preview).toEqual(real)
+    // and it didn't mutate the battle's charges
+    expect(battle.units.every((u) => u.charge === undefined || typeof u.charge === 'number')).toBe(true)
+  })
+})
 
 describe('predicateHolds', () => {
   it('always is unconditionally true', () => {
@@ -114,7 +287,7 @@ describe('resolveTarget — the subject IS the target', () => {
 describe('decide — first State that holds wins, and order is priority', () => {
   it('a higher protocol that does not resolve is skipped for the next that does', () => {
     const proc: Procedure = [
-      { state: selfLow, maneuver: CURE, label: 'heal self when low' }, // self at full -> skipped
+      { state: selfLow, maneuver: MEND, label: 'heal self when low' }, // self at full -> skipped
       { state: enemyNearest, maneuver: ATTACK, label: 'attack' },
     ]
     const me = { ...unit('hero', 100, 100, proc) }
@@ -129,11 +302,11 @@ describe('decide — first State that holds wins, and order is priority', () => 
     const me = unit('hero', 20, 100) // low enough to heal
     const enemy = unit('enemy', 30, 30)
     const healFirst: Procedure = [
-      { state: selfLow, maneuver: CURE, label: 'heal' },
+      { state: selfLow, maneuver: MEND, label: 'heal' },
       { state: enemyNearest, maneuver: ATTACK, label: 'attack' },
     ]
     const attackFirst: Procedure = [healFirst[1], healFirst[0]]
-    expect(decide({ ...me, procedure: healFirst }, [me, enemy]).maneuver).toEqual(CURE)
+    expect(decide({ ...me, procedure: healFirst }, [me, enemy]).maneuver).toEqual(MEND)
     expect(decide({ ...me, procedure: attackFirst }, [me, enemy]).maneuver).toEqual(ATTACK)
   })
 
@@ -150,38 +323,41 @@ describe('step — one unit-action of the simulation', () => {
   function freshBattle(): ReturnType<typeof initialState> {
     const warrior: Procedure = [{ state: enemyNearest, maneuver: ATTACK, label: 'attack nearest' }]
     const healer: Procedure = [
-      { state: allyLowestHurt, maneuver: CURE, label: 'cure hurt ally' },
+      { state: allyLowestHurt, maneuver: MEND, label: 'mend hurt ally' },
       { state: enemyNearest, maneuver: ATTACK, label: 'attack nearest' },
     ]
     return initialState(warrior, healer)
   }
 
-  it('the Sentinel acts first and attacks the first slime', () => {
+  it('the fastest golem (Mender, Celerity 6) acts first under CTB', () => {
     const s = step(freshBattle())
     expect(s.turn).toBe(1)
     const slime1 = s.units.find((u) => u.id === 'enemy-1')
-    expect(slime1?.hp).toBe(26 - 11) // Sentinel atk 11
-    expect(s.log.at(-1)?.actorName).toBe('Sentinel')
+    // No ally is hurt, so the Mender attacks Slime #1: pool 16, Might 3 vs Ward 0.
+    expect(slime1?.hp).toBe(16 - 3)
+    expect(s.log.at(-1)?.actorName).toBe('Mender') // Celerity 6 beats the Sentinel's 5
     expect(s.log.at(-1)?.targetName).toBe('Slime #1')
   })
 
-  it('turn order cycles heroes then enemies, then wraps to a new round', () => {
+  it('turn order follows Celerity (CTB), not a fixed round-robin cycle', () => {
     let s = freshBattle()
     const actors: string[] = []
     for (let i = 0; i < 6; i++) {
       s = step(s)
       actors.push(s.log.at(-1)?.actorName ?? '?')
     }
-    expect(actors.slice(0, 5)).toEqual(['Sentinel', 'Mender', 'Slime #1', 'Slime #2', 'Slime #3'])
-    expect(actors[5]).toBe('Sentinel') // round 2 begins
-    expect(s.round).toBe(1) // 0-based: the wrap incremented it once
+    // The fast Mender (cel 6) opens; the Sentinel (cel 5) follows; the slow slimes
+    // (cel 4) cluster — and the Mender comes ROUND AGAIN before any slime repeats.
+    expect(actors.slice(0, 5)).toEqual(['Mender', 'Sentinel', 'Slime #1', 'Slime #2', 'Slime #3'])
+    expect(actors[5]).toBe('Mender') // round-robin would put the Sentinel here
   })
 
-  it('Cure on an enemy is a dead rule: turn is consumed, nothing changes', () => {
-    // A procedure that tries to Cure the nearest enemy — invalid, but composition is free.
-    const bad: Procedure = [{ state: enemyNearest, maneuver: CURE, label: 'cure enemy (dead rule)' }]
+  it('Mend on an enemy is a dead rule: turn is consumed, nothing changes', () => {
+    // A procedure that tries to Mend the nearest enemy — invalid, but composition is free.
+    const bad: Procedure = [{ state: enemyNearest, maneuver: MEND, label: 'mend enemy (dead rule)' }]
     const me = makeWarrior(bad)
-    const enemy = { ...makeHealer([]), side: 'enemy' as const, id: 'enemy-x', name: 'Foe' }
+    // A slow foe (Celerity 1) so `me` (Celerity 5) clearly acts first under CTB.
+    const enemy = { ...makeHealer([]), side: 'enemy' as const, id: 'enemy-x', name: 'Foe', celerity: 1 }
     const state = { ...initialState(bad, []), units: [me, enemy] }
     const s = step(state)
     expect(s.units.find((u) => u.id === 'enemy-x')?.hp).toBe(enemy.hp) // unhealed
@@ -190,21 +366,21 @@ describe('step — one unit-action of the simulation', () => {
   })
 
   it('Defend halves the damage the unit takes before its next turn', () => {
-    // The Sentinel defends; a single slime then hits it for half.
+    // The Sentinel (pool 40, Ward 2) defends; a Might-8 attacker then hits for half.
     const warrior: Procedure = [{ state: { subject: { who: 'self' }, predicate: { p: 'always' } }, maneuver: DEFEND, label: 'defend' }]
     const w = makeWarrior(warrior)
-    const slime = { ...makeWarrior([]), side: 'enemy' as const, id: 'enemy-1', name: 'Slime', hp: 26, maxHp: 26, atk: 8 }
-    let s = { ...initialState(warrior, []), units: [w, slime] }
+    const foe = { ...makeWarrior([]), side: 'enemy' as const, id: 'enemy-1', name: 'Slime', might: 8 }
+    let s = { ...initialState(warrior, []), units: [w, foe] }
     s = step(s) // warrior defends
     expect(s.units[0].defending).toBe(true)
-    s = step(s) // slime hits the defending warrior
-    expect(s.units[0].hp).toBe(120 - Math.ceil(8 / 2)) // 8 -> 4
+    s = step(s) // foe hits the defending warrior: (Might 8 − Ward 2) = 6, halved = 3
+    expect(s.units[0].hp).toBe(40 - Math.ceil((8 - 2) / 2))
   })
 
   it('reaches victory when the party kills every enemy', () => {
     const warrior: Procedure = [{ state: enemyNearest, maneuver: ATTACK, label: 'attack' }]
-    const w = { ...makeWarrior(warrior), atk: 100 } // one-shot
-    const slime = { ...makeWarrior([]), side: 'enemy' as const, id: 'enemy-1', name: 'Slime', hp: 10, maxHp: 10, atk: 1 }
+    const w = { ...makeWarrior(warrior), might: 100 } // one-shot
+    const slime = { ...makeWarrior([]), side: 'enemy' as const, id: 'enemy-1', name: 'Slime', hp: 10, maxHp: 10, might: 1 }
     let s = { ...initialState(warrior, []), units: [w, slime] }
     s = step(s)
     expect(s.outcome).toBe('victory')
@@ -213,7 +389,7 @@ describe('step — one unit-action of the simulation', () => {
 
   it('reaches defeat when every hero dies', () => {
     const w = { ...makeWarrior([]), hp: 5, maxHp: 100 }
-    const slime = { ...makeWarrior([{ state: enemyNearest, maneuver: ATTACK, label: 'a' }]), side: 'enemy' as const, id: 'enemy-1', name: 'Slime', atk: 99 }
+    const slime = { ...makeWarrior([{ state: enemyNearest, maneuver: ATTACK, label: 'a' }]), side: 'enemy' as const, id: 'enemy-1', name: 'Slime', might: 99 }
     // Enemy acts second; warrior (empty proc) attacks, then slime one-shots it.
     let s = { ...initialState([], []), units: [w, slime] }
     s = step(s) // warrior swings
@@ -228,45 +404,46 @@ describe('step — one unit-action of the simulation', () => {
   })
 
   it('healing is capped at maxHp', () => {
-    const me = { ...makeHealer([]), hp: 70, maxHp: 80 }
-    const proc: Procedure = [{ state: { subject: { who: 'self' }, predicate: { p: 'always' } }, maneuver: CURE, label: 'cure self' }]
+    // Mender Attunement 5 heals +5; from 78/80 that would overshoot, so it clamps.
+    const me = { ...makeHealer([]), hp: 78, maxHp: 80 }
+    const proc: Procedure = [{ state: { subject: { who: 'self' }, predicate: { p: 'always' } }, maneuver: MEND, label: 'mend self' }]
     const healer = { ...me, procedure: proc }
     const dummyEnemy = { ...makeWarrior([]), side: 'enemy' as const, id: 'enemy-1', name: 'E' }
     const s = step({ ...initialState([], []), units: [healer, dummyEnemy] })
-    expect(s.units[0].hp).toBe(80) // 70 + 24 capped at 80, not 94
+    expect(s.units[0].hp).toBe(80) // 78 + 5 capped at 80, not 83
   })
 })
 
 // --- Slice 4: the counter-heal wall ----------------------------------------
 
 describe('counter-heal — the wall reacts to restorative magic', () => {
-  const cureSelf: Procedure = [
-    { state: { subject: { who: 'self' }, predicate: { p: 'always' } }, maneuver: CURE, label: 'cure self' },
+  const mendSelf: Procedure = [
+    { state: { subject: { who: 'self' }, predicate: { p: 'always' } }, maneuver: MEND, label: 'mend self' },
   ]
 
   function healerVsWarden(healerProc: Procedure, warden: Partial<Combatant> = {}) {
-    const h = { ...makeHealer(healerProc), hp: 40 } // hurt, so a self-cure restores HP
+    const h = { ...makeHealer(healerProc), hp: 10 } // hurt (pool 20), so a self-mend restores HP
     const boss = { ...makeWarden(), ...warden }
     return { ...initialState([], healerProc, 'warden'), units: [h, boss] }
   }
 
   it('a heal that restores HP draws a counter on the SAME turn (no extra turn taken)', () => {
-    const s = step(healerVsWarden(cureSelf))
+    const s = step(healerVsWarden(mendSelf))
     const log = s.log
-    expect(log.at(-2)?.kind).toBe('heal') // the cure
+    expect(log.at(-2)?.kind).toBe('heal') // the mend
     expect(log.at(-1)?.kind).toBe('counter') // the punish, same turn
     expect(log.at(-1)?.turn).toBe(log.at(-2)?.turn)
     expect(s.turn).toBe(1) // the reaction did not consume a turn
-    // 40 + 24 (cure) − 30 (counter) = 34
-    expect(s.units[0].hp).toBe(34)
+    // 10 + 5 (mend, Attunement 5) − 7 (counter) = 8
+    expect(s.units[0].hp).toBe(8)
   })
 
-  it('no counter when the heal restored nothing (a full-HP cure is a dead heal)', () => {
-    const s = step(healerVsWarden(cureSelf, {}))
-    // Re-run with a full-HP healer: cure restores 0, so the Warden must not react.
-    const full = { ...makeHealer(cureSelf), hp: 80, maxHp: 80 }
+  it('no counter when the heal restored nothing (a full-HP mend is a dead heal)', () => {
+    const s = step(healerVsWarden(mendSelf, {}))
+    // Re-run with a full-HP healer: mend restores 0, so the Warden must not react.
+    const full = makeHealer(mendSelf) // built full (hp = maxHp)
     const boss = makeWarden()
-    const s2 = step({ ...initialState([], cureSelf, 'warden'), units: [full, boss] })
+    const s2 = step({ ...initialState([], mendSelf, 'warden'), units: [full, boss] })
     expect(s2.log.some((e) => e.kind === 'counter')).toBe(false)
     expect(s.log.some((e) => e.kind === 'counter')).toBe(true) // (the hurt-healer case still counters)
   })
@@ -278,19 +455,19 @@ describe('counter-heal — the wall reacts to restorative magic', () => {
   })
 
   it('the counter is applied before the outcome check — a lethal counter ends the battle this step', () => {
-    const fragile: Combatant = { ...makeHealer(cureSelf), hp: 5, maxHp: 200 } // low; cure 5→29 (+24), counter 29→0 (−30) -> dies
+    const fragile: Combatant = { ...makeHealer(mendSelf), hp: 1, maxHp: 200 } // low; mend 1→6 (+5), counter 6→0 (−7) -> dies
     const boss = makeWarden()
-    const s = step({ ...initialState([], cureSelf, 'warden'), units: [fragile, boss] })
+    const s = step({ ...initialState([], mendSelf, 'warden'), units: [fragile, boss] })
     expect(s.units[0].hp).toBe(0)
     expect(s.outcome).toBe('defeat') // judged AFTER the counter, same step
   })
 
   it('the counter is side-relative: a normal slime never punishes a heal', () => {
     const slime = makeEnemy(1)
-    const h = { ...makeHealer(cureSelf), hp: 40 }
-    const s = step({ ...initialState([], cureSelf, 'pack'), units: [h, slime] })
+    const h = { ...makeHealer(mendSelf), hp: 10 }
+    const s = step({ ...initialState([], mendSelf, 'pack'), units: [h, slime] })
     expect(s.log.some((e) => e.kind === 'counter')).toBe(false)
-    expect(s.units[0].hp).toBe(64) // 40 + 24, no counter
+    expect(s.units[0].hp).toBe(15) // 10 + 5 (Attunement), no counter
   })
 
   // The done-when, encoded: SAME boss, the discriminating edit on the HEALER.
@@ -304,16 +481,16 @@ describe('counter-heal — the wall reacts to restorative magic', () => {
     { state: { subject: { who: 'self' }, predicate: { p: 'hpPctBelow', value: 30 } }, maneuver: DEFEND, label: 'defend when low' },
     { state: { subject: { who: 'enemy', pick: 'first' }, predicate: { p: 'always' } }, maneuver: ATTACK, label: 'attack' },
   ]
-  const healerCures: Procedure = [
-    { state: { subject: { who: 'ally', pick: 'lowestHp' }, predicate: { p: 'hpPctBelow', value: 50 } }, maneuver: CURE, label: 'cure hurt ally' },
+  const healerMends: Procedure = [
+    { state: { subject: { who: 'ally', pick: 'lowestHp' }, predicate: { p: 'hpPctBelow', value: 50 } }, maneuver: MEND, label: 'mend hurt ally' },
     { state: { subject: { who: 'enemy', pick: 'first' }, predicate: { p: 'always' } }, maneuver: ATTACK, label: 'attack' },
   ]
   const healerAttacks: Procedure = [
     { state: { subject: { who: 'enemy', pick: 'first' }, predicate: { p: 'always' } }, maneuver: ATTACK, label: 'attack' },
   ]
 
-  it('the naive cure-when-low Procedure LOSES to the Warden', () => {
-    const s = runToEnd(initialState(warriorTank, healerCures, 'warden'))
+  it('the naive mend-when-low Procedure LOSES to the Warden', () => {
+    const s = runToEnd(initialState(warriorTank, healerMends, 'warden'))
     expect(s.outcome).toBe('defeat')
   })
 

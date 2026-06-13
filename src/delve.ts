@@ -23,7 +23,7 @@ import {
   type Dungeon,
   type Dir,
 } from './dungeon'
-import { makeBattle, step, type Combatant, type GameState } from './sim'
+import { makeBattle, step, restToConvergence, type Combatant, type GameState } from './sim'
 import { LEVELS, type LevelConfig } from './levels'
 
 // --- Exploration Protocol: WHEN <Subject + Predicate> → Move ----------------
@@ -307,9 +307,13 @@ export function stepDelve(s: DelveState): DelveState {
 
   const next = decision.step
   if (next === s.pos) {
-    // a 'rest' (no move) — heal the party a little
-    const party = s.party.map((u) => (u.hp > 0 ? { ...u, hp: Math.min(u.maxHp, u.hp + 10) } : { ...u }))
-    return { ...s, party, turn, log: logged(s, turn, { kind: 'explore', reason: decision.reason, detail: 'rest' }) }
+    // a 'rest' — NOT a movement step: the party tends itself off-combat by running
+    // its own Mend rules to convergence (same Attunement potency, same Poise/Strain
+    // budget as in combat). A party with no healer gets nothing; the Strain it spends
+    // carries into the next fight. ("si c'est un repos, ce n'est pas un pas.")
+    const { units: party, mends } = restToConvergence(s.party)
+    const detail = mends > 0 ? `rest — ${mends} mend${mends > 1 ? 's' : ''}` : 'rest — nothing to mend'
+    return { ...s, party, turn, log: logged(s, turn, { kind: 'explore', reason: decision.reason, detail }) }
   }
 
   const facing = dirBetween(d.width, s.pos, next)

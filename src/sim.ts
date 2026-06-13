@@ -18,18 +18,56 @@
 
 export type Side = 'hero' | 'enemy'
 
-export interface Combatant {
+/**
+ * The six stats (see docs/COMBAT-SYSTEM.md — the canonical reference). Each owns
+ * a distinct lever; a build is a point in this space. Compact 0–12 scale: a point
+ * is defined by its *cadence effect*, so the displayed number IS the impact.
+ *
+ *   Might      physical damage dealt by Attack
+ *   Ward       FLAT reduction on ALL incoming damage (anti-swarm: trivialises
+ *              chip, barely dents a big hit) — distinct from Fortitude's buffer
+ *   Fortitude  health pool — maxHp = fortitude × HP_PER_FORTITUDE
+ *   Attunement potency of skills (the strength of Mend / other arcane Maneuvers)
+ *   Poise      Strain tolerance — how much channeling before overdraw bites
+ *              Fortitude. STORED but not yet wired (Strain is a later slice).
+ *   Celerity   action frequency / turn order. STORED but not yet wired — turn
+ *              order is still fixed round-robin; CTB is a later slice.
+ */
+export interface Stats {
+  might: number
+  ward: number
+  fortitude: number
+  attunement: number
+  poise: number
+  celerity: number
+}
+
+export interface Combatant extends Stats {
   /** Stable identity used for targeting and the decision log. */
   id: string
   name: string
   side: Side
   hp: number
   maxHp: number
-  atk: number
   /** Set when the unit Defends; halves incoming damage until its next turn. */
   defending: boolean
+  /**
+   * CTB scheduler clock (battle-scoped): time until this unit's next turn — the
+   * unit with the LEAST charge acts next, so higher Celerity (smaller `recovery`)
+   * means more frequent turns. Reset each battle by `makeBattle` (unlike `strain`,
+   * which is delve-scoped and persists). Optional/absent defaults to `recovery`.
+   */
+  charge?: number
   /** This unit's own ordered rule list. */
   procedure: Procedure
+  /**
+   * Accumulated arcane Strain (see docs/COMBAT-SYSTEM.md). Each skill cast adds to
+   * it; while `strain ≤ poise` casting is free, beyond Poise the overflow frays the
+   * caster's Fortitude (overdraw). It is a **delve-scoped budget** — it persists
+   * across fights and rests and only cools at the tower (a fresh delve starts at 0).
+   * Optional/absent = 0 (defensive: a save written before Strain reads as 0).
+   */
+  strain?: number
   /**
    * Wall trait: when an enemy of this unit is healed, this unit strikes the
    * healed target for this much (it feeds on / punishes restorative magic).
@@ -38,6 +76,102 @@ export interface Combatant {
   counterHeal?: number
   /** Render hint: draw larger / mark as a boss. */
   isBoss?: boolean
+}
+
+/** HP a single Fortitude point grants. The fortitude→pool factor (a free tuning
+ *  knob, kept small so each point is a visible ~1–2 hits on the compact scale). */
+export const HP_PER_FORTITUDE = 4
+
+/** maxHp for a given Fortitude on the compact scale. */
+export function poolFor(fortitude: number): number {
+  return fortitude * HP_PER_FORTITUDE
+}
+
+/** Minimum damage of any landed hit — the Ward floor, so high Ward shaves chip
+ *  damage to a trickle but can never make a unit literally unkillable. */
+export const MIN_DAMAGE = 1
+
+/**
+ * Physical damage `attacker` deals to `target` with an Attack: Might minus the
+ * target's flat Ward, floored at MIN_DAMAGE, then halved (round up) if the target
+ * is Defending. Flat Ward is what makes it anti-swarm — it eats a 3-Might slime's
+ * chip but barely dents a 6-Might boss.
+ */
+export function attackDamage(attacker: Combatant, target: Combatant): number {
+  const base = Math.max(MIN_DAMAGE, attacker.might - target.ward)
+  return target.defending ? Math.ceil(base / 2) : base
+}
+
+/** How much a unit's Mend restores — its Attunement (skill potency). */
+export function healAmount(healer: Combatant): number {
+  return healer.attunement
+}
+
+/** Strain a single Mend cast adds to its caster. Strawman — the whole
+ *  Strain economy is tuned in play; this is the one knob to turn first. */
+export const MEND_STRAIN = 2
+
+/**
+ * The overdraw a cast inflicts: adding `cost` Strain to a caster currently at
+ * `strain` (cap `poise`), how much of THIS cast lands above Poise — that overflow
+ * is paid in Fortitude (HP). Under Poise the cast is free (0). Pure + exported so
+ * the Strain economy is unit-testable without driving a whole battle.
+ */
+export function overdraw(strain: number, poise: number, cost: number): number {
+  return Math.max(0, strain + cost - Math.max(poise, strain))
+}
+
+/** CTB scheduler base — the "time" a Celerity-1 golem waits between turns. The
+ *  whole turn order is FFX-style CTB (not round-robin, not a filling ATB bar):
+ *  each unit's next turn comes back after `recovery(celerity)`, integer-quantised
+ *  so the schedule never drifts and the journal stays trustworthy. */
+export const SCHED_BASE = 120
+
+/**
+ * Time until a unit of this Celerity gets its next turn (smaller = sooner, so
+ * higher Celerity acts more often). Floored at Celerity 1 — a Celerity-0 golem is
+ * merely the slowest, never frozen. `recovery(12):recovery(10):recovery(8)` =
+ * `10:12:15`, i.e. a `6:5:4` share of turns over time.
+ */
+export function recovery(celerity: number): number {
+  return Math.round(SCHED_BASE / Math.max(1, celerity))
+}
+
+/** This unit's current scheduler charge, defaulting to a fresh `recovery` if a
+ *  save predates the CTB field (defensive — never NaN). */
+function chargeOf(u: Combatant): number {
+  return u.charge ?? recovery(u.celerity)
+}
+
+/** The living unit scheduled to act next: least charge, ties broken by lowest
+ *  index (deterministic). Returns -1 if nothing is alive. */
+function nextActor(units: Combatant[]): number {
+  let best = -1
+  for (let i = 0; i < units.length; i++) {
+    if (units[i].hp <= 0) continue
+    if (best === -1 || chargeOf(units[i]) < chargeOf(units[best])) best = i
+  }
+  return best
+}
+
+/**
+ * The next `n` unit ids in CTB order, WITHOUT mutating or applying any actions —
+ * a pure projection (clone charges, run pick/advance/reset n times) that assumes
+ * current HP. Shares `nextActor` with `step` so the carousel can never disagree
+ * with the real schedule. Drives the turn-order carousel.
+ */
+export function upcomingTurns(units: Combatant[], n: number): string[] {
+  let sim = units.map((u) => ({ ...u, charge: chargeOf(u) }))
+  const order: string[] = []
+  for (let k = 0; k < n; k++) {
+    const idx = nextActor(sim)
+    if (idx < 0) break
+    const m = chargeOf(sim[idx])
+    sim = sim.map((u) => (u.hp > 0 ? { ...u, charge: chargeOf(u) - m } : u))
+    order.push(sim[idx].id)
+    sim[idx] = { ...sim[idx], charge: recovery(sim[idx].celerity) }
+  }
+  return order
 }
 
 // --- State = Subject + Predicate -------------------------------------------
@@ -69,7 +203,7 @@ export interface State {
 // --- Maneuver = Command + which --------------------------------------------
 
 /** Skills are the "Use Skill" Objects (Attack and Flee are their own commands). */
-export type SkillId = 'cure' | 'defend'
+export type SkillId = 'mend' | 'defend'
 
 /**
  * A Maneuver mirrors a State: a Command plus (for some commands) an Object.
@@ -183,7 +317,7 @@ export function maneuverKind(m: Maneuver): 'attack' | 'heal' | 'defend' | 'flee'
   if (m.command === 'attack') return 'attack'
   if (m.command === 'flee') return 'flee'
   if (m.command === 'useItem') return 'heal'
-  return m.skill === 'cure' ? 'heal' : 'defend'
+  return m.skill === 'mend' ? 'heal' : 'defend'
 }
 
 // ---------------------------------------------------------------------------
@@ -218,8 +352,6 @@ export interface GameState {
   outcome: Outcome
 }
 
-export const HEAL_AMOUNT = 24
-
 // Enemies share one trivial Procedure: hit the nearest hero. Generic by side —
 // from a slime's perspective "enemy" is the party.
 const ENEMY_PROCEDURE: Procedure = [
@@ -230,49 +362,98 @@ const ENEMY_PROCEDURE: Procedure = [
   },
 ]
 
+/** A unit's defining fields (everything except the derived hp/maxHp/defending). */
+type UnitSpec = Stats & {
+  id: string
+  name: string
+  side: Side
+  procedure: Procedure
+  counterHeal?: number
+  isBoss?: boolean
+}
+
+/** Build a Combatant from a stat block: maxHp derives from Fortitude, hp starts
+ *  full. Keeps every builder honest about the stat → pool relationship. */
+function makeUnit(base: UnitSpec): Combatant {
+  const maxHp = poolFor(base.fortitude)
+  return { ...base, hp: maxHp, maxHp, defending: false, strain: 0 }
+}
+
+// Slime: a feeble chip-attacker with no Ward — the unit Ward is designed to shrug.
 export function makeEnemy(index: number): Combatant {
-  return {
+  return makeUnit({
     id: `enemy-${index}`,
     name: `Slime #${index}`,
     side: 'enemy',
-    hp: 26,
-    maxHp: 26,
-    atk: 9,
-    defending: false,
+    might: 3,
+    ward: 0,
+    fortitude: 4,
+    attunement: 0,
+    poise: 0,
+    celerity: 4,
     procedure: ENEMY_PROCEDURE,
-  }
+  })
 }
 
 /**
  * The slice-4 "wall": a single boss that punishes restorative magic. Every time
  * a hero is healed, the Warden strikes the healed unit for `counterHeal`, which
- * more than undoes the Cure — so the naive "Cure when an ally is low" Procedure
+ * more than undoes the Mend — so the naive "Mend when an ally is low" Procedure
  * is a trap. The only fix in the shipped vocabulary is for the Mender to STOP
- * curing and add its damage to the race instead (the Sentinel tanks on its own
- * Self·HP<30%→Defend rule). Tuned so the cure-spam default genuinely wipes.
+ * mending and add its damage to the race instead (the Sentinel tanks on its own
+ * Self·HP<30%→Defend rule). Tuned so the mend-spam default genuinely wipes.
  */
 export function makeWarden(): Combatant {
-  return {
+  return makeUnit({
     id: 'enemy-1',
     name: 'Hex Warden',
     side: 'enemy',
-    hp: 120,
-    maxHp: 120,
-    atk: 14,
-    defending: false,
+    // Off-balance and unbounded (monsters ignore the player's caps): a big
+    // Fortitude pool so it survives the fast Mender's front-load, and a counter
+    // that exceeds the Mender's heal so mend-spam is a net loss. Tuned against the
+    // slice-4 discriminating tests under the CTB schedule.
+    might: 6,
+    ward: 1,
+    fortitude: 18,
+    attunement: 0,
+    poise: 0,
+    celerity: 4,
     procedure: ENEMY_PROCEDURE,
-    counterHeal: 30,
+    counterHeal: 7,
     isBoss: true,
-  }
+  })
 }
 
-/** Default golems: a Sentinel (tanky, hits hard) and a Mender (fragile, cures). */
+/** Default golems: a Sentinel (Bulwark — Ward + Fortitude, tanks and hits) and a
+ *  Mender (Channeler — Attunement + Poise, fragile, mends). Compact stat blocks. */
 export function makeWarrior(procedure: Procedure): Combatant {
-  return { id: 'hero-1', name: 'Sentinel', side: 'hero', hp: 120, maxHp: 120, atk: 11, defending: false, procedure }
+  return makeUnit({
+    id: 'hero-1',
+    name: 'Sentinel',
+    side: 'hero',
+    might: 5,
+    ward: 2,
+    fortitude: 10,
+    attunement: 0,
+    poise: 0,
+    celerity: 5,
+    procedure,
+  })
 }
 
 export function makeHealer(procedure: Procedure): Combatant {
-  return { id: 'hero-2', name: 'Mender', side: 'hero', hp: 80, maxHp: 80, atk: 6, defending: false, procedure }
+  return makeUnit({
+    id: 'hero-2',
+    name: 'Mender',
+    side: 'hero',
+    might: 3,
+    ward: 0,
+    fortitude: 5,
+    attunement: 5,
+    poise: 6,
+    celerity: 6,
+    procedure,
+  })
 }
 
 export type EncounterId = 'duo' | 'pack' | 'warden'
@@ -301,19 +482,18 @@ function encounterEnemies(id: EncounterId): Combatant[] {
 }
 
 /**
- * Build an encounter from EXISTING hero Combatants (HP, deaths and Procedures
- * carry in). This is what lets a run chain encounters with attrition; a fresh
- * `defending` flag and a fresh log/cursor give each encounter a clean slate.
+ * Build an encounter from EXISTING hero Combatants (HP, deaths, Procedures and
+ * Strain carry in — Strain is delve-scoped). What's reset to a clean slate is
+ * battle-scoped: a fresh `defending` flag, a fresh CTB `charge`, and a fresh
+ * log/cursor.
  */
 export function makeBattle(heroes: Combatant[], encounter: EncounterId): GameState {
-  return {
-    units: [...heroes.map((h) => ({ ...h, defending: false })), ...encounterEnemies(encounter)],
-    turn: 0,
-    round: 0,
-    cursor: -1,
-    log: [],
-    outcome: 'ongoing',
-  }
+  const units = [...heroes.map((h) => ({ ...h })), ...encounterEnemies(encounter)].map((u) => ({
+    ...u,
+    defending: false,
+    charge: recovery(u.celerity), // battle-scoped: every fight starts the cadence fresh
+  }))
+  return { units, turn: 0, round: 0, cursor: -1, log: [], outcome: 'ongoing' }
 }
 
 /** Convenience: a one-off encounter against a freshly-built default party. */
@@ -321,12 +501,6 @@ export function initialState(warriorProc: Procedure, healerProc: Procedure, enco
   return makeBattle([makeWarrior(warriorProc), makeHealer(healerProc)], encounter)
 }
 
-/** The next living unit to act after `cursor`, and whether we wrapped (new round). */
-function nextLivingAfter(units: Combatant[], cursor: number): { idx: number; wrapped: boolean } | null {
-  for (let i = cursor + 1; i < units.length; i++) if (units[i].hp > 0) return { idx: i, wrapped: false }
-  for (let i = 0; i <= cursor; i++) if (units[i].hp > 0) return { idx: i, wrapped: true }
-  return null
-}
 
 /** Apply a resolved maneuver to the cloned units; return the log detail string. */
 function applyManeuver(actor: Combatant, target: Combatant | null, maneuver: Maneuver): string {
@@ -334,7 +508,7 @@ function applyManeuver(actor: Combatant, target: Combatant | null, maneuver: Man
     return `FLEE — ${actor.name} tries to disengage (no effect yet)`
   }
 
-  const cure = maneuver.command === 'useSkill' && maneuver.skill === 'cure'
+  const mend = maneuver.command === 'useSkill' && maneuver.skill === 'mend'
   const defend = maneuver.command === 'useSkill' && maneuver.skill === 'defend'
 
   if (defend) {
@@ -342,19 +516,30 @@ function applyManeuver(actor: Combatant, target: Combatant | null, maneuver: Man
     return `DEFEND — incoming damage halved until next turn`
   }
 
-  if (cure) {
+  if (mend) {
     if (target !== null && target.side === actor.side && target.hp > 0) {
       const before = target.hp
-      target.hp = Math.min(target.maxHp, target.hp + HEAL_AMOUNT)
-      return `CURE +${target.hp - before} → ${target.name} (HP ${before} → ${target.hp})`
+      target.hp = Math.min(target.maxHp, target.hp + healAmount(actor))
+      const restored = target.hp - before
+      const healedTo = target.hp // capture before any self-overdraw rewrites it
+      // Strain: the channel adds to the caster's budget; past Poise the overflow
+      // frays its OWN Fortitude (Mend is a Fortitude → heal converter). Same code
+      // path in combat and at rest — "c'est Mend pareil".
+      const sBefore = actor.strain ?? 0
+      const bite = overdraw(sBefore, actor.poise, MEND_STRAIN)
+      actor.strain = sBefore + MEND_STRAIN
+      if (bite > 0) actor.hp = Math.max(0, actor.hp - bite)
+      let detail = `MEND +${restored} → ${target.name} (HP ${before} → ${healedTo})`
+      if (bite > 0) detail += ` • OVERDRAW −${bite} → ${actor.name} (Strain ${actor.strain} > Poise ${actor.poise})`
+      return detail
     }
-    return `CURE has no valid target — no effect` // dead rule: State held, turn consumed
+    return `MEND has no valid target — no effect` // dead rule: State held, turn consumed
   }
 
   // attack (the default command, or a useItem we haven't wired — treated as attack-less)
   if (maneuver.command === 'attack' && target !== null && target.side !== actor.side && target.hp > 0) {
     const before = target.hp
-    const dmg = target.defending ? Math.ceil(actor.atk / 2) : actor.atk
+    const dmg = attackDamage(actor, target)
     target.hp = Math.max(0, target.hp - dmg)
     let detail = `ATTACK −${dmg} → ${target.name} (HP ${before} → ${target.hp})`
     if (target.hp <= 0) detail += ` • ${target.name} defeated!`
@@ -373,15 +558,24 @@ function applyManeuver(actor: Combatant, target: Combatant | null, maneuver: Man
 export function step(state: GameState): GameState {
   if (state.outcome !== 'ongoing') return state
 
-  const next = nextLivingAfter(state.units, state.cursor)
-  if (next === null) return state // no living units at all (defensive)
+  const idx = nextActor(state.units)
+  if (idx < 0) return state // no living units at all (defensive)
 
   const units = state.units.map((u) => ({ ...u }))
-  const actor = units[next.idx]
+  // Advance scheduler time: subtract the winner's charge from every living unit
+  // (so the winner reaches 0 = now), then the winner pays a fresh `recovery` to
+  // queue its next turn. This is the CTB heartbeat.
+  const spent = chargeOf(units[idx])
+  for (const u of units) if (u.hp > 0) u.charge = chargeOf(u) - spent
+  const actor = units[idx]
   actor.defending = false // its protection window closes as it gets to act again
+  actor.charge = recovery(actor.celerity)
 
   const turn = state.turn + 1
-  const round = state.round + (next.wrapped ? 1 : 0)
+  // `round` is now a cosmetic counter (CTB has no clean wrap): tick it whenever the
+  // first living unit takes a turn — a soft "the order came around" marker.
+  const firstLiving = units.findIndex((u) => u.hp > 0)
+  const round = state.round + (idx === firstLiving ? 1 : 0)
 
   const decision = decide(actor, units)
   const target = decision.targetId !== null ? (units.find((u) => u.id === decision.targetId) ?? null) : null
@@ -437,8 +631,40 @@ export function step(state: GameState): GameState {
     units,
     turn,
     round,
-    cursor: next.idx,
+    cursor: idx,
     log: [...state.log, ...entries].slice(-50),
     outcome,
   }
+}
+
+/**
+ * A REST (exploration): the party tends itself off-combat by running each living
+ * golem's OWN Procedure against the party alone — no enemies. Attack/flee rules
+ * resolve to null with no foes, so only Mend rules fire — "c'est Mend pareil":
+ * the same skill, the same Attunement potency, the same Poise/Strain budget as in
+ * combat (so resting is bounded, and a party with no healer gets nothing). It runs
+ * to CONVERGENCE — passes repeat until one casts nothing (everyone is back above
+ * their Mend thresholds) — so a rest is a single recovery EVENT, not a metered
+ * per-step trickle ("si c'est un repos, ce n'est pas un pas"). Strain accrued here
+ * carries on into the next fight; it only cools at the tower. Pure: returns fresh
+ * units + how many Mends were cast.
+ */
+export function restToConvergence(party: Combatant[]): { units: Combatant[]; mends: number } {
+  const units = party.map((u) => ({ ...u }))
+  let mends = 0
+  const cap = Math.max(1, units.length) * 16 // insurance against a pathological loop
+  for (let pass = 0; pass < cap; pass++) {
+    let castThisPass = false
+    for (const actor of units) {
+      if (actor.hp <= 0) continue
+      const d = decide(actor, units)
+      if (d.maneuver.command === 'useSkill' && d.maneuver.skill === 'mend' && d.targetId !== null) {
+        applyManeuver(actor, units.find((u) => u.id === d.targetId) ?? null, d.maneuver)
+        mends += 1
+        castThisPass = true
+      }
+    }
+    if (!castThisPass) break
+  }
+  return { units, mends }
 }

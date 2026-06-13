@@ -9,8 +9,8 @@ const attack: Procedure = [
 // A party that one-shots everything, so fights never stop the delve — lets us
 // test the EXPLORATION loop in isolation from combat balance.
 const strongParty = (): Combatant[] => [
-  { ...makeWarrior(attack), atk: 100 },
-  { ...makeHealer(attack), atk: 100 },
+  { ...makeWarrior(attack), might: 100 },
+  { ...makeHealer(attack), might: 100 },
 ]
 
 /** Step a delve to a terminal state (or a generous cap) — the headless way to run

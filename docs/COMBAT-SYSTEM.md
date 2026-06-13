@@ -3,8 +3,8 @@
 > The canonical "what & why" is [VISION.md](VISION.md); the rule *language* is
 > [VOCABULARY.md](VOCABULARY.md). This file defines the **stats** — the numeric
 > substrate that combat, exploration cadence and balance all ride on. It is a
-> design reference, not an implementation log; the code does not yet carry most
-> of this (see [Where the code is today](#where-the-code-is-today)).
+> design reference, not an implementation log; **all six stats are now wired**
+> in `src/sim.ts` (see [Where the code is today](#where-the-code-is-today)).
 
 ## Why this exists
 
@@ -261,17 +261,33 @@ This replaces today's fixed order (heroes then enemies, round-robin).
 
 ## Where the code is today
 
-`src/sim.ts` currently models only a fraction of this — it is the honest starting
-point, not the model:
+`src/sim.ts` now carries the **six stats** as a `Stats` interface on every
+`Combatant` (compact 0–12 scale). **All six are wired:**
 
-| Model stat | Today in `sim.ts` |
-|---|---|
-| Might | `atk` |
-| Fortitude | `maxHp` / `hp` |
-| Ward | — (only a temporary `defending` flag halves damage for one turn) |
-| Attunement | — (`Mend`/`cure` heals a flat `HEAL_AMOUNT`) |
-| Poise | — (skills are free; no Strain) |
-| Celerity | — (turn order fixed: heroes then enemies, round-robin → target: CTB turn scheduler) |
+| Model stat | Today in `sim.ts` | State |
+|---|---|---|
+| Might | `might` → `attackDamage = max(1, might − target.ward)` | ✅ wired |
+| Ward | `ward` → flat reduction in `attackDamage`, floored at `MIN_DAMAGE = 1` | ✅ wired |
+| Fortitude | `fortitude` → `maxHp = poolFor(fortitude) = fortitude × HP_PER_FORTITUDE` (4) | ✅ wired |
+| Attunement | `attunement` → `healAmount` (**Mend** potency); `Defend` still halves a hit | ✅ wired |
+| Poise | `poise` → Strain budget: each `Mend` adds `MEND_STRAIN`; `overdraw()` past Poise bites the caster's Fortitude. Persists across the delve, cools at the tower. | ✅ wired |
+| Celerity | `celerity` → **CTB scheduler**: per-unit `charge`; `recovery(cel) = round(SCHED_BASE / max(1,cel))`; the least-charge unit acts next (ties by index). Higher Celerity = more turns (12:10:8 → 6:5:4). | ✅ wired |
+
+Combat resolves on the **compact scale** (hits ~1–4, heals ~5, pools ~16–44),
+proven in-browser (`docs/progress/combat-6stats-compact-scale.png`). **Strain** is
+live: a `Mend` cast accrues Strain on its caster; past `Poise` the overflow frays
+Fortitude (`overdraw` — `docs/progress/strain-overdraw.png`). A **rest** (the
+exploration `rest` Move) is *off-combat Mend*: `restToConvergence()` runs each
+golem's own Procedure against the party alone (attacks fizzle, Mends fire) to
+convergence — same skill, same potency, same Strain budget as in combat, so it's
+bounded and a healer-less party gets nothing. The heal skill is **Mend** (the
+`mend` SkillId; "Cure" is retired). **Celerity** now drives an FFX-style **CTB
+scheduler** (`step`/`upcomingTurns` share `nextActor`; round-robin is gone),
+surfaced as a **turn-order carousel** in combat (`docs/progress/ctb-carousel.png`)
+— the slow Warden shows up far less often than the fast Mender. The Warden was
+re-tuned (Fortitude 11→18) to survive the fast Mender's front-load so the slice-4
+discriminator still holds under CTB. Exact cadence-target tuning (action counts,
+`MEND_STRAIN`/Poise) remains the deferred balance pass.
 
 The slice-4 `counterHeal` trait (Hex Warden) is an **ad-hoc mechanic**, not a stat
 — exactly the kind of thing the wall taxonomy (deferred) will systematise.

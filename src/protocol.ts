@@ -138,7 +138,7 @@ export const COMMANDS: Command[] = [
 ]
 
 export const SKILLS: { id: SkillId; label: string }[] = [
-  { id: 'cure', label: 'Cure' },
+  { id: 'mend', label: 'Mend' },
   { id: 'defend', label: 'Defend' },
 ]
 

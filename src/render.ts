@@ -10,7 +10,7 @@
 // drawing size via `cssSize()`, NOT `ctx.canvas.width/height` (that's the larger,
 // device-pixel backing store).
 
-import type { Combatant, GameState } from './sim'
+import { upcomingTurns, type Combatant, type GameState } from './sim'
 import { DX, DY, roomAt, type Dir } from './dungeon'
 import type { DelveState } from './delve'
 import { buildingRects, foyerLayout, type BuildingId, type BuildingRect } from './buildings'
@@ -460,6 +460,17 @@ function drawDungeonView(ctx: CanvasRenderingContext2D, delve: DelveState, sprit
     ctx.font = '14px system-ui, sans-serif'
     ctx.textAlign = 'center'
     ctx.fillText(`${h.name} ${Math.max(0, h.hp)}/${h.maxHp}`, x + spW / 2, y + spH + 4)
+    // Strain readout for channelers (Poise > 0): the arcane budget, amber once it
+    // overdraws into Fortitude. The trade-off (cast now vs. save it to rest) must be
+    // legible in a game you watch.
+    const poise = h.poise ?? 0
+    if (poise > 0 && !dead) {
+      const strain = h.strain ?? 0
+      const over = strain > poise
+      ctx.fillStyle = over ? '#ff8c42' : '#7f8a99'
+      ctx.font = '12px system-ui, sans-serif'
+      ctx.fillText(`⚡ Strain ${strain}/${poise}${over ? ' • overdraw' : ''}`, x + spW / 2, y + spH + 20)
+    }
     ctx.textAlign = 'left'
   })
 
@@ -476,6 +487,60 @@ function drawDungeonView(ctx: CanvasRenderingContext2D, delve: DelveState, sprit
   ctx.fillStyle = '#9aa0b0'
   ctx.font = '15px system-ui, sans-serif'
   ctx.fillText(`Scrying · turn ${delve.turn} · facing ${DIR_LABEL[fwd]}${exitL ? ' · ◄ exit' : ''}${exitR ? ' · exit ►' : ''}`, 16, HUD_SAFE)
+
+  // the CTB turn-order carousel (only while fighting) — makes Celerity legible: a
+  // fast golem shows up more often in the upcoming-turns strip.
+  if (delve.battle !== null) drawTurnCarousel(ctx, delve.battle.units, width)
+}
+
+/** A horizontal strip of the next units to act (FFX-style upcoming-turns), drawn
+ *  top-centre during combat. The first chip = next to act (ringed). Shared with the
+ *  sim's real schedule via `upcomingTurns`, so it can never lie about turn order. */
+function drawTurnCarousel(ctx: CanvasRenderingContext2D, units: Combatant[], width: number): void {
+  const order = upcomingTurns(units, 7)
+  if (order.length === 0) return
+  const byId = new Map(units.map((u) => [u.id, u]))
+  const chip = 30
+  const gap = 8
+  const totalW = order.length * chip + (order.length - 1) * gap
+  let x = Math.round((width - totalW) / 2)
+  const y = HUD_SAFE + 26
+  ctx.textAlign = 'center'
+  ctx.textBaseline = 'middle'
+  ctx.font = 'bold 13px system-ui, sans-serif'
+  order.forEach((id, i) => {
+    const u = byId.get(id)
+    const enemy = u?.side === 'enemy'
+    const boss = u?.isBoss === true
+    const next = i === 0
+    ctx.globalAlpha = next ? 1 : Math.max(0.4, 1 - i * 0.1)
+    ctx.fillStyle = enemy ? (boss ? '#c78bff' : '#ff6b6b') : '#4fd1ff'
+    roundRect(ctx, x, y, chip, chip, 7)
+    ctx.fill()
+    if (next) {
+      ctx.globalAlpha = 1
+      ctx.strokeStyle = '#ffffff'
+      ctx.lineWidth = 2
+      roundRect(ctx, x - 2, y - 2, chip + 4, chip + 4, 9)
+      ctx.stroke()
+    }
+    ctx.globalAlpha = 1
+    ctx.fillStyle = '#0a0a12'
+    ctx.fillText((u?.name ?? '?').slice(0, 1), x + chip / 2, y + chip / 2 + 1)
+    x += chip + gap
+  })
+  ctx.globalAlpha = 1
+}
+
+/** A filled rounded-rect path (caller does fill/stroke). */
+function roundRect(ctx: CanvasRenderingContext2D, x: number, y: number, w: number, h: number, r: number): void {
+  ctx.beginPath()
+  ctx.moveTo(x + r, y)
+  ctx.arcTo(x + w, y, x + w, y + h, r)
+  ctx.arcTo(x + w, y + h, x, y + h, r)
+  ctx.arcTo(x, y + h, x, y, r)
+  ctx.arcTo(x, y, x + w, y, r)
+  ctx.closePath()
 }
 
 function drawMinimap(ctx: CanvasRenderingContext2D, delve: DelveState): void {

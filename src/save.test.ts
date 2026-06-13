@@ -126,6 +126,37 @@ describe('save — slots', () => {
     expect(loadSlot(1, store)).toBeNull()
   })
 
+  it('drops an in-progress delve saved before the six-stat model, keeping roster + meta', () => {
+    // A pre-six-stat delve persists Combatants with atk/hp but no might/ward — its
+    // next fight would compute NaN damage. loadSlot resets it to town (Design:
+    // "a delve saved before this refactor — just reset it"), profile preserved.
+    const staleParty = [{ id: 'hero-1', name: 'Sentinel', side: 'hero', hp: 90, maxHp: 120, atk: 11, defending: false, procedure: [] }]
+    const blob = {
+      version: 3,
+      savedAt: 1,
+      roster: [{ simId: 'hero-1', name: 'Sentinel', rows: [] }, { simId: 'hero-2', name: 'Mender', rows: [] }],
+      activeHero: 0,
+      mode: 'delve',
+      insight: 3,
+      unlocked: ['enemy-most-hp'],
+      delve: { status: 'delving', pos: 5, turn: 9, dungeon: {}, party: staleParty, explored: [], exploration: [] },
+    }
+    const store = fakeStore({ 'project-black/save/slot/0': JSON.stringify(blob) })
+    const loaded = loadSlot(0, store)
+    expect(loaded?.delve).toBeNull() // the stale delve is dropped...
+    expect(loaded?.mode).toBe('camp') // ...and we land in town
+    expect(loaded?.roster).toHaveLength(2) // roster preserved
+    expect(loaded?.insight).toBe(3) // meta preserved
+    expect(loaded?.unlocked).toEqual(['enemy-most-hp'])
+
+    // A delve whose party DOES carry stats is left intact (not over-eagerly dropped).
+    const freshParty = [{ ...staleParty[0], might: 5, ward: 2, fortitude: 10, attunement: 0, poise: 0, celerity: 5 }]
+    const fresh = { ...blob, delve: { ...blob.delve, party: freshParty } }
+    const store2 = fakeStore({ 'project-black/save/slot/0': JSON.stringify(fresh) })
+    expect(loadSlot(0, store2)?.delve).not.toBeNull()
+    expect(loadSlot(0, store2)?.mode).toBe('delve')
+  })
+
   it('importLegacy moves an old single-save blob into slot 0, preserving savedAt', () => {
     const legacy: SaveData = { version: 3, savedAt: 12345, ...snap(2) }
     const store = fakeStore({ 'project-black/save': JSON.stringify(legacy) })

@@ -185,6 +185,19 @@ export function salvageMeta(index: number, store: KVStore = localStorage): Salva
   return { clearedLevels, insight, unlocked }
 }
 
+/** An in-progress delve persists live `Combatant` objects. One saved BEFORE the
+ *  six-stat model carries `atk`/`hp` but no `might`/`ward`/… — resuming its next
+ *  fight would compute `NaN` damage. We can't migrate a live combatant mid-fight,
+ *  so we drop the stale delve back to town (roster + meta are untouched, and the
+ *  town party is always rebuilt fresh with stats). Non-destructive, in the spirit
+ *  of the defensive load: a format change never bricks a profile. */
+function dropStaleDelve(data: SaveData): SaveData {
+  if (data.delve === null) return data
+  const partyHasStats = data.delve.party.every((u) => isObj(u) && typeof u.might === 'number' && typeof u.ward === 'number')
+  if (partyHasStats) return data
+  return { ...data, delve: null, mode: 'camp' }
+}
+
 /** Load one slot, or null if empty / corrupt / stale. Never throws. */
 export function loadSlot(index: number, store: KVStore = localStorage): SaveData | null {
   let raw: string | null
@@ -196,7 +209,7 @@ export function loadSlot(index: number, store: KVStore = localStorage): SaveData
   if (raw === null) return null
   try {
     const parsed: unknown = JSON.parse(raw)
-    return isSaveData(parsed) ? parsed : null
+    return isSaveData(parsed) ? dropStaleDelve(parsed) : null
   } catch {
     return null
   }

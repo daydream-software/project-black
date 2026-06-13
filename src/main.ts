@@ -50,15 +50,15 @@ function freshRoster(): Hero[] {
       name: 'Sentinel',
       rows: [
         { subjectId: 'self', predId: 'hp_lt_30', command: 'useSkill', skillId: 'defend', enabled: true },
-        { subjectId: 'enemy_near', predId: 'always', command: 'attack', skillId: 'cure', enabled: true },
+        { subjectId: 'enemy_near', predId: 'always', command: 'attack', skillId: 'mend', enabled: true },
       ],
     },
     {
       simId: 'hero-2',
       name: 'Mender',
       rows: [
-        { subjectId: 'ally_low', predId: 'hp_lt_50', command: 'useSkill', skillId: 'cure', enabled: true },
-        { subjectId: 'enemy_near', predId: 'always', command: 'attack', skillId: 'cure', enabled: true },
+        { subjectId: 'ally_low', predId: 'hp_lt_50', command: 'useSkill', skillId: 'mend', enabled: true },
+        { subjectId: 'enemy_near', predId: 'always', command: 'attack', skillId: 'mend', enabled: true },
       ],
     },
   ]
@@ -1028,7 +1028,7 @@ addBtn.addEventListener('click', () => {
     subjectId: 'enemy_near',
     predId: 'always',
     command: 'attack',
-    skillId: 'cure',
+    skillId: 'mend',
     enabled: true,
   })
   commit()
