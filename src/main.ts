@@ -1,6 +1,7 @@
 import './style.css'
-import { makeGolem, SENTINEL_STATS, MENDER_STATS, type Combatant, type GameState } from './sim'
+import { makeGolem, poolFor, SENTINEL_STATS, MENDER_STATS, type Combatant, type GameState, type Stats } from './sim'
 import { startDelve, stepDelve, type DelveState, type ExProcedure } from './delve'
+import { BUILD_BUDGET, CHASSIS_COST, STAT_CAP, GOLEM_MIN, GOLEM_MAX, buildCost } from './party'
 import { LEVELS, applyClear, levelById, hasCleared } from './levels'
 import { UNLOCKABLES, buy, isOwned, canAfford } from './shop'
 import { toggleMusic, setMusicState, type TrackId } from './music'
@@ -43,13 +44,21 @@ import {
 // ProtocolRow / Hero are defined in save.ts (they're the persisted schema).
 // `roster` is `let` so a loaded save can replace it on startup.
 
+// The starting party's stat blocks: a legal 24-point build (chassis 6 + 18 stat
+// points). Kept separate from sim.ts's SENTINEL_STATS/MENDER_STATS (the test
+// reference blocks) until the d-2 balance pass unifies them by re-tuning the wall.
+// Strawman numbers — the player re-specs them at the Workshop, and the monster
+// rescale is the next pass.
+const STARTER_SENTINEL: Stats = { might: 4, ward: 1, fortitude: 4, attunement: 0, poise: 0, celerity: 2 } // 11
+const STARTER_MENDER: Stats = { might: 1, ward: 0, fortitude: 2, attunement: 3, poise: 1, celerity: 0 } //   7
+
 /** The starting party + Procedures a New Game (or a never-saved slot) begins with. */
 function freshRoster(): Hero[] {
   return [
     {
       simId: 'hero-1',
       name: 'Sentinel',
-      stats: { ...SENTINEL_STATS },
+      stats: { ...STARTER_SENTINEL },
       rows: [
         { subjectId: 'self', predId: 'hp_lt_30', command: 'useSkill', skillId: 'defend', enabled: true },
         { subjectId: 'enemy_near', predId: 'always', command: 'attack', skillId: 'mend', enabled: true },
@@ -58,7 +67,7 @@ function freshRoster(): Hero[] {
     {
       simId: 'hero-2',
       name: 'Mender',
-      stats: { ...MENDER_STATS },
+      stats: { ...STARTER_MENDER },
       rows: [
         { subjectId: 'ally_low', predId: 'hp_lt_50', command: 'useSkill', skillId: 'mend', enabled: true },
         { subjectId: 'enemy_near', predId: 'always', command: 'attack', skillId: 'mend', enabled: true },
@@ -119,6 +128,8 @@ const ctx = require2dContext(canvas)
 const runBarEl = requireElement('run-bar', HTMLDivElement)
 const levelSelectEl = requireElement('level-select', HTMLDivElement)
 const tabsEl = requireElement('hero-tabs', HTMLDivElement)
+const coreBudgetEl = requireElement('core-budget', HTMLDivElement)
+const statEditorEl = requireElement('stat-editor', HTMLDivElement)
 const editorEl = requireElement('editor', HTMLUListElement)
 const addBtn = requireElement('add-protocol', HTMLButtonElement)
 const exEditorEl = requireElement('ex-editor', HTMLUListElement)
@@ -255,6 +266,7 @@ function renderScreens(): void {
 /** Paint the in-game screen for the current profile (called on slot entry). */
 function enterGame(): void {
   screen = 'game'
+  ensureStats() // give every loaded hero an editable stat block (additive on next save)
   renderScreens()
   resizeCanvas() // the canvas is laid out now (no longer display:none) — size its buffer
   renderRunBar()
@@ -891,6 +903,138 @@ function renderTabs(): void {
     })
     tabsEl.appendChild(tab)
   })
+  renderCores() // the point-buy stat editor + budget meter track the active golem
+}
+
+// --- Point-buy core editor (slice d-3) --------------------------------------
+// The player authors each golem's six stats here, within a shared build budget.
+// Stats live on the persisted Hero; the budget math is the pure party.ts.
+
+const STAT_ROWS: ReadonlyArray<{ key: keyof Stats; label: string; hint: string }> = [
+  { key: 'might', label: 'Might', hint: 'attack damage (− target Ward)' },
+  { key: 'ward', label: 'Ward', hint: 'flat damage reduction' },
+  { key: 'fortitude', label: 'Fortitude', hint: 'HP pool' },
+  { key: 'attunement', label: 'Attunement', hint: 'skill potency (Mend)' },
+  { key: 'poise', label: 'Poise', hint: 'Strain tolerance before overdraw' },
+  { key: 'celerity', label: 'Celerity', hint: 'turn frequency' },
+]
+
+/** This golem's stat block, falling back to the reference block by index for a
+ *  pre-point-buy hero (matches party()'s fallback). */
+function statsOf(hero: Hero, i: number): Stats {
+  return hero.stats ?? (i === 1 ? MENDER_STATS : SENTINEL_STATS)
+}
+
+/** Materialise a stat block on every hero that lacks one, so the editor edits a real
+ *  object (a pre-point-buy save gets the reference block; additive on next save). */
+function ensureStats(): void {
+  roster.forEach((hero, i) => {
+    roster[i].stats ??= { ...statsOf(hero, i) }
+  })
+}
+
+/** Every golem's stat block — the input to the budget math. */
+function rosterStats(): Stats[] {
+  return roster.map((hero, i) => statsOf(hero, i))
+}
+
+/** Budget points still unspent (negative = over budget). */
+function budgetLeft(): number {
+  return BUILD_BUDGET - buildCost(rosterStats())
+}
+
+/** A unique `hero-N` sim id not already used by the roster. */
+function freshSimId(): string {
+  const nums = roster.map((h) => Number.parseInt(h.simId.replace('hero-', ''), 10)).filter((n) => !Number.isNaN(n))
+  return `hero-${Math.max(0, ...nums) + 1}`
+}
+
+function adjustStat(key: keyof Stats, delta: number): void {
+  if (editingLocked()) return
+  ensureStats()
+  const { stats } = roster[activeHero]
+  if (stats === undefined) return
+  const next = stats[key] + delta
+  if (next < 0 || next > STAT_CAP) return
+  if (delta > 0 && budgetLeft() < 1) return // can't overspend the budget
+  stats[key] = next
+  renderTabs() // cascades the stat editor + budget; refreshes the tab's HP readout
+  saveNow()
+}
+
+function addGolem(): void {
+  if (editingLocked() || roster.length >= GOLEM_MAX || budgetLeft() < CHASSIS_COST) return
+  roster.push({
+    simId: freshSimId(),
+    name: `Golem ${roster.length + 1}`,
+    stats: { might: 0, ward: 0, fortitude: 0, attunement: 0, poise: 0, celerity: 0 },
+    rows: [{ subjectId: 'enemy_near', predId: 'always', command: 'attack', skillId: 'mend', enabled: true }],
+  })
+  activeHero = roster.length - 1
+  renderTabs()
+  renderEditor()
+  saveNow()
+}
+
+function removeGolem(): void {
+  if (editingLocked() || roster.length <= GOLEM_MIN) return
+  roster.splice(activeHero, 1)
+  activeHero = Math.min(activeHero, roster.length - 1)
+  renderTabs()
+  renderEditor()
+  saveNow()
+}
+
+function renderCoreBudget(): void {
+  coreBudgetEl.replaceChildren()
+  const locked = editingLocked()
+  const left = budgetLeft()
+  const meter = document.createElement('div')
+  meter.className = left < 0 ? 'budget over' : 'budget'
+  const count = `${roster.length} golem${roster.length > 1 ? 's' : ''}`
+  meter.textContent = left < 0
+    ? `Budget ${BUILD_BUDGET - left} / ${BUILD_BUDGET} · ${count} · over by ${-left}`
+    : `Budget ${BUILD_BUDGET - left} / ${BUILD_BUDGET} · ${count} · ${left} left`
+  const add = makeButton('+ Golem', 'Field another golem (costs 3 chassis)', addGolem)
+  add.disabled = locked || roster.length >= GOLEM_MAX || left < CHASSIS_COST
+  const rem = makeButton('− Golem', 'Disband this golem', removeGolem)
+  rem.disabled = locked || roster.length <= GOLEM_MIN
+  coreBudgetEl.append(meter, add, rem)
+}
+
+function renderStatEditor(): void {
+  statEditorEl.replaceChildren()
+  const locked = editingLocked()
+  const stats = statsOf(roster[activeHero], activeHero)
+  const left = budgetLeft()
+  for (const { key, label, hint } of STAT_ROWS) {
+    const row = document.createElement('div')
+    row.className = 'stat-row'
+    const name = document.createElement('span')
+    name.className = 'stat-name'
+    name.textContent = label
+    name.title = hint
+    const dec = makeButton('−', `Lower ${label}`, () => { adjustStat(key, -1); })
+    dec.disabled = locked || stats[key] <= 0
+    const val = document.createElement('span')
+    val.className = 'stat-val'
+    val.textContent = String(stats[key])
+    const inc = makeButton('+', `Raise ${label}`, () => { adjustStat(key, 1); })
+    inc.disabled = locked || stats[key] >= STAT_CAP || left < 1
+    row.append(name, dec, val, inc)
+    if (key === 'fortitude') {
+      const hp = document.createElement('span')
+      hp.className = 'stat-derived'
+      hp.textContent = `${poolFor(stats[key])} HP`
+      row.append(hp)
+    }
+    statEditorEl.append(row)
+  }
+}
+
+function renderCores(): void {
+  renderCoreBudget()
+  renderStatEditor()
 }
 
 // Built with DOM APIs (not innerHTML) — safe, and keeps live event handlers.
