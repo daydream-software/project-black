@@ -17,8 +17,8 @@ function fakeStore(seed: Record<string, string> = {}): KVStore & { map: Map<stri
   return {
     map,
     getItem: (k) => map.get(k) ?? null,
-    setItem: (k, v) => void map.set(k, v),
-    removeItem: (k) => void map.delete(k),
+    setItem: (k, v) => { map.set(k, v) },
+    removeItem: (k) => { map.delete(k) },
   }
 }
 

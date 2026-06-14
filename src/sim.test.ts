@@ -169,7 +169,7 @@ describe('CTB scheduler — turn frequency scales with Celerity', () => {
     })
     let s = { ...initialState([], []), units: [mk('A', 'hero', celA), mk('B', 'enemy', celB)] }
     const count: Record<string, number> = { A: 0, B: 0 }
-    for (let i = 0; i < 200; i++) {
+    for (let i = 0; i < 200; i += 1) {
       s = step(s)
       const id = s.log.at(-1)?.actorId ?? ''
       if (id in count) count[id] += 1
@@ -197,7 +197,7 @@ describe('CTB scheduler — turn frequency scales with Celerity', () => {
     // Replaying step() must produce the SAME first-5 actor ids (preview = real schedule).
     let s = battle
     const real: string[] = []
-    for (let i = 0; i < 5; i++) { s = step(s); real.push(s.log.at(-1)?.actorId ?? '') }
+    for (let i = 0; i < 5; i += 1) { s = step(s); real.push(s.log.at(-1)?.actorId ?? '') }
     expect(preview).toEqual(real)
     // and it didn't mutate the battle's charges
     expect(battle.units.every((u) => u.charge === undefined || typeof u.charge === 'number')).toBe(true)
@@ -342,7 +342,7 @@ describe('step — one unit-action of the simulation', () => {
   it('turn order follows Celerity (CTB), not a fixed round-robin cycle', () => {
     let s = freshBattle()
     const actors: string[] = []
-    for (let i = 0; i < 6; i++) {
+    for (let i = 0; i < 6; i += 1) {
       s = step(s)
       actors.push(s.log.at(-1)?.actorName ?? '?')
     }
@@ -473,7 +473,7 @@ describe('counter-heal — the wall reacts to restorative magic', () => {
   // The done-when, encoded: SAME boss, the discriminating edit on the HEALER.
   function runToEnd(start: ReturnType<typeof initialState>, cap = 400): ReturnType<typeof initialState> {
     let s = start
-    for (let i = 0; i < cap && s.outcome === 'ongoing'; i++) s = step(s)
+    for (let i = 0; i < cap && s.outcome === 'ongoing'; i += 1) s = step(s)
     return s
   }
 

@@ -94,13 +94,16 @@ const MAX_DELVE_STEPS = 4000 // defensive cap — a healthy delve ends far soone
 
 /** Reveal a cell, its floor neighbours, and (if it's in a room) the whole room. */
 function reveal(d: Dungeon, cell: number, explored: boolean[]): void {
+  /* eslint-disable no-param-reassign -- fills the caller-owned fog buffer in place
+     (callers pass `s.explored.slice()`, a local copy); the fog-of-war idiom. */
   explored[cell] = true
   for (const nb of floorNeighbours(d, cell)) explored[nb] = true
   const rid = roomAt(d, cell)
   if (rid >= 0) {
     const r = d.rooms[rid]
-    for (let {y} = r; y < r.y + r.h; y++) for (let {x} = r; x < r.x + r.w; x++) explored[y * d.width + x] = true
+    for (let {y} = r; y < r.y + r.h; y += 1) for (let {x} = r; x < r.x + r.w; x += 1) explored[y * d.width + x] = true
   }
+  /* eslint-enable no-param-reassign */
 }
 
 /** First step on the shortest path from `from` to `goal` through `passable`
@@ -166,8 +169,8 @@ function knownObjectiveCell(s: DelveState): number {
   const obj = s.dungeon.rooms[s.dungeon.objectiveRoomId]
   let best = -1
   let bestDist = Infinity
-  for (let {y} = obj; y < obj.y + obj.h; y++) {
-    for (let {x} = obj; x < obj.x + obj.w; x++) {
+  for (let {y} = obj; y < obj.y + obj.h; y += 1) {
+    for (let {x} = obj; x < obj.x + obj.w; x += 1) {
       const c = y * s.dungeon.width + x
       if (!s.explored[c]) continue
       const dist = Math.abs(x - (s.pos % s.dungeon.width)) + Math.abs(y - ((s.pos / s.dungeon.width) | 0))

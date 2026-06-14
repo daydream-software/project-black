@@ -14,24 +14,33 @@ export default [
   {
     files: ['src/**/*.ts'],
     rules: {
-      // --- Off: deliberate, idiomatic for this codebase (not deferred fixes) ---
-      'no-bitwise': 'off', //                a pixel/canvas game does real bit math
+      // --- Off: genuinely ill-suited to a Canvas game (not deferred fixes) ---
+      'no-bitwise': 'off', //                a pixel/canvas game does real bit math (PRNG, cell↔xy)
       '@typescript-eslint/no-magic-numbers': 'off', //  layout/draw constants are inline by design
-      'no-plusplus': 'off', //               `i++` / `count++` is clear and used throughout
-      '@typescript-eslint/prefer-destructuring': 'off', // `arr[0]` reads clearer than forced destructuring in math/render
-      'no-negated-condition': 'off', //      `if (!x)` is often the clearer ordering
-      '@typescript-eslint/init-declarations': 'off', // deferred-init (`let x: T` then assign in branches) is a valid pattern
-      'no-void': 'off', //                   `void promise` deliberately marks fire-and-forget (pairs with no-floating-promises)
-      'no-param-reassign': 'off', //         the sim mutates CLONED units passed as params, by design
-      complexity: 'off', //                  game hot-paths (sim step, renderers, sprite gen) are branchy by nature; tests + structure guard them, not a cyclomatic cap
-      'max-lines': 'off', //                 file length isn't a quality signal here; addressed structurally (splitting main.ts)
-      'no-console': ['error', { allow: ['warn', 'error'] }], // warn/error are legit in a browser app
+      'max-lines': 'off', //                 the file-split lever; comes green via the structure-refactor wave (main.ts) — see chat
 
       // --- Configured: keep the value, fit the game ---
+      // Enforce the clean case (`const {x} = obj`) but NOT renamed/computed access:
+      // love's maximal setting forces `const { [rid]: r } = d.rooms` and
+      // `const { dungeon: d } = s`, which read worse than the index/member form.
+      '@typescript-eslint/prefer-destructuring': [
+        'error',
+        { VariableDeclarator: { array: false, object: true } },
+        { enforceForRenamedProperties: false },
+      ],
+      'no-console': 'error', // route through src/log.ts (the one sanctioned console sink)
       'require-unicode-regexp': ['error', { requireFlag: 'u' }], // `v` needs es2024 target; `u` gives the same unicode-correctness
       '@typescript-eslint/max-params': ['error', { max: 8 }], // canvas draw fns take many positional coords
       '@typescript-eslint/explicit-function-return-type': ['error', { allowExpressions: true }],
     },
+  },
+  {
+    // The renderer is a pure Canvas drawing module: every function is handed the
+    // 2D `ctx` and configures it (ctx.fillStyle/font/… = …). That IS the Canvas
+    // API — there is no immutable form — so prop-mutation of the ctx param is
+    // expected here (and only here). Rebinding a param is still forbidden.
+    files: ['src/render.ts'],
+    rules: { 'no-param-reassign': ['error', { props: false }] },
   },
   {
     // Tests may use non-null assertions and looser typing for fixtures.

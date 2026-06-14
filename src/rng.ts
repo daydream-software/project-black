@@ -23,6 +23,7 @@ export function makeRng(seedOrState: number): Rng {
 
 /** Next float in [0, 1). Advances the state. */
 export function random(r: Rng): number {
+  // eslint-disable-next-line no-param-reassign -- Rng is a mutable cursor by design: random() advances r.s; the state is captured back into the immutable game state (see rng.ts header)
   r.s = (r.s + 0x6d2b79f5) | 0
   let t = Math.imul(r.s ^ (r.s >>> 15), 1 | r.s)
   t ^= t + Math.imul(t ^ (t >>> 7), 61 | t)

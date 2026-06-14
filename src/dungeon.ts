@@ -82,7 +82,7 @@ export function floorNeighbours(d: Dungeon, cell: number): number[] {
   const x = cell % d.width
   const y = (cell / d.width) | 0
   const out: number[] = []
-  for (let k = 0; k < 4; k++) {
+  for (let k = 0; k < 4; k += 1) {
     const nx = x + DX[k]
     const ny = y + DY[k]
     if (nx < 0 || ny < 0 || nx >= d.width || ny >= d.height) continue
@@ -110,7 +110,7 @@ export function bfsDistances(d: Dungeon, start: number): number[] {
   for (const cell of queue) {
     const x = cell % d.width
     const y = (cell / d.width) | 0
-    for (let k = 0; k < 4; k++) {
+    for (let k = 0; k < 4; k += 1) {
       const nx = x + DX[k]
       const ny = y + DY[k]
       if (nx < 0 || ny < 0 || nx >= d.width || ny >= d.height) continue
@@ -133,17 +133,20 @@ function rectsOverlap(a: Room, b: { x: number; y: number; w: number; h: number }
   )
 }
 
+/* eslint-disable no-param-reassign -- carve* fill the caller-owned grid buffer in
+   place (the cells array is local to generateDungeon); the generator idiom. */
 function carveRoom(cells: boolean[], width: number, r: { x: number; y: number; w: number; h: number }): void {
-  for (let {y} = r; y < r.y + r.h; y++) for (let {x} = r; x < r.x + r.w; x++) cells[y * width + x] = true
+  for (let {y} = r; y < r.y + r.h; y += 1) for (let {x} = r; x < r.x + r.w; x += 1) cells[y * width + x] = true
 }
 
 function carveH(cells: boolean[], width: number, x1: number, x2: number, y: number): void {
-  for (let x = Math.min(x1, x2); x <= Math.max(x1, x2); x++) cells[y * width + x] = true
+  for (let x = Math.min(x1, x2); x <= Math.max(x1, x2); x += 1) cells[y * width + x] = true
 }
 
 function carveV(cells: boolean[], width: number, y1: number, y2: number, x: number): void {
-  for (let y = Math.min(y1, y2); y <= Math.max(y1, y2); y++) cells[y * width + x] = true
+  for (let y = Math.min(y1, y2); y <= Math.max(y1, y2); y += 1) cells[y * width + x] = true
 }
+/* eslint-enable no-param-reassign */
 
 /**
  * Generate a connected dungeon from `seed`. Returns the dungeon plus the advanced
@@ -159,7 +162,7 @@ export function generateDungeon(seed: number, gen: GenConfig = DEFAULT_GEN): { d
   // place up to `targetRooms` non-overlapping rooms (placement may fall short in a
   // tight grid — the connectivity test pins that a valid config still gives ≥ 2).
   const targetRooms = range(rng, gen.rooms[0], gen.rooms[1])
-  for (let a = 0; a < PLACE_ATTEMPTS && rooms.length < targetRooms; a++) {
+  for (let a = 0; a < PLACE_ATTEMPTS && rooms.length < targetRooms; a += 1) {
     const w = range(rng, 3, 5)
     const h = range(rng, 3, 5)
     const x = range(rng, 1, width - w - 2)
@@ -173,7 +176,7 @@ export function generateDungeon(seed: number, gen: GenConfig = DEFAULT_GEN): { d
 
   // connect each room to the previous one with an L-corridor → spanning chain
   // → the whole dungeon is connected.
-  for (let i = 1; i < rooms.length; i++) {
+  for (let i = 1; i < rooms.length; i += 1) {
     const a = roomCenter(rooms[i - 1])
     const b = roomCenter(rooms[i])
     if (int(rng, 2) === 0) {
@@ -216,12 +219,12 @@ export function generateDungeon(seed: number, gen: GenConfig = DEFAULT_GEN): { d
   }
   const interior = rooms.filter((r) => r.type === 'empty')
   const packCount = Math.min(range(rng, gen.packs[0], gen.packs[1]), interior.length)
-  for (let i = interior.length - 1; i > 0; i--) {
+  for (let i = interior.length - 1; i > 0; i -= 1) {
     // Fisher–Yates: a seeded, deterministic pick of which interior rooms fight.
     const j = int(rng, i + 1)
     ;[interior[i], interior[j]] = [interior[j], interior[i]]
   }
-  for (let i = 0; i < packCount; i++) interior[i].type = 'monster'
+  for (let i = 0; i < packCount; i += 1) interior[i].type = 'monster'
 
   return { dungeon, rngState: rng.s }
 }

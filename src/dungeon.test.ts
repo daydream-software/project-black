@@ -27,7 +27,7 @@ describe('dungeon generation — seeded & connected', () => {
   // The load-bearing invariant: across many seeds the dungeon is fully connected,
   // the objective is reachable from the entrance, and they are distinct rooms.
   it('every floor cell — and the objective — is reachable from the entrance', () => {
-    for (let seed = 0; seed < 200; seed++) {
+    for (let seed = 0; seed < 200; seed += 1) {
       const { dungeon } = generateDungeon(seed)
       expect(dungeon.rooms.length).toBeGreaterThanOrEqual(2)
       expect(dungeon.entranceRoomId).not.toBe(dungeon.objectiveRoomId)
@@ -61,7 +61,7 @@ describe('dungeon generation — seeded & connected', () => {
   })
 
   it('room count stays within the config range (across seeds)', () => {
-    for (let seed = 0; seed < 300; seed++) {
+    for (let seed = 0; seed < 300; seed += 1) {
       const n = generateDungeon(seed, LVL).dungeon.rooms.length
       expect(n).toBeGreaterThanOrEqual(LVL.rooms[0])
       expect(n).toBeLessThanOrEqual(LVL.rooms[1])
@@ -69,7 +69,7 @@ describe('dungeon generation — seeded & connected', () => {
   })
 
   it('pack count = a chosen number, clamped to the interior rooms (not a coin flip)', () => {
-    for (let seed = 0; seed < 300; seed++) {
+    for (let seed = 0; seed < 300; seed += 1) {
       const d = generateDungeon(seed, LVL).dungeon
       const interior = d.rooms.length - 2 // minus entrance + target
       const packs = d.rooms.filter((r) => r.type === 'monster').length
@@ -79,7 +79,7 @@ describe('dungeon generation — seeded & connected', () => {
   })
 
   it('exactly one entrance and one target; rooms in bounds and non-overlapping', () => {
-    for (let seed = 0; seed < 100; seed++) {
+    for (let seed = 0; seed < 100; seed += 1) {
       const { dungeon: d } = generateDungeon(seed)
       expect(d.rooms.filter((r) => r.type === 'entrance')).toHaveLength(1)
       expect(d.rooms.filter((r) => r.type === 'target')).toHaveLength(1)
@@ -89,8 +89,8 @@ describe('dungeon generation — seeded & connected', () => {
         expect(r.x + r.w).toBeLessThanOrEqual(d.width)
         expect(r.y + r.h).toBeLessThanOrEqual(d.height)
       }
-      for (let i = 0; i < d.rooms.length; i++) {
-        for (let j = i + 1; j < d.rooms.length; j++) {
+      for (let i = 0; i < d.rooms.length; i += 1) {
+        for (let j = i + 1; j < d.rooms.length; j += 1) {
           const a = d.rooms[i]
           const b = d.rooms[j]
           const disjoint = a.x + a.w <= b.x || b.x + b.w <= a.x || a.y + a.h <= b.y || b.y + b.h <= a.y

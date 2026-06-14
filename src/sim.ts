@@ -147,7 +147,7 @@ function chargeOf(u: Combatant): number {
  *  index (deterministic). Returns -1 if nothing is alive. */
 function nextActor(units: Combatant[]): number {
   let best = -1
-  for (let i = 0; i < units.length; i++) {
+  for (let i = 0; i < units.length; i += 1) {
     if (units[i].hp <= 0) continue
     if (best === -1 || chargeOf(units[i]) < chargeOf(units[best])) best = i
   }
@@ -163,7 +163,7 @@ function nextActor(units: Combatant[]): number {
 export function upcomingTurns(units: Combatant[], n: number): string[] {
   let sim = units.map((u) => ({ ...u, charge: chargeOf(u) }))
   const order: string[] = []
-  for (let k = 0; k < n; k++) {
+  for (let k = 0; k < n; k += 1) {
     const idx = nextActor(sim)
     if (idx < 0) break
     const m = chargeOf(sim[idx])
@@ -296,7 +296,7 @@ export function resolveTarget(state: State, self: Combatant, units: Combatant[])
  * Maneuver acts on. Falls back to attacking the nearest enemy.
  */
 export function decide(self: Combatant, units: Combatant[]): Decision {
-  for (let i = 0; i < self.procedure.length; i++) {
+  for (let i = 0; i < self.procedure.length; i += 1) {
     const protocol = self.procedure[i]
     const target = resolveTarget(protocol.state, self, units)
     if (target !== null) {
@@ -504,6 +504,9 @@ export function initialState(warriorProc: Procedure, healerProc: Procedure, enco
 
 /** Apply a resolved maneuver to the cloned units; return the log detail string. */
 function applyManeuver(actor: Combatant, target: Combatant | null, maneuver: Maneuver): string {
+  /* eslint-disable no-param-reassign -- actor/target are step()'s local CLONES (the
+     agreed data-oriented sim core): mutating them is intentional, never touches the
+     caller's objects, and step() reads them back into a fresh immutable GameState. */
   if (maneuver.command === 'flee') {
     return `FLEE — ${actor.name} tries to disengage (no effect yet)`
   }
@@ -547,6 +550,7 @@ function applyManeuver(actor: Combatant, target: Combatant | null, maneuver: Man
   }
 
   return `${actor.name}'s maneuver has no valid target — no effect`
+  /* eslint-enable no-param-reassign */
 }
 
 /**
@@ -578,7 +582,7 @@ export function step(state: GameState): GameState {
   const round = state.round + (idx === firstLiving ? 1 : 0)
 
   const decision = decide(actor, units)
-  const target = decision.targetId !== null ? (units.find((u) => u.id === decision.targetId) ?? null) : null
+  const target = decision.targetId === null ? null : (units.find((u) => u.id === decision.targetId) ?? null)
   const hpBefore = target?.hp ?? 0
   const detail = applyManeuver(actor, target, decision.maneuver)
 
@@ -625,7 +629,7 @@ export function step(state: GameState): GameState {
 
   const heroesAlive = units.some((u) => u.side === 'hero' && u.hp > 0)
   const enemiesAlive = units.some((u) => u.side === 'enemy' && u.hp > 0)
-  const outcome: Outcome = !heroesAlive ? 'defeat' : !enemiesAlive ? 'victory' : 'ongoing'
+  const outcome: Outcome = heroesAlive ? (enemiesAlive ? 'ongoing' : 'victory') : 'defeat'
 
   return {
     units,
@@ -653,7 +657,7 @@ export function restToConvergence(party: Combatant[]): { units: Combatant[]; men
   const units = party.map((u) => ({ ...u }))
   let mends = 0
   const cap = Math.max(1, units.length) * 16 // insurance against a pathological loop
-  for (let pass = 0; pass < cap; pass++) {
+  for (let pass = 0; pass < cap; pass += 1) {
     let castThisPass = false
     for (const actor of units) {
       if (actor.hp <= 0) continue

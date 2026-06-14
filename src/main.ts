@@ -5,6 +5,7 @@ import { LEVELS, applyClear, levelById, hasCleared } from './levels'
 import { UNLOCKABLES, buy, isOwned, canAfford } from './shop'
 import { toggleMusic, setMusicState, type TrackId } from './music'
 import { setSfxEnabled, playSfx, type SfxId } from './sfx'
+import { log } from './log'
 import {
   saveSlot,
   loadSlot,
@@ -299,15 +300,15 @@ function enterSlot(index: number): void {
   clearedLevels = saved.clearedLevels ?? []
   insight = saved.insight ?? 0
   unlocked = saved.unlocked ?? []
-  if (saved.delve !== null) {
-    // Resume the delve as saved — no fast-forward (no offline progress).
-    // (Pre-10a delves lack levelId — default it so first-clear tracking has a key.)
-    delve = { ...saved.delve, levelId: saved.delve.levelId !== '' ? saved.delve.levelId : LEVELS[0].id }
-    mode = 'delve'
-    maybeRecordClear() // a delve already saved as cleared still counts on resume
-  } else {
+  if (saved.delve === null) {
     delve = null
     mode = 'camp'
+  } else {
+    // Resume the delve as saved — no fast-forward (no offline progress).
+    // (Pre-10a delves lack levelId — default it so first-clear tracking has a key.)
+    delve = { ...saved.delve, levelId: saved.delve.levelId === '' ? LEVELS[0].id : saved.delve.levelId }
+    mode = 'delve'
+    maybeRecordClear() // a delve already saved as cleared still counts on resume
   }
   saveNow() // re-stamp savedAt (+ record a first clear if the saved delve was cleared)
   enterGame()
@@ -591,6 +592,9 @@ function ruleCard(ruleEls: HTMLElement[], c: CardControls): HTMLLIElement {
 // One row of the combat Procedure — a single Protocol: Subject · Predicate →
 // Command [· Object].
 function createRow(row: ProtocolRow, i: number): HTMLLIElement {
+  /* eslint-disable no-param-reassign -- the editor binds each dropdown to its roster
+     row, edited in place then persist()/commit(). The immutable rewrite belongs to
+     the editor restructure (see chat); for now the in-place binding is the design. */
   const {rows} = roster[activeHero]
   const locked = editingLocked()
 
@@ -672,6 +676,7 @@ function createRow(row: ProtocolRow, i: number): HTMLLIElement {
       commit()
     },
   })
+  /* eslint-enable no-param-reassign */
 }
 
 function makeHint(text: string): HTMLSpanElement {
@@ -765,6 +770,8 @@ function renderModals(): void {
  *  is handled by CSS (`resize: both`). Used for the Journal so it never blocks the
  *  delve you're watching. */
 function makeDraggable(panel: HTMLElement, handle: HTMLElement | null): void {
+  /* eslint-disable no-param-reassign -- positions the dragged panel via the DOM
+     API (panel.style.* = …); configuring the element is the whole job here. */
   if (handle === null) return
   let ox = 0
   let oy = 0
@@ -803,6 +810,7 @@ function makeDraggable(panel: HTMLElement, handle: HTMLElement | null): void {
   }
   handle.addEventListener('pointerup', end)
   handle.addEventListener('pointercancel', end)
+  /* eslint-enable no-param-reassign */
 }
 
 /** The Trainer shop: each unlockable as name · description · cost / Learn / owned. */
@@ -865,7 +873,7 @@ function renderTabs(): void {
     const tab = document.createElement('button')
     tab.className = i === activeHero ? 'tab active' : 'tab'
     const unit = units.find((u) => u.id === hero.simId)
-    const hp = unit !== undefined ? `${Math.max(0, unit.hp)}/${unit.maxHp}` : ''
+    const hp = unit === undefined ? '' : `${Math.max(0, unit.hp)}/${unit.maxHp}`
     // Prefer the sim unit's name (always current) over the saved roster name, so a
     // pre-U4 profile shows the golem names too without migrating the save.
     tab.textContent = `${unit?.name ?? hero.name}  ${hp}`
@@ -895,6 +903,8 @@ function renderEditor(): void {
 // Move. Party-wide (no hero tabs); shares the two-line ruleCard with the combat
 // editor.
 function createExRow(row: ExProtocolRow, i: number): HTMLLIElement {
+  /* eslint-disable no-param-reassign -- same as createRow: the editor binds each
+     dropdown to its exploration row, edited in place then persist()/commit(). */
   const locked = editingLocked()
 
   const subjSel = makeSelect(
@@ -946,6 +956,7 @@ function createExRow(row: ExProtocolRow, i: number): HTMLLIElement {
       commit()
     },
   })
+  /* eslint-enable no-param-reassign */
 }
 
 function exMove(i: number, dir: number): void {
@@ -1077,7 +1088,7 @@ canvas.addEventListener('mousemove', (e) => {
     mode === 'camp' && openBuilding === null
       ? buildingAt(canvasPoint(e).x, canvasPoint(e).y, canvas.clientWidth, canvas.clientHeight)
       : null
-  canvas.style.cursor = over !== null ? 'pointer' : 'default'
+  canvas.style.cursor = over === null ? 'default' : 'pointer'
   if (over !== hoveredBuilding) {
     hoveredBuilding = over
     frame() // repaint only on change — light up the hovered building
@@ -1166,7 +1177,7 @@ function pumpSfx(battle: GameState | null): void {
 const COMBAT_TICK_MS = 2000
 const EXPLORE_TICK_MS = 450
 let lastSaveMs = 0
-let tickHandle: ReturnType<typeof setTimeout>
+let tickHandle: ReturnType<typeof setTimeout> | undefined = undefined
 
 function tick(): void {
   // Everything is wrapped so the loop is increvable: a throw anywhere (render,
@@ -1188,7 +1199,7 @@ function tick(): void {
       }
     }
   } catch (err) {
-    console.error('[tick] error (loop survives):', err)
+    log.error('[tick] error (loop survives):', err)
   } finally {
     // Pace the next tick by what the delve is doing now: slow mid-fight, brisk
     // while exploring or idle (so a freshly-started delve resumes promptly).

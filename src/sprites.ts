@@ -14,8 +14,8 @@ function spriteFromGrid(rows: string[], palette: Palette): HTMLCanvasElement {
   c.width = w
   c.height = h
   const ctx = require2dContext(c)
-  for (let y = 0; y < h; y++) {
-    for (let x = 0; x < w; x++) {
+  for (let y = 0; y < h; y += 1) {
+    for (let x = 0; x < w; x += 1) {
       const col = palette[rows[y][x]]
       if (col !== '') {
         ctx.fillStyle = col
@@ -45,9 +45,9 @@ export function makeSlime(): HTMLCanvasElement {
   }
 
   const ins: boolean[][] = []
-  for (let y = 0; y < H; y++) {
+  for (let y = 0; y < H; y += 1) {
     ins[y] = []
-    for (let x = 0; x < W; x++) ins[y][x] = inside(x, y)
+    for (let x = 0; x < W; x += 1) ins[y][x] = inside(x, y)
   }
 
   const OUT = '#14281c'
@@ -68,8 +68,8 @@ export function makeSlime(): HTMLCanvasElement {
     [0, 1],
     [0, -1],
   ]
-  for (let y = 0; y < H; y++) {
-    for (let x = 0; x < W; x++) {
+  for (let y = 0; y < H; y += 1) {
+    for (let x = 0; x < W; x += 1) {
       if (!ins[y][x]) continue
       let edge = false
       for (const [dx, dy] of neighbours) {

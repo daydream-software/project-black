@@ -17,7 +17,7 @@ const strongParty = (): Combatant[] => [
  *  a whole delve in a test, now that production has no batch-step helper. */
 const advance = (s: DelveState, n = 5000): DelveState => {
   let r = s
-  while (n-- > 0 && r.status === 'delving') r = stepDelve(r)
+  for (let i = 0; i < n && r.status === 'delving'; i += 1) r = stepDelve(r)
   return r
 }
 
@@ -38,7 +38,7 @@ describe('delve — the party crawls and hunts the objective', () => {
   })
 
   it('always terminates within the cap — never spins', () => {
-    for (let seed = 0; seed < 120; seed++) {
+    for (let seed = 0; seed < 120; seed += 1) {
       // a normal (mortal) party so some delves end in death — still terminal
       const party: Combatant[] = [makeWarrior(attack), makeHealer(attack)]
       const end = advance(startDelve(party, seed))

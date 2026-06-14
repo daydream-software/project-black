@@ -18,7 +18,7 @@ describe('levels — config-driven, well-formed', () => {
 
   it("every level's grid actually fits its room range (generation stays in range)", () => {
     for (const l of LEVELS) {
-      for (let seed = 0; seed < 150; seed++) {
+      for (let seed = 0; seed < 150; seed += 1) {
         const n = generateDungeon(seed, l).dungeon.rooms.length
         expect(n).toBeGreaterThanOrEqual(l.rooms[0])
         expect(n).toBeLessThanOrEqual(l.rooms[1])

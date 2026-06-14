@@ -17,7 +17,7 @@ describe('rng — seeded, deterministic, resumable', () => {
 
   it('floats are in [0, 1)', () => {
     const r = makeRng(99)
-    for (let i = 0; i < 1000; i++) {
+    for (let i = 0; i < 1000; i += 1) {
       const v = random(r)
       expect(v).toBeGreaterThanOrEqual(0)
       expect(v).toBeLessThan(1)
@@ -28,7 +28,7 @@ describe('rng — seeded, deterministic, resumable', () => {
   // state mid-stream, rebuild from it, and the sequence continues identically.
   it('is resumable from a stored state', () => {
     const a = makeRng(777)
-    for (let i = 0; i < 5; i++) random(a) // advance
+    for (let i = 0; i < 5; i += 1) random(a) // advance
     const stored = a.s
     const continuedA = [random(a), random(a), random(a)]
     const b = makeRng(stored) // resume from the stored state
@@ -39,7 +39,7 @@ describe('rng — seeded, deterministic, resumable', () => {
   it('int stays in [0, max) and covers the whole range', () => {
     const r = makeRng(5)
     const seen = new Set<number>()
-    for (let i = 0; i < 500; i++) {
+    for (let i = 0; i < 500; i += 1) {
       const v = int(r, 4)
       expect(v).toBeGreaterThanOrEqual(0)
       expect(v).toBeLessThan(4)

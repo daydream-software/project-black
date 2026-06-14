@@ -31,12 +31,12 @@ const TRACKS: Record<TrackId, TrackCfg> = {
 const VOLUME = 0.5
 const FADE = 1.2 // seconds — cross-fade between tracks
 
-let ctx: AudioContext | undefined
+let ctx: AudioContext | undefined = undefined
 let muted = true
 let desired: TrackId = 'camp'
-let current: { id: TrackId; src: AudioBufferSourceNode; gain: GainNode } | undefined
+let current: { id: TrackId; src: AudioBufferSourceNode; gain: GainNode } | undefined = undefined
 /** The track a cross-fade is currently loading/transitioning toward, if any. */
-let pendingId: TrackId | undefined
+let pendingId: TrackId | undefined = undefined
 const buffers = new Map<TrackId, AudioBuffer>()
 
 async function bufferFor(id: TrackId): Promise<AudioBuffer> {
@@ -121,11 +121,12 @@ export async function toggleMusic(): Promise<boolean> {
   muted = !muted
   ctx = audioContext()
   await ctx.resume()
-  if (!muted) {
-    if (current?.id !== desired) await transitionTo(desired)
-    else current.gain.gain.linearRampToValueAtTime(VOLUME, ctx.currentTime + 0.3)
-  } else if (current !== undefined) {
-    current.gain.gain.linearRampToValueAtTime(0, ctx.currentTime + 0.3)
+  if (muted) {
+    if (current !== undefined) current.gain.gain.linearRampToValueAtTime(0, ctx.currentTime + 0.3)
+  } else if (current?.id === desired) {
+    current.gain.gain.linearRampToValueAtTime(VOLUME, ctx.currentTime + 0.3)
+  } else {
+    await transitionTo(desired)
   }
   return muted
 }

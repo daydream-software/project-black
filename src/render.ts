@@ -389,7 +389,7 @@ function drawDungeonView(ctx: CanvasRenderingContext2D, delve: DelveState, sprit
   // the far end at the vanishing point
   const fw2 = Math.round(width * 0.033)
   const fh2 = Math.round(height * 0.05)
-  ctx.fillStyle = !aheadFloor ? '#2a2a40' : !aheadSeen ? '#040409' : '#08080f'
+  ctx.fillStyle = aheadFloor ? (aheadSeen ? '#08080f' : '#040409') : '#2a2a40'
   ctx.fillRect(vx - fw2, vy - fh2, fw2 * 2, fh2 * 2)
 
   // depth ribs (floor seams)
@@ -443,7 +443,7 @@ function drawDungeonView(ctx: CanvasRenderingContext2D, delve: DelveState, sprit
   }
 
   // --- the party, seen from BEHIND, in the foreground (live HP if fighting) ---
-  const heroes = delve.battle !== null ? delve.battle.units.filter((u) => u.side === 'hero') : delve.party
+  const heroes = delve.battle === null ? delve.party : delve.battle.units.filter((u) => u.side === 'hero')
   const back = sprites.heroBack
   const scale = Math.round(SS * 1.3)
   const spW = back.width * scale
@@ -464,7 +464,7 @@ function drawDungeonView(ctx: CanvasRenderingContext2D, delve: DelveState, sprit
     // Strain readout for channelers (Poise > 0): the arcane budget, amber once it
     // overdraws into Fortitude. The trade-off (cast now vs. save it to rest) must be
     // legible in a game you watch.
-    const poise = h.poise
+    const {poise} = h
     if (poise > 0 && !dead) {
       const strain = h.strain ?? 0
       const over = strain > poise
@@ -554,17 +554,17 @@ function drawMinimap(ctx: CanvasRenderingContext2D, delve: DelveState): void {
   const y0 = HUD_SAFE // clear the floating HUD bar at the top
   ctx.fillStyle = '#000000'
   ctx.fillRect(x0 - 2, y0 - 2, mw + 4, mh + 4)
-  for (let y = 0; y < d.height; y++) {
-    for (let x = 0; x < d.width; x++) {
+  for (let y = 0; y < d.height; y += 1) {
+    for (let x = 0; x < d.width; x += 1) {
       const c = y * d.width + x
-      ctx.fillStyle = !delve.explored[c] ? '#0a0a12' : d.cells[c] ? '#3a3a52' : '#191926'
+      ctx.fillStyle = delve.explored[c] ? (d.cells[c] ? '#3a3a52' : '#191926') : '#0a0a12'
       ctx.fillRect(x0 + x * cs, y0 + y * cs, cs - 1, cs - 1)
     }
   }
   // objective, if discovered
   const obj = d.rooms[d.objectiveRoomId]
   let objKnown = false
-  for (let {y} = obj; y < obj.y + obj.h && !objKnown; y++) for (let {x} = obj; x < obj.x + obj.w; x++) if (delve.explored[y * d.width + x]) objKnown = true
+  for (let {y} = obj; y < obj.y + obj.h && !objKnown; y += 1) for (let {x} = obj; x < obj.x + obj.w; x += 1) if (delve.explored[y * d.width + x]) objKnown = true
   if (objKnown) {
     ctx.fillStyle = '#c78bff'
     ctx.fillRect(x0 + (obj.x + (obj.w >> 1)) * cs, y0 + (obj.y + (obj.h >> 1)) * cs, cs - 1, cs - 1)

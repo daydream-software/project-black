@@ -163,19 +163,9 @@ export interface SalvagedMeta {
  * Returns null when there's nothing worth carrying (empty/corrupt/no-meta blob).
  */
 export function salvageMeta(index: number, store: KVStore = localStorage): SalvagedMeta | null {
-  let raw: string | null
-  try {
-    raw = store.getItem(slotKey(index))
-  } catch {
-    return null
-  }
+  const raw = tryGet(store, slotKey(index))
   if (raw === null) return null
-  let parsed: unknown
-  try {
-    parsed = JSON.parse(raw)
-  } catch {
-    return null
-  }
+  const parsed = tryParseJson(raw)
   if (!isObj(parsed)) return null
   const strings = (v: unknown): string[] => (Array.isArray(v) ? v.filter((s): s is string => typeof s === 'string') : [])
   const clearedLevels = strings(parsed.clearedLevels)
@@ -198,21 +188,30 @@ function dropStaleDelve(data: SaveData): SaveData {
   return { ...data, delve: null, mode: 'camp' }
 }
 
+/** Read a key, returning null if storage is unavailable/blocked (never throws). */
+function tryGet(store: KVStore, key: string): string | null {
+  try {
+    return store.getItem(key)
+  } catch {
+    return null
+  }
+}
+
+/** Parse JSON, returning undefined on malformed input (never throws). */
+function tryParseJson(raw: string): unknown {
+  try {
+    return JSON.parse(raw)
+  } catch {
+    return undefined
+  }
+}
+
 /** Load one slot, or null if empty / corrupt / stale. Never throws. */
 export function loadSlot(index: number, store: KVStore = localStorage): SaveData | null {
-  let raw: string | null
-  try {
-    raw = store.getItem(slotKey(index))
-  } catch {
-    return null
-  }
+  const raw = tryGet(store, slotKey(index))
   if (raw === null) return null
-  try {
-    const parsed: unknown = JSON.parse(raw)
-    return isSaveData(parsed) ? dropStaleDelve(parsed) : null
-  } catch {
-    return null
-  }
+  const parsed = tryParseJson(raw)
+  return isSaveData(parsed) ? dropStaleDelve(parsed) : null
 }
 
 /** Erase one slot (the player chose to delete that profile). */
@@ -227,7 +226,7 @@ export function deleteSlot(index: number, store: KVStore = localStorage): void {
 /** Metadata for every slot — drives the slot-select cards. */
 export function listSlots(store: KVStore = localStorage): SlotInfo[] {
   const slots: SlotInfo[] = []
-  for (let i = 0; i < SLOT_COUNT; i++) {
+  for (let i = 0; i < SLOT_COUNT; i += 1) {
     const s = loadSlot(i, store)
     slots.push({
       index: i,
@@ -247,15 +246,10 @@ export function listSlots(store: KVStore = localStorage): SlotInfo[] {
  */
 export function importLegacy(store: KVStore = localStorage): void {
   if (loadSlot(0, store) !== null) return // slot 0 already in use — don't clobber
-  let raw: string | null
-  try {
-    raw = store.getItem(KEY)
-  } catch {
-    return
-  }
+  const raw = tryGet(store, KEY)
   if (raw === null) return
+  if (!isSaveData(tryParseJson(raw))) return // only migrate a blob we'd actually load
   try {
-    if (!isSaveData(JSON.parse(raw))) return // only migrate a blob we'd actually load
     store.setItem(slotKey(0), raw)
     store.removeItem(KEY)
   } catch {
