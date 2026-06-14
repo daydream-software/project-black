@@ -5,6 +5,8 @@ import {
   predicateHolds,
   step,
   initialState,
+  makeBattle,
+  makeGolem,
   makeWarrior,
   makeHealer,
   makeWarden,
@@ -17,6 +19,7 @@ import {
   type Combatant,
   type Procedure,
   type State,
+  type Stats,
 } from './sim'
 
 // --- Builders ---------------------------------------------------------------
@@ -45,26 +48,26 @@ const selfLow: State = { subject: { who: 'self' }, predicate: { p: 'hpPctBelow',
 
 describe('attackDamage — Might minus flat Ward, floored at 1', () => {
   it('the same attacker deals LESS to a higher-Ward target (Ward is the only difference)', () => {
-    const slime = makeEnemy(1) // Might 3
+    const slime = makeEnemy(1) // Might 2
     const sentinel = makeWarrior([]) // Ward 2
     const mender = makeHealer([]) // Ward 0
     // The done-when: the slime's chip is shrugged by the Bulwark but bites the Channeler.
-    expect(attackDamage(slime, sentinel)).toBe(1) // 3 − 2
-    expect(attackDamage(slime, mender)).toBe(3) // 3 − 0
+    expect(attackDamage(slime, sentinel)).toBe(1) // 2 − 2 → floored to 1
+    expect(attackDamage(slime, mender)).toBe(2) // 2 − 0
     expect(attackDamage(slime, sentinel)).toBeLessThan(attackDamage(slime, mender))
   })
 
   it('Ward never makes a unit unkillable — damage floors at 1 even when Ward ≥ Might', () => {
-    const slime = makeEnemy(1) // Might 3
-    const fortress: Combatant = { ...makeWarrior([]), ward: 9 } // Ward 9 > Might 3
-    // Without the MIN_DAMAGE floor this would be max(1, 3−9) = 1, not −6.
+    const slime = makeEnemy(1) // Might 2
+    const fortress: Combatant = { ...makeWarrior([]), ward: 9 } // Ward 9 > Might 2
+    // Without the MIN_DAMAGE floor this would be max(1, 2−9) = 1, not −7.
     expect(attackDamage(slime, fortress)).toBe(1)
   })
 
   it('Defending halves the post-Ward damage (rounded up)', () => {
-    const warden = makeWarden() // Might 6
+    const warden = makeWarden() // Might 4
     const mender: Combatant = { ...makeHealer([]), defending: true } // Ward 0
-    expect(attackDamage(warden, mender)).toBe(Math.ceil(6 / 2)) // (6 − 0) halved = 3
+    expect(attackDamage(warden, mender)).toBe(Math.ceil(4 / 2)) // (4 − 0) halved (round up) = 2
   })
 })
 
@@ -333,8 +336,8 @@ describe('step — one unit-action of the simulation', () => {
     const s = step(freshBattle())
     expect(s.turn).toBe(1)
     const slime1 = s.units.find((u) => u.id === 'enemy-1')
-    // No ally is hurt, so the Mender attacks Slime #1: pool 16, Might 3 vs Ward 0.
-    expect(slime1?.hp).toBe(16 - 3)
+    // No ally is hurt, so the Mender attacks Slime #1: pool 12, Mender Might 3 vs Ward 0.
+    expect(slime1?.hp).toBe(12 - 3)
     expect(s.log.at(-1)?.actorName).toBe('Mender') // Celerity 6 beats the Sentinel's 5
     expect(s.log.at(-1)?.targetName).toBe('Slime #1')
   })
@@ -434,8 +437,8 @@ describe('counter-heal — the wall reacts to restorative magic', () => {
     expect(log.at(-1)?.kind).toBe('counter') // the punish, same turn
     expect(log.at(-1)?.turn).toBe(log.at(-2)?.turn)
     expect(s.turn).toBe(1) // the reaction did not consume a turn
-    // 10 + 5 (mend, Attunement 5) − 7 (counter) = 8
-    expect(s.units[0].hp).toBe(8)
+    // 10 + 5 (mend, Attunement 5) − 4 (counter) = 11
+    expect(s.units[0].hp).toBe(11)
   })
 
   it('no counter when the heal restored nothing (a full-HP mend is a dead heal)', () => {
@@ -455,7 +458,7 @@ describe('counter-heal — the wall reacts to restorative magic', () => {
   })
 
   it('the counter is applied before the outcome check — a lethal counter ends the battle this step', () => {
-    const fragile: Combatant = { ...makeHealer(mendSelf), hp: 1, maxHp: 200 } // low; mend 1→6 (+5), counter 6→0 (−7) -> dies
+    const fragile: Combatant = { ...makeHealer(mendSelf), hp: 1, maxHp: 3 } // mend 1→3 (+2, capped), counter 3→0 (−4) -> dies
     const boss = makeWarden()
     const s = step({ ...initialState([], mendSelf, 'warden'), units: [fragile, boss] })
     expect(s.units[0].hp).toBe(0)
@@ -477,25 +480,30 @@ describe('counter-heal — the wall reacts to restorative magic', () => {
     return s
   }
 
-  const warriorTank: Procedure = [
-    { state: { subject: { who: 'self' }, predicate: { p: 'hpPctBelow', value: 30 } }, maneuver: DEFEND, label: 'defend when low' },
+  // The wall is judged against a competent 24-point build, not the deliberately-weak
+  // default starter. A single robust Titan (1-golem build: 21 stat points) makes the
+  // wall crisp: counter 4 > its self-mend 3, so the naive "mend self when low" rule is
+  // a net-loss death-spiral that also costs it the turns it isn't attacking; dropping
+  // that rule wins the DPS race against the compact Warden. (24-budget balance pass.)
+  const TITAN: Stats = { might: 6, ward: 1, fortitude: 7, attunement: 3, poise: 0, celerity: 4 } // 21
+  const titanMends: Procedure = [
+    { state: { subject: { who: 'self' }, predicate: { p: 'hpPctBelow', value: 50 } }, maneuver: MEND, label: 'mend self when low' },
     { state: { subject: { who: 'enemy', pick: 'first' }, predicate: { p: 'always' } }, maneuver: ATTACK, label: 'attack' },
   ]
-  const healerMends: Procedure = [
-    { state: { subject: { who: 'ally', pick: 'lowestHp' }, predicate: { p: 'hpPctBelow', value: 50 } }, maneuver: MEND, label: 'mend hurt ally' },
+  const titanAttacks: Procedure = [
     { state: { subject: { who: 'enemy', pick: 'first' }, predicate: { p: 'always' } }, maneuver: ATTACK, label: 'attack' },
   ]
-  const healerAttacks: Procedure = [
-    { state: { subject: { who: 'enemy', pick: 'first' }, predicate: { p: 'always' } }, maneuver: ATTACK, label: 'attack' },
-  ]
+  function titanVsWarden(proc: Procedure): ReturnType<typeof makeBattle> {
+    return makeBattle([makeGolem({ id: 'hero-1', name: 'Titan', stats: TITAN, procedure: proc })], 'warden')
+  }
 
   it('the naive mend-when-low Procedure LOSES to the Warden', () => {
-    const s = runToEnd(initialState(warriorTank, healerMends, 'warden'))
+    const s = runToEnd(titanVsWarden(titanMends))
     expect(s.outcome).toBe('defeat')
   })
 
-  it('the SAME party WINS once the Healer stops curing and joins the race', () => {
-    const s = runToEnd(initialState(warriorTank, healerAttacks, 'warden'))
+  it('the SAME build WINS once it stops curing and just attacks', () => {
+    const s = runToEnd(titanVsWarden(titanAttacks))
     expect(s.outcome).toBe('victory')
   })
 })

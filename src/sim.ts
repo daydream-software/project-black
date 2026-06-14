@@ -380,14 +380,16 @@ function makeUnit(base: UnitSpec): Combatant {
 }
 
 // Slime: a feeble chip-attacker with no Ward — the unit Ward is designed to shrug.
+// Compact scale (24-budget pass): a 3-pack is ~36 HP of trash a competent build
+// clears, while staying lethal to a careless one.
 export function makeEnemy(index: number): Combatant {
   return makeUnit({
     id: `enemy-${index}`,
     name: `Slime #${index}`,
     side: 'enemy',
-    might: 3,
+    might: 2,
     ward: 0,
-    fortitude: 4,
+    fortitude: 3,
     attunement: 0,
     poise: 0,
     celerity: 4,
@@ -412,14 +414,14 @@ export function makeWarden(): Combatant {
     // Fortitude pool so it survives the fast Mender's front-load, and a counter
     // that exceeds the Mender's heal so mend-spam is a net loss. Tuned against the
     // slice-4 discriminating tests under the CTB schedule.
-    might: 6,
-    ward: 1,
-    fortitude: 18,
+    might: 4,
+    ward: 0,
+    fortitude: 10,
     attunement: 0,
     poise: 0,
     celerity: 4,
     procedure: ENEMY_PROCEDURE,
-    counterHeal: 7,
+    counterHeal: 4,
     isBoss: true,
   })
 }
