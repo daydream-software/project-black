@@ -30,6 +30,11 @@ export interface Hero {
   // saves lack it, and party() falls back to the reference blocks — so this stays a
   // no-version-bump field that never wipes a live player's authored Procedures.
   stats?: Stats
+  // The FROZEN point-buy floor: the allocation committed on a past Descend. Stats can
+  // be raised above it with fresh points but never lowered below — spent points are
+  // permanent. Absent = never frozen (a golem added this town visit, fully refundable
+  // and removable). Set by descend(); additive (legacy/pending golems lack it).
+  committed?: Stats
   rows: ProtocolRow[]
 }
 

@@ -461,6 +461,13 @@ canvas {
   margin-bottom: 14px;
 }
 
+.stat-empty {
+  grid-column: 1 / -1;
+  font-size: 13px;
+  color: #8b90a0;
+  padding: 8px 2px;
+}
+
 .stat-row {
   display: flex;
   align-items: center;

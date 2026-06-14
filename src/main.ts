@@ -1,7 +1,7 @@
 import './style.css'
-import { makeGolem, poolFor, SENTINEL_STATS, MENDER_STATS, type Combatant, type GameState, type Stats } from './sim'
+import { makeGolem, poolFor, type Combatant, type GameState, type Stats } from './sim'
 import { startDelve, stepDelve, type DelveState, type ExProcedure } from './delve'
-import { BUILD_BUDGET, CHASSIS_COST, STAT_CAP, GOLEM_MIN, GOLEM_MAX, buildCost } from './party'
+import { BUILD_BUDGET, CHASSIS_COST, STAT_CAP, GOLEM_MAX, buildCost } from './party'
 import { LEVELS, applyClear, levelById, hasCleared } from './levels'
 import { UNLOCKABLES, buy, isOwned, canAfford } from './shop'
 import { toggleMusic, setMusicState, type TrackId } from './music'
@@ -44,36 +44,19 @@ import {
 // ProtocolRow / Hero are defined in save.ts (they're the persisted schema).
 // `roster` is `let` so a loaded save can replace it on startup.
 
-// The starting party's stat blocks: a legal 24-point build (chassis 6 + 18 stat
-// points). Kept separate from sim.ts's SENTINEL_STATS/MENDER_STATS (the test
-// reference blocks) until the d-2 balance pass unifies them by re-tuning the wall.
-// Strawman numbers — the player re-specs them at the Workshop, and the monster
-// rescale is the next pass.
-const STARTER_SENTINEL: Stats = { might: 4, ward: 1, fortitude: 4, attunement: 0, poise: 0, celerity: 2 } // 11
-const STARTER_MENDER: Stats = { might: 1, ward: 0, fortitude: 2, attunement: 3, poise: 1, celerity: 0 } //   7
+// The default rules a freshly-forged golem starts with (one plain attack rule — the
+// player authors the rest). The chassis grants no stats; the player spends the build
+// budget themselves.
+function freshGolemRows(): ProtocolRow[] {
+  return [{ subjectId: 'enemy_near', predId: 'always', command: 'attack', skillId: 'mend', enabled: true }]
+}
 
-/** The starting party + Procedures a New Game (or a never-saved slot) begins with. */
+const ZERO_STATS: Stats = { might: 0, ward: 0, fortitude: 0, attunement: 0, poise: 0, celerity: 0 }
+
+/** A New Game starts with NO golems — an empty foundry. The player forges and names
+ *  their own team in the Workshop (no pre-selected, pre-named, pre-built golems). */
 function freshRoster(): Hero[] {
-  return [
-    {
-      simId: 'hero-1',
-      name: 'Sentinel',
-      stats: { ...STARTER_SENTINEL },
-      rows: [
-        { subjectId: 'self', predId: 'hp_lt_30', command: 'useSkill', skillId: 'defend', enabled: true },
-        { subjectId: 'enemy_near', predId: 'always', command: 'attack', skillId: 'mend', enabled: true },
-      ],
-    },
-    {
-      simId: 'hero-2',
-      name: 'Mender',
-      stats: { ...STARTER_MENDER },
-      rows: [
-        { subjectId: 'ally_low', predId: 'hp_lt_50', command: 'useSkill', skillId: 'mend', enabled: true },
-        { subjectId: 'enemy_near', predId: 'always', command: 'attack', skillId: 'mend', enabled: true },
-      ],
-    },
-  ]
+  return []
 }
 
 let roster: Hero[] = freshRoster()
@@ -186,14 +169,12 @@ const editingLocked = (): boolean => mode !== 'camp'
 
 function party(): Combatant[] {
   // The player authors the whole team via point-buy, so the party is whatever the
-  // roster holds (1–4 golems). Each golem is built from its authored stat block;
-  // a pre-point-buy save lacks `stats`, so fall back to the reference blocks by
-  // index (hero-1 = Sentinel, hero-2 = Mender) — a missing block must not crash
-  // the first frame.
-  return roster.map((hero, i) => makeGolem({
+  // roster holds (0–4 golems). Each golem is built from its authored stat block; a
+  // golem with no authored stats is unbuilt (ZERO_STATS → 0 HP).
+  return roster.map((hero) => makeGolem({
     id: hero.simId,
     name: hero.name,
-    stats: hero.stats ?? (i === 1 ? MENDER_STATS : SENTINEL_STATS),
+    stats: hero.stats ?? ZERO_STATS,
     procedure: procedureFor(hero),
   }))
 }
@@ -222,6 +203,8 @@ function newSeed(): number {
 }
 
 function descend(): void {
+  if (roster.length === 0) return // need at least one golem to delve
+  freezeBuild() // committing to a delve locks the point-buy: spent points become permanent
   lastDelveLog = [] // a fresh run — the previous journal no longer applies
   delve = startDelve(party(), newSeed(), explorationProcedure(), levelById(selectedLevelId))
   mode = 'delve'
@@ -710,7 +693,12 @@ function renderRunBar(): void {
   if (mode === 'camp' || delve === null) {
     const launch = makeButton('▶ Descend', 'Send your golems delving into the chosen depths', descend)
     launch.className = 'run-launch'
-    runBarEl.append(launch, makeHint(`${levelById(selectedLevelId).name} — never the same twice`))
+    const empty = roster.length === 0
+    launch.disabled = empty
+    const hint = empty
+      ? 'Forge a golem in the Workshop first'
+      : `${levelById(selectedLevelId).name} — never the same twice`
+    runBarEl.append(launch, makeHint(hint))
   } else if (delve.status === 'delving') {
     const abandon = makeButton('✕ Abandon delve', 'Give up and return to town', backToTown)
     abandon.className = 'run-abandon'
@@ -919,23 +907,35 @@ const STAT_ROWS: ReadonlyArray<{ key: keyof Stats; label: string; hint: string }
   { key: 'celerity', label: 'Celerity', hint: 'turn frequency' },
 ]
 
-/** This golem's stat block, falling back to the reference block by index for a
- *  pre-point-buy hero (matches party()'s fallback). */
-function statsOf(hero: Hero, i: number): Stats {
-  return hero.stats ?? (i === 1 ? MENDER_STATS : SENTINEL_STATS)
+/** This golem's current stat block (an unbuilt golem reads as all-zeros). */
+function statsOf(hero: Hero): Stats {
+  return hero.stats ?? ZERO_STATS
 }
 
-/** Materialise a stat block on every hero that lacks one, so the editor edits a real
- *  object (a pre-point-buy save gets the reference block; additive on next save). */
+/** This golem's FROZEN floor — the points committed on a past Descend, which can no
+ *  longer be refunded. Absent (a golem forged this town visit) = an all-zero floor,
+ *  so every point spent on it is still refundable until the next Descend. */
+function committedOf(hero: Hero): Stats {
+  return hero.committed ?? ZERO_STATS
+}
+
+/** A golem is FROZEN once it has been taken on a Descend — its chassis and committed
+ *  stats are permanent (can't be removed/refunded; stats only rise from the floor). */
+function isFrozen(hero: Hero | undefined): boolean {
+  return hero?.committed !== undefined
+}
+
+/** Materialise a stat block on every hero that lacks one (legacy/edge), so the editor
+ *  edits a real object. */
 function ensureStats(): void {
-  roster.forEach((hero, i) => {
-    roster[i].stats ??= { ...statsOf(hero, i) }
+  roster.forEach((_, i) => {
+    roster[i].stats ??= { ...ZERO_STATS }
   })
 }
 
-/** Every golem's stat block — the input to the budget math. */
+/** Every golem's current stat block — the input to the budget math. */
 function rosterStats(): Stats[] {
-  return roster.map((hero, i) => statsOf(hero, i))
+  return roster.map(statsOf)
 }
 
 /** Budget points still unspent (negative = over budget). */
@@ -949,13 +949,25 @@ function freshSimId(): string {
   return `hero-${Math.max(0, ...nums) + 1}`
 }
 
+/** Freeze the current allocation: every golem's committed floor becomes its current
+ *  stats, so the points spent this town visit can never be refunded. Called on Descend
+ *  — the act of committing to a delve is what locks the build in. */
+function freezeBuild(): void {
+  roster.forEach((_, i) => {
+    roster[i].committed = { ...statsOf(roster[i]) }
+  })
+}
+
 function adjustStat(key: keyof Stats, delta: number): void {
   if (editingLocked()) return
+  const hero = roster[activeHero] as Hero | undefined
+  if (hero === undefined) return
   ensureStats()
-  const { stats } = roster[activeHero]
+  const { stats } = hero
   if (stats === undefined) return
   const next = stats[key] + delta
-  if (next < 0 || next > STAT_CAP) return
+  if (next > STAT_CAP) return
+  if (next < committedOf(hero)[key]) return // can't refund a frozen point — only spend above the floor
   if (delta > 0 && budgetLeft() < 1) return // can't overspend the budget
   stats[key] = next
   renderTabs() // cascades the stat editor + budget; refreshes the tab's HP readout
@@ -967,8 +979,8 @@ function addGolem(): void {
   roster.push({
     simId: freshSimId(),
     name: `Golem ${roster.length + 1}`,
-    stats: { might: 0, ward: 0, fortitude: 0, attunement: 0, poise: 0, celerity: 0 },
-    rows: [{ subjectId: 'enemy_near', predId: 'always', command: 'attack', skillId: 'mend', enabled: true }],
+    stats: { ...ZERO_STATS },
+    rows: freshGolemRows(),
   })
   activeHero = roster.length - 1
   renderTabs()
@@ -977,9 +989,11 @@ function addGolem(): void {
 }
 
 function removeGolem(): void {
-  if (editingLocked() || roster.length <= GOLEM_MIN) return
+  // Only a golem forged THIS town visit (not yet frozen on a Descend) can be disbanded
+  // — a committed golem is permanent. Refunds its chassis + pending points.
+  if (editingLocked() || isFrozen(roster[activeHero])) return
   roster.splice(activeHero, 1)
-  activeHero = Math.min(activeHero, roster.length - 1)
+  activeHero = Math.max(0, Math.min(activeHero, roster.length - 1))
   renderTabs()
   renderEditor()
   saveNow()
@@ -991,21 +1005,30 @@ function renderCoreBudget(): void {
   const left = budgetLeft()
   const meter = document.createElement('div')
   meter.className = left < 0 ? 'budget over' : 'budget'
-  const count = `${roster.length} golem${roster.length > 1 ? 's' : ''}`
+  const count = roster.length === 0 ? 'no golems yet' : `${roster.length} golem${roster.length > 1 ? 's' : ''}`
   meter.textContent = left < 0
     ? `Budget ${BUILD_BUDGET - left} / ${BUILD_BUDGET} · ${count} · over by ${-left}`
     : `Budget ${BUILD_BUDGET - left} / ${BUILD_BUDGET} · ${count} · ${left} left`
-  const add = makeButton('+ Golem', 'Field another golem (costs 3 chassis)', addGolem)
+  const add = makeButton('+ Golem', 'Forge another golem (costs 3 chassis)', addGolem)
   add.disabled = locked || roster.length >= GOLEM_MAX || left < CHASSIS_COST
-  const rem = makeButton('− Golem', 'Disband this golem', removeGolem)
-  rem.disabled = locked || roster.length <= GOLEM_MIN
+  const rem = makeButton('− Golem', 'Disband this golem (only before it has delved)', removeGolem)
+  rem.disabled = locked || roster.length === 0 || isFrozen(roster[activeHero])
   coreBudgetEl.append(meter, add, rem)
 }
 
 function renderStatEditor(): void {
   statEditorEl.replaceChildren()
+  const hero = roster[activeHero] as Hero | undefined
+  if (hero === undefined) {
+    const empty = document.createElement('div')
+    empty.className = 'stat-empty'
+    empty.textContent = 'No golem selected — forge one with “+ Golem” to spend your build budget.'
+    statEditorEl.append(empty)
+    return
+  }
   const locked = editingLocked()
-  const stats = statsOf(roster[activeHero], activeHero)
+  const stats = statsOf(hero)
+  const floor = committedOf(hero) // frozen points: can't be lowered past here
   const left = budgetLeft()
   for (const { key, label, hint } of STAT_ROWS) {
     const row = document.createElement('div')
@@ -1015,10 +1038,11 @@ function renderStatEditor(): void {
     name.textContent = label
     name.title = hint
     const dec = makeButton('−', `Lower ${label}`, () => { adjustStat(key, -1); })
-    dec.disabled = locked || stats[key] <= 0
+    dec.disabled = locked || stats[key] <= floor[key] // can't refund a frozen point
     const val = document.createElement('span')
     val.className = 'stat-val'
     val.textContent = String(stats[key])
+    if (floor[key] > 0) val.title = `${floor[key]} locked (already delved)`
     const inc = makeButton('+', `Raise ${label}`, () => { adjustStat(key, 1); })
     inc.disabled = locked || stats[key] >= STAT_CAP || left < 1
     row.append(name, dec, val, inc)
@@ -1039,10 +1063,12 @@ function renderCores(): void {
 
 // Built with DOM APIs (not innerHTML) — safe, and keeps live event handlers.
 function renderEditor(): void {
-  addBtn.disabled = editingLocked()
+  const hero = roster[activeHero] as Hero | undefined
+  addBtn.disabled = editingLocked() || hero === undefined
   editorEl.replaceChildren()
   enabledLis = []
-  roster[activeHero].rows.forEach((row, i) => {
+  if (hero === undefined) return // no golem forged yet — nothing to author
+  hero.rows.forEach((row, i) => {
     const li = createRow(row, i)
     editorEl.appendChild(li)
     if (row.enabled) enabledLis.push(li)
@@ -1139,7 +1165,8 @@ function renderLog(): void {
 function highlightFiringProtocol(): void {
   for (const li of enabledLis) li.classList.remove('active')
   const last = delve?.battle?.log.at(-1)
-  if (last?.actorId !== roster[activeHero].simId) return
+  const activeId = (roster[activeHero] as Hero | undefined)?.simId
+  if (last === undefined || activeId === undefined || last.actorId !== activeId) return
   const idx = last.protocolIndex
   if (idx >= 0 && idx < enabledLis.length) enabledLis[idx].classList.add('active')
 }
@@ -1192,7 +1219,7 @@ function frame(): void {
 }
 
 addBtn.addEventListener('click', () => {
-  if (editingLocked()) return
+  if (editingLocked() || activeHero >= roster.length) return
   roster[activeHero].rows.push({
     subjectId: 'enemy_near',
     predId: 'always',
