@@ -195,32 +195,37 @@ interface ExDecision {
 }
 
 /** The move for one Protocol, or null if its State doesn't hold / yields no step. */
-function protocolStep(s: DelveState, protocol: ExProtocol): ExDecision | null {
+/** The fixed goal cell a Protocol's subject points at (-1 for 'unexplored', whose
+ *  goal is the moving frontier, not a fixed cell). */
+function subjectGoal(s: DelveState, subject: ExProtocol['subject']): number {
+  if (subject.what === 'exit') return entranceCell(s.dungeon)
+  if (subject.what === 'target') return knownObjectiveCell(s)
+  return -1
+}
+
+/** The cell a Protocol's Move resolves to, or -1 if there is no step available. */
+function moveStepCell(s: DelveState, protocol: ExProtocol, goal: number, known: (c: number) => boolean): number {
   const d = s.dungeon
+  if (protocol.move === 'rest') return s.pos // rest in place (no move)
+  if (protocol.move === 'retreat') return stepTowardKnown(d, s.pos, entranceCell(d), known)
+  if (protocol.subject.what === 'unexplored') return stepTowardFrontier(d, s.pos, s.explored)
+  if (goal !== -1) return stepTowardKnown(d, s.pos, goal, known)
+  return -1
+}
+
+function protocolStep(s: DelveState, protocol: ExProtocol): ExDecision | null {
   const known = (c: number): boolean => s.explored[c]
-
-  // resolve the subject to a goal cell + whether it's currently "known"
-  let goal = -1
-  if (protocol.subject.what === 'exit') goal = entranceCell(d)
-  else if (protocol.subject.what === 'target') goal = knownObjectiveCell(s)
-  // 'unexplored' has no fixed goal — it's the frontier (handled by the move)
-
+  const goal = subjectGoal(s, protocol.subject)
   const isKnown =
     protocol.subject.what === 'unexplored'
-      ? stepTowardFrontier(d, s.pos, s.explored) !== -1
+      ? stepTowardFrontier(s.dungeon, s.pos, s.explored) !== -1
       : goal !== -1
 
   // predicate
   if (protocol.predicate.p === 'known' && !isKnown) return null
   if (protocol.predicate.p === 'partyHpPctBelow' && partyHpPct(s.party) >= protocol.predicate.value) return null
 
-  // move → step
-  let step = -1
-  if (protocol.move === 'rest') step = s.pos // rest in place (no move)
-  else if (protocol.move === 'retreat') step = stepTowardKnown(d, s.pos, entranceCell(d), known)
-  else if (protocol.subject.what === 'unexplored') step = stepTowardFrontier(d, s.pos, s.explored)
-  else if (goal !== -1) step = stepTowardKnown(d, s.pos, goal, known)
-
+  const step = moveStepCell(s, protocol, goal, known)
   return step === -1 ? null : { reason: protocol.label, step }
 }
 
@@ -267,44 +272,40 @@ function logged(s: DelveState, turn: number, e: Omit<DelveLogEntry, 'turn'>): De
   return [...s.log, { turn, ...e }].slice(-60)
 }
 
-/** Advance the delve by one tick: a combat action if mid-fight, else one move. */
-export function stepDelve(s: DelveState): DelveState {
-  if (s.status !== 'delving') return s
+/** Mid-fight: advance the battle one action; on a finish, resolve the room — a wipe
+ *  (dead), a pack cleared, or the objective slain (delve cleared). */
+function advanceCombat(s: DelveState, turn: number, current: GameState): DelveState {
   const d = s.dungeon
-  const turn = s.turn + 1
-  if (turn > MAX_DELVE_STEPS) {
-    return { ...s, turn, status: 'stuck', log: logged(s, turn, { kind: 'end', reason: 'safety cap', detail: 'delve exceeded the step cap' }) }
+  const battle = step(current)
+  const party = battle.units.filter((u) => u.side === 'hero').map((u) => ({ ...u }))
+  if (battle.outcome === 'ongoing') {
+    return { ...s, battle, turn, log: logged(s, turn, { kind: 'combat', reason: 'fighting', detail: battle.log.at(-1)?.detail ?? '' }) }
   }
-
-  // --- mid-combat: advance the fight ---
-  if (s.battle !== null) {
-    const battle = step(s.battle)
-    const party = battle.units.filter((u) => u.side === 'hero').map((u) => ({ ...u }))
-    if (battle.outcome === 'ongoing') {
-      return { ...s, battle, turn, log: logged(s, turn, { kind: 'combat', reason: 'fighting', detail: battle.log.at(-1)?.detail ?? '' }) }
-    }
-    if (battle.outcome === 'defeat') {
-      return { ...s, party, battle, turn, status: 'dead', log: logged(s, turn, { kind: 'end', reason: 'wiped out', detail: 'the party fell in the dungeon' }) }
-    }
-    // victory: the room is cleared
-    const rid = roomAt(d, s.pos)
-    const clearedRooms = s.clearedRooms.slice()
-    if (rid >= 0) clearedRooms[rid] = true
-    const wasObjective = rid === d.objectiveRoomId
-    return {
-      ...s,
-      party,
-      battle: null,
-      clearedRooms,
-      turn,
-      status: wasObjective ? 'cleared' : 'delving',
-      log: logged(s, turn, wasObjective
-        ? { kind: 'end', reason: 'objective slain', detail: 'the delve is cleared!' }
-        : { kind: 'clear', reason: 'room cleared', detail: 'the pack is dead' }),
-    }
+  if (battle.outcome === 'defeat') {
+    return { ...s, party, battle, turn, status: 'dead', log: logged(s, turn, { kind: 'end', reason: 'wiped out', detail: 'the party fell in the dungeon' }) }
   }
+  // victory: the room is cleared
+  const rid = roomAt(d, s.pos)
+  const clearedRooms = s.clearedRooms.slice()
+  if (rid >= 0) clearedRooms[rid] = true
+  const wasObjective = rid === d.objectiveRoomId
+  return {
+    ...s,
+    party,
+    battle: null,
+    clearedRooms,
+    turn,
+    status: wasObjective ? 'cleared' : 'delving',
+    log: logged(s, turn, wasObjective
+      ? { kind: 'end', reason: 'objective slain', detail: 'the delve is cleared!' }
+      : { kind: 'clear', reason: 'room cleared', detail: 'the pack is dead' }),
+  }
+}
 
-  // --- exploring: decide and move one cell ---
+/** Exploring: decide and move one cell — rest in place, get stuck, or step (entering
+ *  an uncleared monster/objective room starts a fight). */
+function advanceMove(s: DelveState, turn: number): DelveState {
+  const d = s.dungeon
   const decision = decideExploration(s)
   if (decision.step < 0) {
     return { ...s, turn, status: 'stuck', log: logged(s, turn, { kind: 'end', reason: 'no path forward', detail: 'the party is stuck' }) }
@@ -344,4 +345,15 @@ export function stepDelve(s: DelveState): DelveState {
   }
 
   return { ...s, pos: next, facing, explored, battle, turn, log: logged(s, turn, { kind, reason: decision.reason, detail }) }
+}
+
+/** Advance the delve by one tick: a combat action if mid-fight, else one move. */
+export function stepDelve(s: DelveState): DelveState {
+  if (s.status !== 'delving') return s
+  const turn = s.turn + 1
+  if (turn > MAX_DELVE_STEPS) {
+    return { ...s, turn, status: 'stuck', log: logged(s, turn, { kind: 'end', reason: 'safety cap', detail: 'delve exceeded the step cap' }) }
+  }
+  if (s.battle !== null) return advanceCombat(s, turn, s.battle)
+  return advanceMove(s, turn)
 }

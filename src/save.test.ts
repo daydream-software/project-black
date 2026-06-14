@@ -113,17 +113,21 @@ describe('save — slots', () => {
     expect(salvageMeta(2, store)).toBeNull() // empty slot
   })
 
-  it('rejects a malformed roster (fewer than two heroes, or a hero with no rows array)', () => {
-    // party() indexes roster[0] and roster[1] and reads .rows — a short or shapeless
-    // roster must not load and crash on the first frame; it loads as null instead.
-    const tooShort = { version: 3, savedAt: 1, roster: [{ simId: 'h', name: 'X', rows: [] }], activeHero: 0, mode: 'camp', delve: null }
+  it('rejects a malformed roster (empty, or a hero with no rows array) but allows a 1-golem build', () => {
+    // party() maps the roster and reads each .rows — an empty or shapeless roster
+    // must not load and crash on the first frame; it loads as null instead. A
+    // 1-golem "titan" roster IS legal under point-buy (the >=1 floor), so it loads.
+    const empty = { version: 3, savedAt: 1, roster: [], activeHero: 0, mode: 'camp', delve: null }
     const noRows = { version: 3, savedAt: 1, roster: [{ simId: 'a' }, { simId: 'b' }], activeHero: 0, mode: 'camp', delve: null }
+    const titan = { version: 3, savedAt: 1, roster: [{ simId: 'h', name: 'Titan', rows: [] }], activeHero: 0, mode: 'camp', delve: null }
     const store = fakeStore({
-      'project-black/save/slot/0': JSON.stringify(tooShort),
+      'project-black/save/slot/0': JSON.stringify(empty),
       'project-black/save/slot/1': JSON.stringify(noRows),
+      'project-black/save/slot/2': JSON.stringify(titan),
     })
     expect(loadSlot(0, store)).toBeNull()
     expect(loadSlot(1, store)).toBeNull()
+    expect(loadSlot(2, store)?.roster).toHaveLength(1) // single golem accepted
   })
 
   it('drops an in-progress delve saved before the six-stat model, keeping roster + meta', () => {

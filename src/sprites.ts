@@ -26,15 +26,11 @@ function spriteFromGrid(rows: string[], palette: Palette): HTMLCanvasElement {
   return c
 }
 
-/** The slime enemy — generated procedurally (same shape as our art sample). */
-export function makeSlime(): HTMLCanvasElement {
-  const W = 16
-  const H = 16
-  const c = document.createElement('canvas')
-  c.width = W
-  c.height = H
-  const ctx = require2dContext(c)
+/** Plots a single 1×1 pixel in a fill colour. */
+type Plot = (x: number, y: number, col: string) => void
 
+/** The slime's filled-cell mask: a squat ellipse, slightly wider toward the base. */
+function slimeMask(w: number, h: number): boolean[][] {
   const cx = 7.5
   const cy = 9.0
   const ry = 5.2
@@ -43,47 +39,53 @@ export function makeSlime(): HTMLCanvasElement {
     const rx = 6.2 * (1 + 0.12 * ((y - 4) / 10))
     return ((x - cx) / rx) ** 2 + ((y - cy) / ry) ** 2 <= 1
   }
-
   const ins: boolean[][] = []
-  for (let y = 0; y < H; y += 1) {
+  for (let y = 0; y < h; y += 1) {
     ins[y] = []
-    for (let x = 0; x < W; x += 1) ins[y][x] = inside(x, y)
+    for (let x = 0; x < w; x += 1) ins[y][x] = inside(x, y)
   }
+  return ins
+}
 
+const SLIME_NEIGHBOURS: ReadonlyArray<readonly [number, number]> = [
+  [1, 0],
+  [-1, 0],
+  [0, 1],
+  [0, -1],
+]
+
+/** A filled cell is an edge if any 4-neighbour is outside the mask. */
+function isEdge(ins: boolean[][], x: number, y: number): boolean {
+  for (const [dx, dy] of SLIME_NEIGHBOURS) {
+    if (!ins[y + dy]?.[x + dx]) return true
+  }
+  return false
+}
+
+/** Shade each filled cell by row band, outlining the silhouette edge. */
+function shadeSlimeBody(plot: Plot, ins: boolean[][], w: number, h: number): void {
   const OUT = '#14281c'
   const DARK = '#2e7a44'
   const MID = '#4ab460'
   const LIGHT = '#78e080'
+  for (let y = 0; y < h; y += 1) {
+    for (let x = 0; x < w; x += 1) {
+      if (!ins[y][x]) continue
+      const col = isEdge(ins, x, y) ? OUT : y >= 11 ? DARK : y <= 7 ? LIGHT : MID
+      plot(x, y, col)
+    }
+  }
+}
+
+/** Specular highlight, eyes (white blocks + inward pupils), and the little mouth. */
+function drawSlimeFace(plot: Plot, ins: boolean[][]): void {
+  const OUT = '#14281c'
   const HI = '#cdf8d2'
   const WHITE = '#ffffff'
   const PUP = '#14281c'
-  const px = (x: number, y: number, col: string): void => {
-    ctx.fillStyle = col
-    ctx.fillRect(x, y, 1, 1)
-  }
-
-  const neighbours: ReadonlyArray<readonly [number, number]> = [
-    [1, 0],
-    [-1, 0],
-    [0, 1],
-    [0, -1],
-  ]
-  for (let y = 0; y < H; y += 1) {
-    for (let x = 0; x < W; x += 1) {
-      if (!ins[y][x]) continue
-      let edge = false
-      for (const [dx, dy] of neighbours) {
-        if (!ins[y + dy]?.[x + dx]) edge = true
-      }
-      if (edge) px(x, y, OUT)
-      else if (y >= 11) px(x, y, DARK)
-      else if (y <= 7) px(x, y, LIGHT)
-      else px(x, y, MID)
-    }
-  }
   // specular highlight
   for (const [x, y] of [[4, 6], [5, 6], [4, 7]] as const) {
-    if (ins[y][x]) px(x, y, HI)
+    if (ins[y][x]) plot(x, y, HI)
   }
   // eyes (2x3 white blocks) + inward-looking pupils
   for (const ex of [5, 10]) {
@@ -91,15 +93,33 @@ export function makeSlime(): HTMLCanvasElement {
       for (const dy of [-1, 0, 1]) {
         const x = ex + dx
         const y = 9 + dy
-        if (ins[y]?.[x]) px(x, y, WHITE)
+        if (ins[y]?.[x]) plot(x, y, WHITE)
       }
     }
   }
-  px(6, 9, PUP)
-  px(10, 9, PUP)
+  plot(6, 9, PUP)
+  plot(10, 9, PUP)
   // little mouth
-  px(7, 12, OUT)
-  px(8, 12, OUT)
+  plot(7, 12, OUT)
+  plot(8, 12, OUT)
+}
+
+/** The slime enemy — generated procedurally (same shape as our art sample). */
+export function makeSlime(): HTMLCanvasElement {
+  const W = 16
+  const H = 16
+  const c = document.createElement('canvas')
+  c.width = W
+  c.height = H
+  const ctx = require2dContext(c)
+  const plot: Plot = (x, y, col) => {
+    ctx.fillStyle = col
+    ctx.fillRect(x, y, 1, 1)
+  }
+
+  const ins = slimeMask(W, H)
+  shadeSlimeBody(plot, ins, W, H)
+  drawSlimeFace(plot, ins)
 
   return c
 }

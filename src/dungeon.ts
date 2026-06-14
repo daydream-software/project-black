@@ -9,7 +9,7 @@
 // and in particular the objective room, is reachable from the entrance. That is
 // what lets the explorer in 8a-2 always make progress (no unreachable target).
 
-import { makeRng, int, range } from './rng'
+import { makeRng, int, range, type Rng } from './rng'
 
 export type RoomType = 'entrance' | 'monster' | 'empty' | 'target'
 
@@ -153,14 +153,11 @@ function carveV(cells: boolean[], width: number, y1: number, y2: number, x: numb
  * rng state, so the delve can keep rolling deterministically from where
  * generation left off (rather than re-seeding).
  */
-export function generateDungeon(seed: number, gen: GenConfig = DEFAULT_GEN): { dungeon: Dungeon; rngState: number } {
-  const rng = makeRng(seed)
+/** Place up to `targetRooms` non-overlapping rooms (placement may fall short in a
+ *  tight grid — the connectivity test pins that a valid config still gives ≥ 2). */
+function placeRooms(rng: Rng, gen: GenConfig): Room[] {
   const { width, height } = gen
-  const cells = new Array<boolean>(width * height).fill(false)
   const rooms: Room[] = []
-
-  // place up to `targetRooms` non-overlapping rooms (placement may fall short in a
-  // tight grid — the connectivity test pins that a valid config still gives ≥ 2).
   const targetRooms = range(rng, gen.rooms[0], gen.rooms[1])
   for (let a = 0; a < PLACE_ATTEMPTS && rooms.length < targetRooms; a += 1) {
     const w = range(rng, 3, 5)
@@ -171,11 +168,12 @@ export function generateDungeon(seed: number, gen: GenConfig = DEFAULT_GEN): { d
     if (rooms.some((r) => rectsOverlap(r, cand, 1))) continue
     rooms.push({ id: rooms.length, x, y, w, h, type: 'empty' })
   }
+  return rooms
+}
 
-  for (const r of rooms) carveRoom(cells, width, r)
-
-  // connect each room to the previous one with an L-corridor → spanning chain
-  // → the whole dungeon is connected.
+/** Connect each room to the previous one with an L-corridor → a spanning chain →
+ *  the whole dungeon is connected. */
+function carveCorridors(rng: Rng, cells: boolean[], width: number, rooms: Room[]): void {
   for (let i = 1; i < rooms.length; i += 1) {
     const a = roomCenter(rooms[i - 1])
     const b = roomCenter(rooms[i])
@@ -187,33 +185,30 @@ export function generateDungeon(seed: number, gen: GenConfig = DEFAULT_GEN): { d
       carveH(cells, width, a.x, b.x, b.y)
     }
   }
+}
 
-  const dungeon: Dungeon = {
-    width,
-    height,
-    cells,
-    rooms,
-    entranceRoomId: 0,
-    objectiveRoomId: 0,
-  }
-
-  // objective = the room whose centre is farthest (by corridor distance) from the
-  // entrance, so the delve has somewhere to go.
+/** The room whose centre is farthest (by corridor distance) from the entrance, so
+ *  the delve has somewhere to go. */
+function farthestRoomId(dungeon: Dungeon, rooms: Room[]): number {
   const entranceCenter = roomCenter(rooms[0])
   const dist = bfsDistances(dungeon, cellIndex(dungeon, entranceCenter.x, entranceCenter.y))
   let best = -1
+  let id = dungeon.objectiveRoomId
   for (const r of rooms) {
     const c = roomCenter(r)
     const d = dist[cellIndex(dungeon, c.x, c.y)]
     if (d !== Infinity && d > best) {
       best = d
-      dungeon.objectiveRoomId = r.id
+      id = r.id
     }
   }
+  return id
+}
 
-  // types: entrance (room 0), target (farthest), then exactly `packCount` of the
-  // remaining interior rooms become monster packs — a chosen count, not a per-room
-  // coin flip, so a level's `packs` range actually controls how many fights there are.
+/** Type the rooms: entrance (room 0), target (farthest), then exactly `packCount` of
+ *  the remaining interior rooms become monster packs — a chosen count, not a per-room
+ *  coin flip, so a level's `packs` range actually controls how many fights there are. */
+function assignRoomTypes(rng: Rng, rooms: Room[], dungeon: Dungeon, gen: GenConfig): void {
   for (const r of rooms) {
     r.type = r.id === dungeon.entranceRoomId ? 'entrance' : r.id === dungeon.objectiveRoomId ? 'target' : 'empty'
   }
@@ -225,6 +220,27 @@ export function generateDungeon(seed: number, gen: GenConfig = DEFAULT_GEN): { d
     ;[interior[i], interior[j]] = [interior[j], interior[i]]
   }
   for (let i = 0; i < packCount; i += 1) interior[i].type = 'monster'
+}
+
+export function generateDungeon(seed: number, gen: GenConfig = DEFAULT_GEN): { dungeon: Dungeon; rngState: number } {
+  const rng = makeRng(seed)
+  const { width, height } = gen
+  const cells = new Array<boolean>(width * height).fill(false)
+  const rooms = placeRooms(rng, gen)
+
+  for (const r of rooms) carveRoom(cells, width, r)
+  carveCorridors(rng, cells, width, rooms)
+
+  const dungeon: Dungeon = {
+    width,
+    height,
+    cells,
+    rooms,
+    entranceRoomId: 0,
+    objectiveRoomId: 0,
+  }
+  dungeon.objectiveRoomId = farthestRoomId(dungeon, rooms)
+  assignRoomTypes(rng, rooms, dungeon, gen)
 
   return { dungeon, rngState: rng.s }
 }

@@ -11,7 +11,7 @@
 // the game.
 
 import type { DelveState, DelveStatus } from './delve'
-import type { SkillId } from './sim'
+import type { SkillId, Stats } from './sim'
 
 // --- Persisted shapes (also the editor's row types) ------------------------
 
@@ -26,6 +26,10 @@ export interface ProtocolRow {
 export interface Hero {
   simId: string // matches the id sim.ts assigns (hero-1 = Sentinel, hero-2 = Mender)
   name: string
+  // The authored point-buy stat block (M·W·F·A·P·C). Optional/additive: pre-point-buy
+  // saves lack it, and party() falls back to the reference blocks — so this stays a
+  // no-version-bump field that never wipes a live player's authored Procedures.
+  stats?: Stats
   rows: ProtocolRow[]
 }
 
@@ -76,10 +80,14 @@ function isHero(x: unknown): x is Hero {
   return isObj(x) && Array.isArray(x.rows)
 }
 
+function isDelveStatus(x: unknown): x is DelveStatus {
+  return x === 'delving' || x === 'cleared' || x === 'dead' || x === 'stuck'
+}
+
 function isDelveState(x: unknown): x is DelveState {
   return (
     isObj(x) &&
-    (x.status === 'delving' || x.status === 'cleared' || x.status === 'dead' || x.status === 'stuck') &&
+    isDelveStatus(x.status) &&
     typeof x.pos === 'number' &&
     typeof x.turn === 'number' &&
     isObj(x.dungeon) &&
@@ -89,21 +97,35 @@ function isDelveState(x: unknown): x is DelveState {
   )
 }
 
+/** An optional field that, when present, must be an array (drops out of the
+ *  complexity of the big validator while reading the same). */
+function isOptArray(v: unknown): boolean {
+  return v === undefined || Array.isArray(v)
+}
+
+/** The optional/additive meta fields + the mode/delve pair — validated apart so
+ *  `isSaveData` stays under the complexity bar. */
+function isAuxFields(x: Record<string, unknown>): boolean {
+  return (
+    isOptArray(x.exploration) &&
+    isOptArray(x.clearedLevels) &&
+    (x.insight === undefined || typeof x.insight === 'number') &&
+    isOptArray(x.unlocked) &&
+    (x.mode === 'camp' || x.mode === 'delve') &&
+    (x.delve === null || isDelveState(x.delve))
+  )
+}
+
 function isSaveData(x: unknown): x is SaveData {
   return (
     isObj(x) &&
     x.version === VERSION &&
     typeof x.savedAt === 'number' &&
     Array.isArray(x.roster) &&
-    x.roster.length >= 2 &&
+    x.roster.length >= 1 && // ≥1 golem: the point-buy model allows a 1-golem "titan" build
     x.roster.every(isHero) &&
     typeof x.activeHero === 'number' &&
-    (x.exploration === undefined || Array.isArray(x.exploration)) &&
-    (x.clearedLevels === undefined || Array.isArray(x.clearedLevels)) &&
-    (x.insight === undefined || typeof x.insight === 'number') &&
-    (x.unlocked === undefined || Array.isArray(x.unlocked)) &&
-    (x.mode === 'camp' || x.mode === 'delve') &&
-    (x.delve === null || isDelveState(x.delve))
+    isAuxFields(x)
   )
 }
 
@@ -223,19 +245,23 @@ export function deleteSlot(index: number, store: KVStore = localStorage): void {
   }
 }
 
+/** One slot's card metadata (empty slot → all-null). Split out of `listSlots` so
+ *  the optional-chain fan-out doesn't blow the per-function complexity bar. */
+function toSlotInfo(index: number, s: SaveData | null): SlotInfo {
+  if (s === null) return { index, savedAt: null, mode: null, delveStatus: null, heroCount: 0 }
+  return {
+    index,
+    savedAt: s.savedAt,
+    mode: s.mode,
+    delveStatus: s.delve?.status ?? null,
+    heroCount: s.roster.length,
+  }
+}
+
 /** Metadata for every slot — drives the slot-select cards. */
 export function listSlots(store: KVStore = localStorage): SlotInfo[] {
   const slots: SlotInfo[] = []
-  for (let i = 0; i < SLOT_COUNT; i += 1) {
-    const s = loadSlot(i, store)
-    slots.push({
-      index: i,
-      savedAt: s?.savedAt ?? null,
-      mode: s?.mode ?? null,
-      delveStatus: s?.delve?.status ?? null,
-      heroCount: s?.roster.length ?? 0,
-    })
-  }
+  for (let i = 0; i < SLOT_COUNT; i += 1) slots.push(toSlotInfo(i, loadSlot(i, store)))
   return slots
 }
 

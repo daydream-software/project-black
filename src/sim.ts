@@ -424,36 +424,25 @@ export function makeWarden(): Combatant {
   })
 }
 
-/** Default golems: a Sentinel (Bulwark — Ward + Fortitude, tanks and hits) and a
- *  Mender (Channeler — Attunement + Poise, fragile, mends). Compact stat blocks. */
+/** Build a hero golem from an AUTHORED stat block + its Procedure — the generic,
+ *  player-facing builder the point-buy editor feeds. (makeWarrior/makeHealer below
+ *  are the fixed reference blocks used as test fixtures and the starting party.) */
+export function makeGolem(spec: { id: string; name: string; stats: Stats; procedure: Procedure }): Combatant {
+  return makeUnit({ id: spec.id, name: spec.name, side: 'hero', ...spec.stats, procedure: spec.procedure })
+}
+
+/** The two reference stat blocks (compact 0–12 scale): a Sentinel (Bulwark — Ward +
+ *  Fortitude, tanks and hits) and a Mender (Channeler — Attunement + Poise, fragile,
+ *  mends). The starting party authors these; the point-buy editor can re-spec them. */
+export const SENTINEL_STATS: Stats = { might: 5, ward: 2, fortitude: 10, attunement: 0, poise: 0, celerity: 5 }
+export const MENDER_STATS: Stats = { might: 3, ward: 0, fortitude: 5, attunement: 5, poise: 6, celerity: 6 }
+
 export function makeWarrior(procedure: Procedure): Combatant {
-  return makeUnit({
-    id: 'hero-1',
-    name: 'Sentinel',
-    side: 'hero',
-    might: 5,
-    ward: 2,
-    fortitude: 10,
-    attunement: 0,
-    poise: 0,
-    celerity: 5,
-    procedure,
-  })
+  return makeGolem({ id: 'hero-1', name: 'Sentinel', stats: SENTINEL_STATS, procedure })
 }
 
 export function makeHealer(procedure: Procedure): Combatant {
-  return makeUnit({
-    id: 'hero-2',
-    name: 'Mender',
-    side: 'hero',
-    might: 3,
-    ward: 0,
-    fortitude: 5,
-    attunement: 5,
-    poise: 6,
-    celerity: 6,
-    procedure,
-  })
+  return makeGolem({ id: 'hero-2', name: 'Mender', stats: MENDER_STATS, procedure })
 }
 
 export type EncounterId = 'duo' | 'pack' | 'warden'
@@ -503,44 +492,35 @@ export function initialState(warriorProc: Procedure, healerProc: Procedure, enco
 
 
 /** Apply a resolved maneuver to the cloned units; return the log detail string. */
-function applyManeuver(actor: Combatant, target: Combatant | null, maneuver: Maneuver): string {
-  /* eslint-disable no-param-reassign -- actor/target are step()'s local CLONES (the
-     agreed data-oriented sim core): mutating them is intentional, never touches the
-     caller's objects, and step() reads them back into a fresh immutable GameState. */
-  if (maneuver.command === 'flee') {
-    return `FLEE — ${actor.name} tries to disengage (no effect yet)`
+/* eslint-disable no-param-reassign -- actor/target/units below are step()'s local
+   CLONES (the agreed data-oriented sim core): mutating their fields is intentional,
+   never touches the caller's objects, and step() reads them back into a fresh
+   immutable GameState. The whole resolution cluster shares this contract. */
+
+/** Resolve a Mend onto its target: heal by Attunement, then bite the caster's own
+ *  Fortitude for any Strain past Poise (Mend is a Fortitude → heal converter — same
+ *  path in combat and at rest, "c'est Mend pareil"). */
+function applyMend(actor: Combatant, target: Combatant | null): string {
+  if (target !== null && target.side === actor.side && target.hp > 0) {
+    const before = target.hp
+    target.hp = Math.min(target.maxHp, target.hp + healAmount(actor))
+    const restored = target.hp - before
+    const healedTo = target.hp // capture before any self-overdraw rewrites it
+    const sBefore = actor.strain ?? 0
+    const bite = overdraw(sBefore, actor.poise, MEND_STRAIN)
+    actor.strain = sBefore + MEND_STRAIN
+    if (bite > 0) actor.hp = Math.max(0, actor.hp - bite)
+    let detail = `MEND +${restored} → ${target.name} (HP ${before} → ${healedTo})`
+    if (bite > 0) detail += ` • OVERDRAW −${bite} → ${actor.name} (Strain ${actor.strain} > Poise ${actor.poise})`
+    return detail
   }
+  return `MEND has no valid target — no effect` // dead rule: State held, turn consumed
+}
 
-  const mend = maneuver.command === 'useSkill' && maneuver.skill === 'mend'
-  const defend = maneuver.command === 'useSkill' && maneuver.skill === 'defend'
-
-  if (defend) {
-    actor.defending = true
-    return `DEFEND — incoming damage halved until next turn`
-  }
-
-  if (mend) {
-    if (target !== null && target.side === actor.side && target.hp > 0) {
-      const before = target.hp
-      target.hp = Math.min(target.maxHp, target.hp + healAmount(actor))
-      const restored = target.hp - before
-      const healedTo = target.hp // capture before any self-overdraw rewrites it
-      // Strain: the channel adds to the caster's budget; past Poise the overflow
-      // frays its OWN Fortitude (Mend is a Fortitude → heal converter). Same code
-      // path in combat and at rest — "c'est Mend pareil".
-      const sBefore = actor.strain ?? 0
-      const bite = overdraw(sBefore, actor.poise, MEND_STRAIN)
-      actor.strain = sBefore + MEND_STRAIN
-      if (bite > 0) actor.hp = Math.max(0, actor.hp - bite)
-      let detail = `MEND +${restored} → ${target.name} (HP ${before} → ${healedTo})`
-      if (bite > 0) detail += ` • OVERDRAW −${bite} → ${actor.name} (Strain ${actor.strain} > Poise ${actor.poise})`
-      return detail
-    }
-    return `MEND has no valid target — no effect` // dead rule: State held, turn consumed
-  }
-
-  // attack (the default command, or a useItem we haven't wired — treated as attack-less)
-  if (maneuver.command === 'attack' && target !== null && target.side !== actor.side && target.hp > 0) {
+/** Resolve an Attack onto its target: damage = Might − Ward (floored, halved when
+ *  the target Defends). */
+function applyAttack(actor: Combatant, target: Combatant | null): string {
+  if (target !== null && target.side !== actor.side && target.hp > 0) {
     const before = target.hp
     const dmg = attackDamage(actor, target)
     target.hp = Math.max(0, target.hp - dmg)
@@ -548,16 +528,71 @@ function applyManeuver(actor: Combatant, target: Combatant | null, maneuver: Man
     if (target.hp <= 0) detail += ` • ${target.name} defeated!`
     return detail
   }
-
   return `${actor.name}'s maneuver has no valid target — no effect`
-  /* eslint-enable no-param-reassign */
+}
+
+function applyManeuver(actor: Combatant, target: Combatant | null, maneuver: Maneuver): string {
+  if (maneuver.command === 'flee') return `FLEE — ${actor.name} tries to disengage (no effect yet)`
+  if (maneuver.command === 'useSkill' && maneuver.skill === 'defend') {
+    actor.defending = true
+    return `DEFEND — incoming damage halved until next turn`
+  }
+  if (maneuver.command === 'useSkill' && maneuver.skill === 'mend') return applyMend(actor, target)
+  if (maneuver.command === 'attack') return applyAttack(actor, target)
+  // a useItem we haven't wired — treated as attack-less
+  return `${actor.name}'s maneuver has no valid target — no effect`
+}
+
+/** CTB heartbeat: subtract the winner's charge from every living unit (so the winner
+ *  reaches 0 = now), then the winner pays a fresh `recovery` to queue its next turn. */
+function advanceCharges(units: Combatant[], actorIdx: number): void {
+  const spent = chargeOf(units[actorIdx])
+  for (const u of units) if (u.hp > 0) u.charge = chargeOf(u) - spent
+  const actor = units[actorIdx]
+  actor.defending = false // its protection window closes as it gets to act again
+  actor.charge = recovery(actor.celerity)
+}
+
+/** The wall reaction: every opposing unit with a counter-heal trait punishes the
+ *  just-healed target. A REACTION (shares the turn), so it returns log entries to
+ *  append rather than advancing the clock. Mutates `healed.hp` in place. */
+function counterReactions(units: Combatant[], healed: Combatant, turn: number, round: number): LogEntry[] {
+  const entries: LogEntry[] = []
+  for (const c of units) {
+    if (healed.hp <= 0) break
+    const counter = c.counterHeal ?? 0
+    if (c.hp <= 0 || c.side === healed.side || counter <= 0) continue
+    const before = healed.hp
+    healed.hp = Math.max(0, healed.hp - counter)
+    let punish = `COUNTER −${counter} → ${healed.name} (HP ${before} → ${healed.hp})`
+    if (healed.hp <= 0) punish += ` • ${healed.name} defeated!`
+    entries.push({
+      turn, round, actorId: c.id, actorName: c.name, kind: 'counter',
+      targetName: healed.name, protocolIndex: -1, reason: 'punishes the heal', detail: punish,
+    })
+  }
+  return entries
+}
+/* eslint-enable no-param-reassign */
+
+/** Find the targeted unit in the (cloned) roster by id, or null. */
+function findTargetById(units: Combatant[], targetId: string | null): Combatant | null {
+  if (targetId === null) return null
+  return units.find((u) => u.id === targetId) ?? null
+}
+
+/** Judge the battle from who is still standing. */
+function outcomeOf(units: Combatant[]): Outcome {
+  const heroesAlive = units.some((u) => u.side === 'hero' && u.hp > 0)
+  const enemiesAlive = units.some((u) => u.side === 'enemy' && u.hp > 0)
+  return heroesAlive ? (enemiesAlive ? 'ongoing' : 'victory') : 'defeat'
 }
 
 /**
  * Advance the simulation by ONE unit-action (pure: returns a new state). The
  * next living unit in turn order acts per its Procedure; deaths are skipped, and
- * wrapping past the last unit starts a new round. Stepping a finished battle is
- * a no-op.
+ * wrapping past the first living unit ticks the cosmetic round counter. Stepping a
+ * finished battle is a no-op.
  */
 export function step(state: GameState): GameState {
   if (state.outcome !== 'ongoing') return state
@@ -566,14 +601,8 @@ export function step(state: GameState): GameState {
   if (idx < 0) return state // no living units at all (defensive)
 
   const units = state.units.map((u) => ({ ...u }))
-  // Advance scheduler time: subtract the winner's charge from every living unit
-  // (so the winner reaches 0 = now), then the winner pays a fresh `recovery` to
-  // queue its next turn. This is the CTB heartbeat.
-  const spent = chargeOf(units[idx])
-  for (const u of units) if (u.hp > 0) u.charge = chargeOf(u) - spent
+  advanceCharges(units, idx)
   const actor = units[idx]
-  actor.defending = false // its protection window closes as it gets to act again
-  actor.charge = recovery(actor.celerity)
 
   const turn = state.turn + 1
   // `round` is now a cosmetic counter (CTB has no clean wrap): tick it whenever the
@@ -582,54 +611,27 @@ export function step(state: GameState): GameState {
   const round = state.round + (idx === firstLiving ? 1 : 0)
 
   const decision = decide(actor, units)
-  const target = decision.targetId === null ? null : (units.find((u) => u.id === decision.targetId) ?? null)
-  const hpBefore = target?.hp ?? 0
+  const kind = maneuverKind(decision.maneuver)
+  const target = findTargetById(units, decision.targetId)
+  const hpBefore = target === null ? 0 : target.hp
   const detail = applyManeuver(actor, target, decision.maneuver)
 
-  const entries: LogEntry[] = [
-    {
-      turn,
-      round,
-      actorId: actor.id,
-      actorName: actor.name,
-      kind: maneuverKind(decision.maneuver),
-      targetName: target?.name ?? null,
-      protocolIndex: decision.protocolIndex,
-      reason: decision.reason,
-      detail,
-    },
-  ]
-
-  // The wall: if this action actually healed a unit, every opposing unit with a
-  // counter-heal trait punishes the healed target — a REACTION, so it shares the
-  // turn (does not advance turn/cursor) and lands before we judge the outcome.
-  const healed = target !== null && maneuverKind(decision.maneuver) === 'heal' && target.hp > hpBefore ? target : null
-  if (healed !== null) {
-    for (const c of units) {
-      if (healed.hp <= 0) break
-      const counter = c.counterHeal ?? 0
-      if (c.hp <= 0 || c.side === healed.side || counter <= 0) continue
-      const before = healed.hp
-      healed.hp = Math.max(0, healed.hp - counter)
-      let punish = `COUNTER −${counter} → ${healed.name} (HP ${before} → ${healed.hp})`
-      if (healed.hp <= 0) punish += ` • ${healed.name} defeated!`
-      entries.push({
-        turn,
-        round,
-        actorId: c.id,
-        actorName: c.name,
-        kind: 'counter',
-        targetName: healed.name,
-        protocolIndex: -1,
-        reason: 'punishes the heal',
-        detail: punish,
-      })
-    }
+  const mainEntry: LogEntry = {
+    turn,
+    round,
+    actorId: actor.id,
+    actorName: actor.name,
+    kind,
+    targetName: target === null ? null : target.name,
+    protocolIndex: decision.protocolIndex,
+    reason: decision.reason,
+    detail,
   }
 
-  const heroesAlive = units.some((u) => u.side === 'hero' && u.hp > 0)
-  const enemiesAlive = units.some((u) => u.side === 'enemy' && u.hp > 0)
-  const outcome: Outcome = heroesAlive ? (enemiesAlive ? 'ongoing' : 'victory') : 'defeat'
+  // If this action actually healed a unit, opposing counter-heal traits punish it
+  // before we judge the outcome (the slice-4 wall).
+  const healed = kind === 'heal' && target !== null && target.hp > hpBefore ? target : null
+  const entries = healed === null ? [mainEntry] : [mainEntry, ...counterReactions(units, healed, turn, round)]
 
   return {
     units,
@@ -637,7 +639,7 @@ export function step(state: GameState): GameState {
     round,
     cursor: idx,
     log: [...state.log, ...entries].slice(-50),
-    outcome,
+    outcome: outcomeOf(units),
   }
 }
 

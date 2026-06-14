@@ -134,10 +134,29 @@ function drawBanner(ctx: CanvasRenderingContext2D, title: string, subtitle: stri
 
 /** A clickable town building: a little house (roof + door + glyph) with its label
  *  below; hovering lights it up and shows a "click to enter" hint. */
+interface BuildingPalette {
+  body: string
+  roof: string
+  stroke: string
+  glyph: string
+  door: string
+  doorStroke: string
+  label: string
+}
+
+/** The lit-vs-dark colour set for a building, picked once so drawBuilding doesn't
+ *  carry an `on ? … : …` ternary on every fill. */
+function buildingPalette(on: boolean): BuildingPalette {
+  return on
+    ? { body: '#1b2738', roof: '#26405a', stroke: '#4fd1ff', glyph: '#9bdcff', door: '#0d1f2b', doorStroke: '#4fd1ff', label: '#e6e9ef' }
+    : { body: '#161622', roof: '#20202e', stroke: '#2c2c40', glyph: '#5a6072', door: '#0a0a12', doorStroke: '#3a3a52', label: '#9aa0b0' }
+}
+
 function drawBuilding(ctx: CanvasRenderingContext2D, r: BuildingRect, on: boolean): void {
   const roofH = Math.round(r.h * 0.28)
   const bodyY = r.y + roofH
   const bodyH = r.h - roofH
+  const p = buildingPalette(on)
 
   if (on) {
     ctx.save()
@@ -145,9 +164,9 @@ function drawBuilding(ctx: CanvasRenderingContext2D, r: BuildingRect, on: boolea
     ctx.shadowBlur = 26
   }
   // body + roof (a trapezoid that overhangs the walls)
-  ctx.fillStyle = on ? '#1b2738' : '#161622'
+  ctx.fillStyle = p.body
   ctx.fillRect(r.x, bodyY, r.w, bodyH)
-  ctx.fillStyle = on ? '#26405a' : '#20202e'
+  ctx.fillStyle = p.roof
   ctx.beginPath()
   ctx.moveTo(r.x - 6, bodyY)
   ctx.lineTo(r.x + r.w + 6, bodyY)
@@ -157,12 +176,12 @@ function drawBuilding(ctx: CanvasRenderingContext2D, r: BuildingRect, on: boolea
   ctx.fill()
   if (on) ctx.restore()
 
-  ctx.strokeStyle = on ? '#4fd1ff' : '#2c2c40'
+  ctx.strokeStyle = p.stroke
   ctx.lineWidth = 2
   ctx.strokeRect(r.x + 1, bodyY + 1, r.w - 2, bodyH - 2)
 
   // a distinguishing glyph on the wall (gear = Workshop, shelves = Library)
-  ctx.fillStyle = on ? '#9bdcff' : '#5a6072'
+  ctx.fillStyle = p.glyph
   ctx.font = `${Math.round(r.w * 0.2)}px system-ui, sans-serif`
   ctx.textAlign = 'center'
   ctx.textBaseline = 'middle'
@@ -173,15 +192,15 @@ function drawBuilding(ctx: CanvasRenderingContext2D, r: BuildingRect, on: boolea
   const dh = Math.round(bodyH * 0.46)
   const dx = r.x + (r.w - dw) / 2
   const dy = bodyY + bodyH - dh
-  ctx.fillStyle = on ? '#0d1f2b' : '#0a0a12'
+  ctx.fillStyle = p.door
   ctx.fillRect(dx, dy, dw, dh)
-  ctx.strokeStyle = on ? '#4fd1ff' : '#3a3a52'
+  ctx.strokeStyle = p.doorStroke
   ctx.lineWidth = 1.5
   ctx.strokeRect(dx, dy, dw, dh)
 
   // label + hover hint
   ctx.textBaseline = 'top'
-  ctx.fillStyle = on ? '#e6e9ef' : '#9aa0b0'
+  ctx.fillStyle = p.label
   ctx.font = `600 ${Math.max(13, Math.round(r.h * 0.1))}px system-ui, sans-serif`
   ctx.fillText(r.label, r.x + r.w / 2, r.y + r.h + 8)
   if (on) {
@@ -350,10 +369,12 @@ function poly(ctx: CanvasRenderingContext2D, pts: number[], fill: string): void 
 
 // First-person "scrying" view: a perspective corridor with the party seen from
 // behind in the foreground (Nevergrind-style over-the-shoulder framing).
-function drawDungeonView(ctx: CanvasRenderingContext2D, delve: DelveState, sprites: Sprites): void {
-  const { width, height } = cssSize(ctx)
-  const SS = unitScale(height)
-  const d = delve.dungeon
+interface Corridor { nx0: number; nx1: number; ny0: number; ny1: number; vx: number; vy: number }
+interface Sight { aheadFloor: boolean; aheadSeen: boolean; aheadRoom: number; exitL: boolean; exitR: boolean }
+
+/** What the scrying eye makes out from the party's cell + facing: floor/seen ahead,
+ *  the room ahead (or -1), and the two side exits. */
+function corridorSight(d: DelveState['dungeon'], delve: DelveState): Sight {
   const fwd = delve.facing
   const DIRS = [0, 1, 2, 3] as const // index back into Dir without an unsafe assertion
   const aheadCell = neighbourCell(d, delve.pos, fwd)
@@ -364,16 +385,14 @@ function drawDungeonView(ctx: CanvasRenderingContext2D, delve: DelveState, sprit
   const aheadRoom = aheadFloor ? roomAt(d, aheadCell) : -1
   const exitL = leftCell >= 0 && d.cells[leftCell]
   const exitR = rightCell >= 0 && d.cells[rightCell]
+  return { aheadFloor, aheadSeen, aheadRoom, exitL, exitR }
+}
 
-  // near frame + vanishing point of the corridor tunnel (all proportional)
-  const nx0 = Math.round(width * 0.05)
-  const nx1 = width - nx0
-  const ny0 = Math.round(height * 0.05)
-  const ny1 = height - Math.round(height * 0.09)
-  const vx = (nx0 + nx1) / 2
-  const vy = ny0 + (ny1 - ny0) * 0.4
-
-  const wallShade = aheadFloor ? '#181826' : '#14141e'
+/** The tunnel itself: ceiling/floor/walls converging on the vanishing point, side
+ *  doorways where there are exits, the far end, and the depth ribs. */
+function drawCorridor(ctx: CanvasRenderingContext2D, c: Corridor, width: number, height: number, sight: Sight): void {
+  const { nx0, nx1, ny0, ny1, vx, vy } = c
+  const wallShade = sight.aheadFloor ? '#181826' : '#14141e'
   poly(ctx, [nx0, ny0, nx1, ny0, vx, vy], '#0c0c14') // ceiling
   poly(ctx, [nx0, ny1, nx1, ny1, vx, vy], '#23233a') // floor
   poly(ctx, [nx0, ny0, nx0, ny1, vx, vy], wallShade) // left wall
@@ -383,13 +402,13 @@ function drawDungeonView(ctx: CanvasRenderingContext2D, delve: DelveState, sprit
   const dvy = Math.round(height * 0.12) // doorway half-extent at the near frame
   const dvx = Math.round(width * 0.048) // doorway inset toward the vanishing point
   const dvh = Math.round(height * 0.05)
-  if (exitL) poly(ctx, [nx0, ny0 + dvy, nx0, ny1 - dvy, vx - dvx, vy + dvh, vx - dvx, vy - dvh], '#05050a')
-  if (exitR) poly(ctx, [nx1, ny0 + dvy, nx1, ny1 - dvy, vx + dvx, vy + dvh, vx + dvx, vy - dvh], '#05050a')
+  if (sight.exitL) poly(ctx, [nx0, ny0 + dvy, nx0, ny1 - dvy, vx - dvx, vy + dvh, vx - dvx, vy - dvh], '#05050a')
+  if (sight.exitR) poly(ctx, [nx1, ny0 + dvy, nx1, ny1 - dvy, vx + dvx, vy + dvh, vx + dvx, vy - dvh], '#05050a')
 
   // the far end at the vanishing point
   const fw2 = Math.round(width * 0.033)
   const fh2 = Math.round(height * 0.05)
-  ctx.fillStyle = aheadFloor ? (aheadSeen ? '#08080f' : '#040409') : '#2a2a40'
+  ctx.fillStyle = sight.aheadFloor ? (sight.aheadSeen ? '#08080f' : '#040409') : '#2a2a40'
   ctx.fillRect(vx - fw2, vy - fh2, fw2 * 2, fh2 * 2)
 
   // depth ribs (floor seams)
@@ -403,6 +422,42 @@ function drawDungeonView(ctx: CanvasRenderingContext2D, delve: DelveState, sprit
     ctx.lineTo(rx, by)
     ctx.stroke()
   }
+}
+
+/** The static preview of the room ahead (when seen but not yet entered): a couple of
+ *  slimes for a monster room, the haloed boss for the target room. */
+function drawRoomPreview(ctx: CanvasRenderingContext2D, d: DelveState['dungeon'], aheadRoom: number, c: Corridor, ss: number, sprites: Sprites): void {
+  const { vx, vy } = c
+  const t = d.rooms[aheadRoom].type
+  if (t === 'monster') {
+    drawSprite(ctx, sprites.slime, vx - Math.round(ss * 6.5), vy - 4, Math.round(ss * 0.75))
+    drawSprite(ctx, sprites.slime, vx + ss, vy + 2, ss)
+  } else if (t === 'target') {
+    ctx.fillStyle = 'rgba(199,139,255,0.18)'
+    ctx.beginPath()
+    ctx.arc(vx, vy + Math.round(ss * 1.5), ss * 8, 0, Math.PI * 2)
+    ctx.fill()
+    drawSprite(ctx, sprites.slime, vx - Math.round(ss * 6.5), vy - Math.round(ss * 4.5), bossOf(ss))
+  }
+}
+
+function drawDungeonView(ctx: CanvasRenderingContext2D, delve: DelveState, sprites: Sprites): void {
+  const { width, height } = cssSize(ctx)
+  const SS = unitScale(height)
+  const d = delve.dungeon
+  const fwd = delve.facing
+  const sight = corridorSight(d, delve)
+
+  // near frame + vanishing point of the corridor tunnel (all proportional)
+  const nx0 = Math.round(width * 0.05)
+  const nx1 = width - nx0
+  const ny0 = Math.round(height * 0.05)
+  const ny1 = height - Math.round(height * 0.09)
+  const vx = (nx0 + nx1) / 2
+  const vy = ny0 + (ny1 - ny0) * 0.4
+  const c: Corridor = { nx0, nx1, ny0, ny1, vx, vy }
+
+  drawCorridor(ctx, c, width, height, sight)
 
   // --- what's down the corridor: the live enemies if fighting, else a preview ---
   if (delve.battle !== null) {
@@ -428,18 +483,8 @@ function drawDungeonView(ctx: CanvasRenderingContext2D, delve: DelveState, sprit
       ctx.restore()
       if (!dead) drawHpBar(ctx, { x: ex, y: ey - 9, w: ew, frac: e.hp / e.maxHp, fill: '#ff6b6b' })
     })
-  } else if (aheadSeen && aheadRoom >= 0 && !delve.clearedRooms[aheadRoom]) {
-    const t = d.rooms[aheadRoom].type
-    if (t === 'monster') {
-      drawSprite(ctx, sprites.slime, vx - Math.round(SS * 6.5), vy - 4, Math.round(SS * 0.75))
-      drawSprite(ctx, sprites.slime, vx + SS, vy + 2, SS)
-    } else if (t === 'target') {
-      ctx.fillStyle = 'rgba(199,139,255,0.18)'
-      ctx.beginPath()
-      ctx.arc(vx, vy + Math.round(SS * 1.5), SS * 8, 0, Math.PI * 2)
-      ctx.fill()
-      drawSprite(ctx, sprites.slime, vx - Math.round(SS * 6.5), vy - Math.round(SS * 4.5), bossOf(SS))
-    }
+  } else if (sight.aheadSeen && sight.aheadRoom >= 0 && !delve.clearedRooms[sight.aheadRoom]) {
+    drawRoomPreview(ctx, d, sight.aheadRoom, c, SS, sprites)
   }
 
   // --- the party, seen from BEHIND, in the foreground (live HP if fighting) ---
@@ -487,7 +532,7 @@ function drawDungeonView(ctx: CanvasRenderingContext2D, delve: DelveState, sprit
   ctx.textBaseline = 'top'
   ctx.fillStyle = '#9aa0b0'
   ctx.font = '15px system-ui, sans-serif'
-  ctx.fillText(`Scrying · turn ${delve.turn} · facing ${DIR_LABEL[fwd]}${exitL ? ' · ◄ exit' : ''}${exitR ? ' · exit ►' : ''}`, 16, HUD_SAFE)
+  ctx.fillText(`Scrying · turn ${delve.turn} · facing ${DIR_LABEL[fwd]}${sight.exitL ? ' · ◄ exit' : ''}${sight.exitR ? ' · exit ►' : ''}`, 16, HUD_SAFE)
 
   // the CTB turn-order carousel (only while fighting) — makes Celerity legible: a
   // fast golem shows up more often in the upcoming-turns strip.

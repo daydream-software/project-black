@@ -1,5 +1,5 @@
 import './style.css'
-import { makeWarrior, makeHealer, type Combatant, type GameState } from './sim'
+import { makeGolem, SENTINEL_STATS, MENDER_STATS, type Combatant, type GameState } from './sim'
 import { startDelve, stepDelve, type DelveState, type ExProcedure } from './delve'
 import { LEVELS, applyClear, levelById, hasCleared } from './levels'
 import { UNLOCKABLES, buy, isOwned, canAfford } from './shop'
@@ -49,6 +49,7 @@ function freshRoster(): Hero[] {
     {
       simId: 'hero-1',
       name: 'Sentinel',
+      stats: { ...SENTINEL_STATS },
       rows: [
         { subjectId: 'self', predId: 'hp_lt_30', command: 'useSkill', skillId: 'defend', enabled: true },
         { subjectId: 'enemy_near', predId: 'always', command: 'attack', skillId: 'mend', enabled: true },
@@ -57,6 +58,7 @@ function freshRoster(): Hero[] {
     {
       simId: 'hero-2',
       name: 'Mender',
+      stats: { ...MENDER_STATS },
       rows: [
         { subjectId: 'ally_low', predId: 'hp_lt_50', command: 'useSkill', skillId: 'mend', enabled: true },
         { subjectId: 'enemy_near', predId: 'always', command: 'attack', skillId: 'mend', enabled: true },
@@ -172,13 +174,17 @@ let enabledLis: HTMLLIElement[] = []
 const editingLocked = (): boolean => mode !== 'camp'
 
 function party(): Combatant[] {
-  // The party is always Sentinel + Mender. Fall back to fresh heroes if a loaded
-  // roster is short a slot (a malformed save) — a missing entry must not crash the
-  // whole game on the first frame.
-  const fresh = freshRoster()
-  const sentinel = roster[0] ?? fresh[0]
-  const mender = roster[1] ?? fresh[1]
-  return [makeWarrior(procedureFor(sentinel)), makeHealer(procedureFor(mender))]
+  // The player authors the whole team via point-buy, so the party is whatever the
+  // roster holds (1–4 golems). Each golem is built from its authored stat block;
+  // a pre-point-buy save lacks `stats`, so fall back to the reference blocks by
+  // index (hero-1 = Sentinel, hero-2 = Mender) — a missing block must not crash
+  // the first frame.
+  return roster.map((hero, i) => makeGolem({
+    id: hero.simId,
+    name: hero.name,
+    stats: hero.stats ?? (i === 1 ? MENDER_STATS : SENTINEL_STATS),
+    procedure: procedureFor(hero),
+  }))
 }
 
 /** The town screen is just the party with no enemies (render shows "Camp"). */
@@ -1179,24 +1185,33 @@ const EXPLORE_TICK_MS = 450
 let lastSaveMs = 0
 let tickHandle: ReturnType<typeof setTimeout> | undefined = undefined
 
+/** One delve step + its persistence cadence. Called only while `active` is delving;
+ *  reassigns the module `delve` to the stepped state. Split out so `tick` stays under
+ *  the complexity bar. */
+function advanceDelveTick(active: DelveState): void {
+  delve = stepDelve(active)
+  pumpSfx(delve.battle)
+  frame()
+  if (delve.status !== 'delving') {
+    maybeRecordClear() // first-clear of this level → into the profile's cleared set
+    renderRunBar() // surface "Back to town"
+    saveNow() // persist the finished delve (+ any first-clear)
+    return
+  }
+  const now = Date.now()
+  if (now - lastSaveMs >= 1000) {
+    saveNow() // periodic checkpoint: a crash/close mid-delve loses ~1s at most
+    lastSaveMs = now
+  }
+}
+
 function tick(): void {
   // Everything is wrapped so the loop is increvable: a throw anywhere (render,
   // audio, save) must NOT stop the reschedule, or the whole game freezes for
   // good. The error is logged (open DevTools to see it) but never fatal.
   try {
     if (screen === 'game' && mode === 'delve' && delve !== null && delve.status === 'delving') {
-      delve = stepDelve(delve)
-      pumpSfx(delve.battle)
-      frame()
-      const now = Date.now()
-      if (delve.status !== 'delving') {
-        maybeRecordClear() // first-clear of this level → into the profile's cleared set
-        renderRunBar() // surface "Back to town"
-        saveNow() // persist the finished delve (+ any first-clear)
-      } else if (now - lastSaveMs >= 1000) {
-        saveNow() // periodic checkpoint: a crash/close mid-delve loses ~1s at most
-        lastSaveMs = now
-      }
+      advanceDelveTick(delve)
     }
   } catch (err) {
     log.error('[tick] error (loop survives):', err)
