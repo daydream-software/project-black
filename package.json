@@ -7,9 +7,12 @@
     "dev": "vite",
     "build": "tsc && vite build",
     "preview": "vite preview",
+    "lint": "eslint .",
     "test": "vitest run"
   },
   "devDependencies": {
+    "eslint": "^9.39.4",
+    "eslint-config-love": "^154.0.0",
     "typescript": "^5.6.3",
     "vite": "^6.0.7",
     "vitest": "^2.1.8"

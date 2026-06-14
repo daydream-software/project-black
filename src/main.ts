@@ -96,7 +96,7 @@ let lastDelveLog: DelveState['log'] = []
  *  delve can reach 'cleared': the live ticker, and on resuming a delve that was
  *  already saved as cleared. */
 function maybeRecordClear(): void {
-  if (delve !== null && delve.status === 'cleared' && delve.levelId) {
+  if (delve !== null && delve.status === 'cleared' && delve.levelId !== '') {
     const r = applyClear(clearedLevels, insight, delve.levelId)
     clearedLevels = r.clearedLevels
     insight = r.insight
@@ -150,7 +150,7 @@ const sprites = { hero: makeHero(), heroBack: makeHeroBack(), slime: makeSlime()
 // lands so the foyer replaces the drawn-placeholder town.
 const foyerImg = new Image()
 foyerImg.src = foyerUrl
-foyerImg.onload = () => frame()
+foyerImg.onload = () => { frame(); }
 
 // The screen shell sits above the in-game mode: title → slots → game (where the
 // game's own town/delve `mode` lives). `activeSlot` is the profile every save
@@ -193,7 +193,7 @@ function partyUnits(): Combatant[] {
 }
 
 function esc(s: string): string {
-  return s.replace(/[&<>"']/g, (ch) =>
+  return s.replace(/[&<>"']/gu, (ch) =>
     ch === '&' ? '&amp;' : ch === '<' ? '&lt;' : ch === '>' ? '&gt;' : ch === '"' ? '&quot;' : '&#39;',
   )
 }
@@ -302,7 +302,7 @@ function enterSlot(index: number): void {
   if (saved.delve !== null) {
     // Resume the delve as saved — no fast-forward (no offline progress).
     // (Pre-10a delves lack levelId — default it so first-clear tracking has a key.)
-    delve = { ...saved.delve, levelId: saved.delve.levelId || LEVELS[0].id }
+    delve = { ...saved.delve, levelId: saved.delve.levelId !== '' ? saved.delve.levelId : LEVELS[0].id }
     mode = 'delve'
     maybeRecordClear() // a delve already saved as cleared still counts on resume
   } else {
@@ -362,7 +362,9 @@ function slotSummary(info: SlotInfo): string {
 
 function renderSlots(): void {
   slotListEl.replaceChildren()
-  for (const info of listSlots()) {
+  // The card builder is declared outside the loop: its button handlers close over
+  // the module-level `pendingDelete`, which a loop-declared closure must not.
+  const addCard = (info: SlotInfo): void => {
     const empty = info.savedAt === null
     const card = document.createElement('div')
     card.className = empty ? 'slot-card empty' : 'slot-card'
@@ -384,7 +386,7 @@ function renderSlots(): void {
     const actions = document.createElement('div')
     actions.className = 'slot-actions'
     if (empty) {
-      actions.append(makeButton('New game', 'Start a new profile here', () => newGame(info.index)))
+      actions.append(makeButton('New game', 'Start a new profile here', () => { newGame(info.index); }))
     } else if (pendingDelete === info.index) {
       const yes = makeButton('Confirm', 'Permanently erase this profile', () => {
         deleteSlot(info.index)
@@ -398,7 +400,7 @@ function renderSlots(): void {
       })
       actions.append(yes, cancel)
     } else {
-      actions.append(makeButton('Continue', 'Resume this profile', () => enterSlot(info.index)))
+      actions.append(makeButton('Continue', 'Resume this profile', () => { enterSlot(info.index); }))
       const del = makeButton('Delete', 'Erase this profile', () => {
         pendingDelete = info.index
         renderSlots()
@@ -410,6 +412,7 @@ function renderSlots(): void {
     card.append(no, body, actions)
     slotListEl.appendChild(card)
   }
+  for (const info of listSlots()) addCard(info)
 }
 
 /** A structural edit (add / remove / reorder / enable-toggle) — rebuild the editor
@@ -433,7 +436,7 @@ function persist(): void {
 }
 
 function move(i: number, dir: number): void {
-  const rows = roster[activeHero].rows
+  const {rows} = roster[activeHero]
   const j = i + dir
   if (j < 0 || j >= rows.length) return
   ;[rows[i], rows[j]] = [rows[j], rows[i]]
@@ -448,7 +451,7 @@ let closeOpenDropdown: (() => void) | null = null
 document.addEventListener('click', () => closeOpenDropdown?.())
 
 function makeSelect(
-  options: { value: string; label: string }[],
+  options: Array<{ value: string; label: string }>,
   selected: string,
   onChange: (value: string) => void,
   disabled = false,
@@ -486,7 +489,8 @@ function makeSelect(
     closeOpenDropdown = close
   }
 
-  for (const opt of options) {
+  // Declared outside the loop: the click handler closes over the mutable `value`.
+  const addItem = (opt: { value: string; label: string }): void => {
     const item = document.createElement('button')
     item.type = 'button'
     item.className = opt.value === value ? 'dropdown-item selected' : 'dropdown-item'
@@ -503,6 +507,7 @@ function makeSelect(
     })
     list.appendChild(item)
   }
+  for (const opt of options) addItem(opt)
 
   head.addEventListener('click', (e) => {
     e.stopPropagation() // so the document handler doesn't close it on the opening click
@@ -557,7 +562,7 @@ function ruleCard(ruleEls: HTMLElement[], c: CardControls): HTMLLIElement {
   chk.checked = c.enabled
   chk.disabled = c.locked
   chk.title = 'Enable / disable this rule'
-  chk.addEventListener('change', () => c.onToggle(chk.checked))
+  chk.addEventListener('change', () => { c.onToggle(chk.checked); })
 
   const ruleLine = document.createElement('div')
   ruleLine.className = 'rule-line'
@@ -586,7 +591,7 @@ function ruleCard(ruleEls: HTMLElement[], c: CardControls): HTMLLIElement {
 // One row of the combat Procedure — a single Protocol: Subject · Predicate →
 // Command [· Object].
 function createRow(row: ProtocolRow, i: number): HTMLLIElement {
-  const rows = roster[activeHero].rows
+  const {rows} = roster[activeHero]
   const locked = editingLocked()
 
   const subjSel = makeSelect(
@@ -660,8 +665,8 @@ function createRow(row: ProtocolRow, i: number): HTMLLIElement {
       row.enabled = on
       commit()
     },
-    onUp: () => move(i, -1),
-    onDown: () => move(i, 1),
+    onUp: () => { move(i, -1); },
+    onDown: () => { move(i, 1); },
     onDelete: () => {
       rows.splice(i, 1)
       commit()
@@ -705,7 +710,9 @@ function renderRunBar(): void {
 function renderLevelSelect(): void {
   levelSelectEl.replaceChildren()
   if (mode !== 'camp' || delve !== null) return
-  for (const level of LEVELS) {
+  // The chip builder is declared OUTSIDE the loop (its click handler closes over
+  // the module-level `selectedLevelId`, which a loop-declared closure must not).
+  const addChip = (level: (typeof LEVELS)[number]): void => {
     const chip = document.createElement('button')
     chip.type = 'button'
     chip.className = level.id === selectedLevelId ? 'level-chip selected' : 'level-chip'
@@ -730,6 +737,7 @@ function renderLevelSelect(): void {
     })
     levelSelectEl.append(chip)
   }
+  for (const level of LEVELS) addChip(level)
 }
 
 // --- Buildings: full-screen modals over the world (Workshop / Library / Journal) --
@@ -764,7 +772,7 @@ function makeDraggable(panel: HTMLElement, handle: HTMLElement | null): void {
   let sy = 0
   let dragging = false
   handle.addEventListener('pointerdown', (e) => {
-    if (e.target instanceof HTMLElement && e.target.closest('[data-close-modal]')) return // the ✕ isn't a drag
+    if (e.target instanceof HTMLElement && e.target.closest('[data-close-modal]') !== null) return // the ✕ isn't a drag
     dragging = true
     const r = panel.getBoundingClientRect()
     ox = r.left
@@ -826,7 +834,7 @@ function renderTrainer(): void {
       const cost = document.createElement('span')
       cost.className = 'ti-cost'
       cost.textContent = `✦ ${u.cost}`
-      const btn = makeButton('Learn', 'Spend Insight to learn this', () => buyUnlock(u.id))
+      const btn = makeButton('Learn', 'Spend Insight to learn this', () => { buyUnlock(u.id); })
       btn.disabled = !canAfford(insight, u.id)
       buyCol.append(cost, btn)
     }
@@ -857,7 +865,7 @@ function renderTabs(): void {
     const tab = document.createElement('button')
     tab.className = i === activeHero ? 'tab active' : 'tab'
     const unit = units.find((u) => u.id === hero.simId)
-    const hp = unit ? `${Math.max(0, unit.hp)}/${unit.maxHp}` : ''
+    const hp = unit !== undefined ? `${Math.max(0, unit.hp)}/${unit.maxHp}` : ''
     // Prefer the sim unit's name (always current) over the saved roster name, so a
     // pre-U4 profile shows the golem names too without migrating the save.
     tab.textContent = `${unit?.name ?? hero.name}  ${hp}`
@@ -931,8 +939,8 @@ function createExRow(row: ExProtocolRow, i: number): HTMLLIElement {
       row.enabled = on
       commit()
     },
-    onUp: () => exMove(i, -1),
-    onDown: () => exMove(i, 1),
+    onUp: () => { exMove(i, -1); },
+    onDown: () => { exMove(i, 1); },
     onDelete: () => {
       exploration.splice(i, 1)
       commit()
@@ -950,7 +958,7 @@ function exMove(i: number, dir: number): void {
 function renderExEditor(): void {
   exAddBtn.disabled = editingLocked()
   exEditorEl.replaceChildren()
-  exploration.forEach((row, i) => exEditorEl.appendChild(createExRow(row, i)))
+  exploration.forEach((row, i) => { exEditorEl.appendChild(createExRow(row, i)) })
 }
 
 // Map a delve-log kind to one of the existing log-entry colour classes.
@@ -970,7 +978,7 @@ function renderLog(): void {
 function highlightFiringProtocol(): void {
   for (const li of enabledLis) li.classList.remove('active')
   const last = delve?.battle?.log.at(-1)
-  if (last === undefined || last.actorId !== roster[activeHero].simId) return
+  if (last?.actorId !== roster[activeHero].simId) return
   const idx = last.protocolIndex
   if (idx >= 0 && idx < enabledLis.length) enabledLis[idx].classList.add('active')
 }
@@ -978,7 +986,7 @@ function highlightFiringProtocol(): void {
 /** Which theme the game wants right now: town / dungeon / boss (the objective fight). */
 function musicTrack(): TrackId {
   if (mode === 'camp' || delve === null) return 'camp'
-  if (delve.battle !== null && delve.battle.units.some((u) => u.side === 'enemy' && u.isBoss === true)) return 'boss'
+  if (delve.battle?.units.some((u) => u.side === 'enemy' && u.isBoss === true) === true) return 'boss'
   return 'run'
 }
 
@@ -996,7 +1004,7 @@ function resizeCanvas(): void {
   const w = canvas.clientWidth
   const h = canvas.clientHeight
   if (w === 0 || h === 0) return
-  const dpr = Math.min(window.devicePixelRatio || 1, 3)
+  const dpr = Math.min(window.devicePixelRatio > 0 ? window.devicePixelRatio : 1, 3)
   const bw = Math.round(w * dpr)
   const bh = Math.round(h * dpr)
   if (canvas.width !== bw || canvas.height !== bh) {
@@ -1045,7 +1053,7 @@ slotsBackBtn.addEventListener('click', goToTitle)
 toSlotsBtn.addEventListener('click', backToSlots)
 
 // The Journal opens from its always-available button (it's readable mid-delve too).
-openJournalBtn.addEventListener('click', () => setBuilding('journal'))
+openJournalBtn.addEventListener('click', () => { setBuilding('journal'); })
 
 // The Workshop & Library are entered by clicking their buildings in the town scene.
 // Map a click to the renderer's CSS-pixel coordinate space (the backing store is
@@ -1087,13 +1095,13 @@ canvas.addEventListener('mouseleave', () => {
 for (const modal of [modalWorkshopEl, modalLibraryEl]) {
   modal.addEventListener('click', (e) => {
     const t = e.target
-    if (t === modal || (t instanceof HTMLElement && t.closest('[data-close-modal]'))) setBuilding(null)
+    if (t === modal || (t instanceof HTMLElement && t.closest('[data-close-modal]') !== null)) setBuilding(null)
   })
 }
 // The Journal is a floating panel (no backdrop): only its ✕ closes it; it's drag-
 // gable by its header and resizable from the corner (CSS). The world stays visible.
 modalJournalEl.addEventListener('click', (e) => {
-  if (e.target instanceof HTMLElement && e.target.closest('[data-close-modal]')) setBuilding(null)
+  if (e.target instanceof HTMLElement && e.target.closest('[data-close-modal]') !== null) setBuilding(null)
 })
 makeDraggable(modalJournalEl, modalJournalEl.querySelector('.float-drag'))
 
@@ -1184,7 +1192,7 @@ function tick(): void {
   } finally {
     // Pace the next tick by what the delve is doing now: slow mid-fight, brisk
     // while exploring or idle (so a freshly-started delve resumes promptly).
-    const inCombat = delve?.battle != null && delve.status === 'delving'
+    const inCombat = delve !== null && delve.battle !== null && delve.status === 'delving'
     tickHandle = setTimeout(tick, inCombat ? COMBAT_TICK_MS : EXPLORE_TICK_MS)
   }
 }
@@ -1196,8 +1204,8 @@ tickHandle = setTimeout(tick, EXPLORE_TICK_MS)
 document.addEventListener('visibilitychange', () => {
   if (document.hidden) saveNow()
 })
-window.addEventListener('pagehide', () => saveNow())
+window.addEventListener('pagehide', () => { saveNow(); })
 
 // Vite HMR re-runs this module on edit; without this, each hot update would stack
 // another timer and the fight would race. Clear ours when the module is replaced.
-if (import.meta.hot) import.meta.hot.dispose(() => clearTimeout(tickHandle))
+if (import.meta.hot !== undefined) import.meta.hot.dispose(() => { clearTimeout(tickHandle); })

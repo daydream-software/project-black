@@ -17,7 +17,7 @@ function spriteFromGrid(rows: string[], palette: Palette): HTMLCanvasElement {
   for (let y = 0; y < h; y++) {
     for (let x = 0; x < w; x++) {
       const col = palette[rows[y][x]]
-      if (col) {
+      if (col !== '') {
         ctx.fillStyle = col
         ctx.fillRect(x, y, 1, 1)
       }
@@ -57,7 +57,7 @@ export function makeSlime(): HTMLCanvasElement {
   const HI = '#cdf8d2'
   const WHITE = '#ffffff'
   const PUP = '#14281c'
-  const px = (x: number, y: number, col: string) => {
+  const px = (x: number, y: number, col: string): void => {
     ctx.fillStyle = col
     ctx.fillRect(x, y, 1, 1)
   }

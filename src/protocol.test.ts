@@ -62,11 +62,11 @@ describe('protocol — exploration rule compiler', () => {
   })
 
   it('byId throws on an unknown id (a corrupt/stale row must not pass silently)', () => {
-    expect(() => byId(EX_MOVES, 'teleport')).toThrow(/Unknown option/)
+    expect(() => byId(EX_MOVES, 'teleport')).toThrow(/Unknown option/u)
   })
 
   it('available() offers always-on options + unlocked ones, hides locked-unowned (10b gating)', () => {
-    const opts: Option<number>[] = [
+    const opts: Array<Option<number>> = [
       { id: 'a', label: 'A', make: () => 1 }, // always available
       { id: 'b', label: 'B', make: () => 2, unlock: 'buy-b' }, // locked
     ]
@@ -144,6 +144,6 @@ describe('protocol — combat rule compiler', () => {
   })
 
   it('commandById throws on an unknown command (a genuine wiring error, not stale data)', () => {
-    expect(() => commandById('parry')).toThrow(/Unknown command/)
+    expect(() => commandById('parry')).toThrow(/Unknown command/u)
   })
 })

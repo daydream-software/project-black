@@ -20,20 +20,20 @@ export interface Option<T> {
 
 /** The options the editor may offer right now: always-available ones, plus any
  *  whose `unlock` id the profile has purchased. Pure, so it's unit-testable. */
-export function available<T>(options: Option<T>[], unlocked: readonly string[]): Option<T>[] {
+export function available<T>(options: Array<Option<T>>, unlocked: readonly string[]): Array<Option<T>> {
   return options.filter((o) => o.unlock === undefined || unlocked.includes(o.unlock))
 }
 
 /** Look up an option by id, or `undefined` if no option has it. The tolerant form
  *  used when compiling persisted rows, where a stale/renamed id must not throw. */
-export function tryById<T>(list: Option<T>[], id: string): Option<T> | undefined {
+export function tryById<T>(list: Array<Option<T>>, id: string): Option<T> | undefined {
   return list.find((o) => o.id === id)
 }
 
 /** Look up an option by id, throwing on an unknown id. For call sites where an
  *  unknown id is a genuine programmer error, not stale player data — the row
  *  compilers below use the tolerant `tryById` + a resolve check instead. */
-export function byId<T>(list: Option<T>[], id: string): Option<T> {
+export function byId<T>(list: Array<Option<T>>, id: string): Option<T> {
   const found = tryById(list, id)
   if (found === undefined) throw new Error(`Unknown option: ${id}`)
   return found
@@ -43,20 +43,20 @@ export function byId<T>(list: Option<T>[], id: string): Option<T> {
 // Subject · Predicate → Move (no Object — a Move carries no skill). Each row is one
 // ExProtocol (delve.ts); the ids round-trip through ExProtocolRow.
 
-export const EX_SUBJECTS: Option<ExSubject>[] = [
+export const EX_SUBJECTS: Array<Option<ExSubject>> = [
   { id: 'target', label: 'Target', make: () => ({ what: 'target' }) },
   { id: 'unexplored', label: 'Unexplored', make: () => ({ what: 'unexplored' }) },
   { id: 'exit', label: 'Exit', make: () => ({ what: 'exit' }) },
 ]
 
-export const EX_PREDICATES: Option<ExPredicate>[] = [
+export const EX_PREDICATES: Array<Option<ExPredicate>> = [
   { id: 'always', label: 'Always', make: () => ({ p: 'always' }) },
   { id: 'known', label: 'known', make: () => ({ p: 'known' }) },
   { id: 'php_lt_50', label: 'party HP < 50%', make: () => ({ p: 'partyHpPctBelow', value: 50 }) },
   { id: 'php_lt_30', label: 'party HP < 30%', make: () => ({ p: 'partyHpPctBelow', value: 30 }) },
 ]
 
-export const EX_MOVES: Option<ExMove>[] = [
+export const EX_MOVES: Array<Option<ExMove>> = [
   { id: 'head', label: 'head toward', make: () => 'headToward' },
   { id: 'retreat', label: 'retreat', make: () => 'retreat' },
   { id: 'rest', label: 'rest', make: () => 'rest' },
@@ -106,7 +106,7 @@ export function buildExploration(rows: ExProtocolRow[]): ExProcedure {
 // above; ids round-trip through ProtocolRow. Lives here (not main.ts) so the
 // compiler is pure and unit-testable, like the exploration twin.
 
-export const SUBJECTS: Option<State['subject']>[] = [
+export const SUBJECTS: Array<Option<State['subject']>> = [
   { id: 'self', label: 'Self', make: () => ({ who: 'self' }) },
   { id: 'ally_any', label: 'Ally · any', make: () => ({ who: 'ally', pick: 'first' }) },
   { id: 'ally_low', label: 'Ally · low HP', make: () => ({ who: 'ally', pick: 'lowestHp' }) },
@@ -116,7 +116,7 @@ export const SUBJECTS: Option<State['subject']>[] = [
   { id: 'enemy_high', label: 'Enemy · most HP', make: () => ({ who: 'enemy', pick: 'highestHp' }), unlock: 'enemy-most-hp' },
 ]
 
-export const PREDICATES: Option<State['predicate']>[] = [
+export const PREDICATES: Array<Option<State['predicate']>> = [
   { id: 'always', label: 'Always', make: () => ({ p: 'always' }) },
   { id: 'hp_lt_30', label: 'HP < 30%', make: () => ({ p: 'hpPctBelow', value: 30 }) },
   { id: 'hp_lt_50', label: 'HP < 50%', make: () => ({ p: 'hpPctBelow', value: 50 }) },
@@ -137,7 +137,7 @@ export const COMMANDS: Command[] = [
   { id: 'flee', label: 'Flee', hasObject: false },
 ]
 
-export const SKILLS: { id: SkillId; label: string }[] = [
+export const SKILLS: Array<{ id: SkillId; label: string }> = [
   { id: 'mend', label: 'Mend' },
   { id: 'defend', label: 'Defend' },
 ]

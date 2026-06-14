@@ -215,8 +215,8 @@ function drawZoneHighlight(ctx: CanvasRenderingContext2D, r: BuildingRect): void
   ctx.fillStyle = '#e6fffb'
   const tx = r.x + r.w / 2
   const ty = r.y + 10
-  ctx.strokeText('▶ ' + r.label, tx, ty)
-  ctx.fillText('▶ ' + r.label, tx, ty)
+  ctx.strokeText(`▶ ${  r.label}`, tx, ty)
+  ctx.fillText(`▶ ${  r.label}`, tx, ty)
   ctx.restore()
   ctx.textAlign = 'left'
   ctx.textBaseline = 'top'
@@ -248,7 +248,7 @@ export function render(
   // backdrop you click into (Workshop / Library). The drawn placeholder below is
   // the fallback until the image loads.
   if (enemies.length === 0) {
-    if (foyer && foyer.complete && foyer.naturalWidth > 0) {
+    if (foyer !== null && foyer.complete && foyer.naturalWidth > 0) {
       const { ix, iy, iw, ih } = foyerLayout(width, height)
       // The artwork is square; on a wide screen a contain-fit leaves side bars.
       // Fill them with a blurred, darkened cover-copy of the foyer so it reads
@@ -268,7 +268,7 @@ export function render(
       ctx.drawImage(foyer, ix, iy, iw, ih)
       if (hovered !== null) {
         const r = buildingRects(width, height).find((b) => b.id === hovered)
-        if (r) drawZoneHighlight(ctx, r)
+        if (r !== undefined) drawZoneHighlight(ctx, r)
       }
       return
     }
@@ -290,7 +290,7 @@ export function render(
     const slot = Math.max(heroW * 1.6, Math.round(width * 0.2))
     const startX = (width - heroes.length * slot) / 2 + (slot - heroW) / 2
     const baseY = height - groundH - heroH // feet on the ground band
-    heroes.forEach((u, i) => drawUnit(ctx, u, sprites.hero, startX + i * slot, baseY, '#4fd1ff', SS))
+    heroes.forEach((u, i) => { drawUnit(ctx, u, sprites.hero, startX + i * slot, baseY, '#4fd1ff', SS); })
     return
   }
 
@@ -355,9 +355,10 @@ function drawDungeonView(ctx: CanvasRenderingContext2D, delve: DelveState, sprit
   const SS = unitScale(height)
   const d = delve.dungeon
   const fwd = delve.facing
+  const DIRS = [0, 1, 2, 3] as const // index back into Dir without an unsafe assertion
   const aheadCell = neighbourCell(d, delve.pos, fwd)
-  const leftCell = neighbourCell(d, delve.pos, ((fwd + 3) % 4) as Dir)
-  const rightCell = neighbourCell(d, delve.pos, ((fwd + 1) % 4) as Dir)
+  const leftCell = neighbourCell(d, delve.pos, DIRS[(fwd + 3) % 4])
+  const rightCell = neighbourCell(d, delve.pos, DIRS[(fwd + 1) % 4])
   const aheadFloor = aheadCell >= 0 && d.cells[aheadCell]
   const aheadSeen = aheadFloor && delve.explored[aheadCell]
   const aheadRoom = aheadFloor ? roomAt(d, aheadCell) : -1
@@ -463,7 +464,7 @@ function drawDungeonView(ctx: CanvasRenderingContext2D, delve: DelveState, sprit
     // Strain readout for channelers (Poise > 0): the arcane budget, amber once it
     // overdraws into Fortitude. The trade-off (cast now vs. save it to rest) must be
     // legible in a game you watch.
-    const poise = h.poise ?? 0
+    const poise = h.poise
     if (poise > 0 && !dead) {
       const strain = h.strain ?? 0
       const over = strain > poise
@@ -563,7 +564,7 @@ function drawMinimap(ctx: CanvasRenderingContext2D, delve: DelveState): void {
   // objective, if discovered
   const obj = d.rooms[d.objectiveRoomId]
   let objKnown = false
-  for (let y = obj.y; y < obj.y + obj.h && !objKnown; y++) for (let x = obj.x; x < obj.x + obj.w; x++) if (delve.explored[y * d.width + x]) objKnown = true
+  for (let {y} = obj; y < obj.y + obj.h && !objKnown; y++) for (let {x} = obj; x < obj.x + obj.w; x++) if (delve.explored[y * d.width + x]) objKnown = true
   if (objKnown) {
     ctx.fillStyle = '#c78bff'
     ctx.fillRect(x0 + (obj.x + (obj.w >> 1)) * cs, y0 + (obj.y + (obj.h >> 1)) * cs, cs - 1, cs - 1)

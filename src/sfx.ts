@@ -55,7 +55,10 @@ export async function setSfxEnabled(on: boolean): Promise<void> {
   try {
     const ctx = audioContext()
     await ctx.resume()
-    await Promise.all((Object.keys(URLS) as SfxId[]).map((id) => preload(ctx, id)))
+    // Object.keys widens to string[]; the keys of a Record<SfxId, …> are SfxId by construction.
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion -- safe by Record key type
+    const ids = Object.keys(URLS) as SfxId[]
+    await Promise.all(ids.map(async (id) => { await preload(ctx, id); }))
   } catch {
     /* leave enabled true; playSfx no-ops until buffers exist */
   }
@@ -98,7 +101,7 @@ export function playSfx(id: SfxId): void {
 }
 
 // Vite HMR: drop decoded buffers on hot update (music.ts owns the context).
-if (import.meta.hot) {
+if (import.meta.hot !== undefined) {
   import.meta.hot.dispose(() => {
     voices.clear()
     buffers.clear()

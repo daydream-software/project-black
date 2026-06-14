@@ -99,7 +99,7 @@ function reveal(d: Dungeon, cell: number, explored: boolean[]): void {
   const rid = roomAt(d, cell)
   if (rid >= 0) {
     const r = d.rooms[rid]
-    for (let y = r.y; y < r.y + r.h; y++) for (let x = r.x; x < r.x + r.w; x++) explored[y * d.width + x] = true
+    for (let {y} = r; y < r.y + r.h; y++) for (let {x} = r; x < r.x + r.w; x++) explored[y * d.width + x] = true
   }
 }
 
@@ -110,11 +110,13 @@ function stepTowardKnown(d: Dungeon, from: number, goal: number, passable: (c: n
   const prev = new Map<number, number>()
   const seen = new Set<number>([from])
   const queue = [from]
-  for (let h = 0; h < queue.length; h++) {
-    for (const nb of floorNeighbours(d, queue[h])) {
+  // for-of over a growing array: the array iterator re-reads length, so pushed
+  // cells are visited — a standard BFS queue walk.
+  for (const cur of queue) {
+    for (const nb of floorNeighbours(d, cur)) {
       if (seen.has(nb) || (nb !== goal && !passable(nb))) continue
       seen.add(nb)
-      prev.set(nb, queue[h])
+      prev.set(nb, cur)
       if (nb === goal) return firstStep(prev, from, goal)
       queue.push(nb)
     }
@@ -129,11 +131,11 @@ function stepTowardFrontier(d: Dungeon, from: number, explored: boolean[]): numb
   const prev = new Map<number, number>()
   const seen = new Set<number>([from])
   const queue = [from]
-  for (let h = 0; h < queue.length; h++) {
-    for (const nb of floorNeighbours(d, queue[h])) {
+  for (const cur of queue) {
+    for (const nb of floorNeighbours(d, cur)) {
       if (!explored[nb] || seen.has(nb)) continue // only travel through the known
       seen.add(nb)
-      prev.set(nb, queue[h])
+      prev.set(nb, cur)
       if (floorNeighbours(d, nb).some((n2) => !explored[n2])) return firstStep(prev, from, nb) // nb is a frontier
       queue.push(nb)
     }
@@ -164,8 +166,8 @@ function knownObjectiveCell(s: DelveState): number {
   const obj = s.dungeon.rooms[s.dungeon.objectiveRoomId]
   let best = -1
   let bestDist = Infinity
-  for (let y = obj.y; y < obj.y + obj.h; y++) {
-    for (let x = obj.x; x < obj.x + obj.w; x++) {
+  for (let {y} = obj; y < obj.y + obj.h; y++) {
+    for (let {x} = obj; x < obj.x + obj.w; x++) {
       const c = y * s.dungeon.width + x
       if (!s.explored[c]) continue
       const dist = Math.abs(x - (s.pos % s.dungeon.width)) + Math.abs(y - ((s.pos / s.dungeon.width) | 0))

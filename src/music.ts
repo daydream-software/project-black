@@ -86,12 +86,12 @@ async function crossfadeTo(id: TrackId): Promise<void> {
  * track — `pendingId` guards against the every-frame re-entry that would
  * otherwise spawn overlapping sources (stutter) while a buffer is still loading.
  */
-function transitionTo(id: TrackId): Promise<void> {
-  if (current?.id === id || pendingId === id) return Promise.resolve()
+async function transitionTo(id: TrackId): Promise<void> {
+  if (current?.id === id || pendingId === id) { await Promise.resolve(); return; }
   pendingId = id
-  return crossfadeTo(id).finally(() => {
+  await crossfadeTo(id).finally(() => {
     if (pendingId === id) pendingId = undefined
-  })
+  });
 }
 
 /**
@@ -112,7 +112,7 @@ export function setMusicState(id: TrackId): void {
  * lazily — the first caller must be inside a user gesture (the music toggle).
  */
 export function audioContext(): AudioContext {
-  if (ctx === undefined) ctx = new AudioContext()
+  ctx ??= new AudioContext()
   return ctx
 }
 
@@ -131,7 +131,7 @@ export async function toggleMusic(): Promise<boolean> {
 }
 
 // Vite HMR: tear down audio on hot update so contexts don't stack (stutter).
-if (import.meta.hot) {
+if (import.meta.hot !== undefined) {
   import.meta.hot.dispose(() => {
     try {
       current?.src.stop()

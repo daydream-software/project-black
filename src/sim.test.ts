@@ -429,7 +429,7 @@ describe('counter-heal — the wall reacts to restorative magic', () => {
 
   it('a heal that restores HP draws a counter on the SAME turn (no extra turn taken)', () => {
     const s = step(healerVsWarden(mendSelf))
-    const log = s.log
+    const {log} = s
     expect(log.at(-2)?.kind).toBe('heal') // the mend
     expect(log.at(-1)?.kind).toBe('counter') // the punish, same turn
     expect(log.at(-1)?.turn).toBe(log.at(-2)?.turn)

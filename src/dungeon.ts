@@ -107,8 +107,7 @@ export function bfsDistances(d: Dungeon, start: number): number[] {
   if (!d.cells[start]) return dist
   dist[start] = 0
   const queue = [start]
-  for (let head = 0; head < queue.length; head++) {
-    const cell = queue[head]
+  for (const cell of queue) {
     const x = cell % d.width
     const y = (cell / d.width) | 0
     for (let k = 0; k < 4; k++) {
@@ -135,7 +134,7 @@ function rectsOverlap(a: Room, b: { x: number; y: number; w: number; h: number }
 }
 
 function carveRoom(cells: boolean[], width: number, r: { x: number; y: number; w: number; h: number }): void {
-  for (let y = r.y; y < r.y + r.h; y++) for (let x = r.x; x < r.x + r.w; x++) cells[y * width + x] = true
+  for (let {y} = r; y < r.y + r.h; y++) for (let {x} = r; x < r.x + r.w; x++) cells[y * width + x] = true
 }
 
 function carveH(cells: boolean[], width: number, x1: number, x2: number, y: number): void {
