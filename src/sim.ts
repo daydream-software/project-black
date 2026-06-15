@@ -16,6 +16,11 @@
 // Object is WHAT is wielded (the chosen skill/item). Attack and Flee take no
 // Object, just as a bare predicate needs no qualifier.
 
+// Monster stat blocks are content (one file per monster); the bestiary map is
+// assembled by glob. Only a runtime VALUE import — the monster files depend on this
+// module for TYPES only (erased), so there is no import cycle.
+import { MONSTERS } from './content/monsters'
+
 export type Side = 'hero' | 'enemy'
 
 /**
@@ -372,6 +377,18 @@ type UnitSpec = Stats & {
   isBoss?: boolean
 }
 
+/** A monster's design-time bestiary entry: its stat block + trait values, with NO
+ *  `side`/`procedure` (those are applied by the factory at battle build) and no
+ *  derived hp. One file per monster under content/monsters/; assembled into the
+ *  `MONSTERS` by-id map. The `id` is the bestiary key (monsters aren't persisted, so
+ *  it is NOT a save contract); the factory templates the runtime id/name for packs. */
+export interface MonsterDef extends Stats {
+  id: string
+  name: string
+  counterHeal?: number
+  isBoss?: boolean
+}
+
 /** Build a Combatant from a stat block: maxHp derives from Fortitude, hp starts
  *  full. Keeps every builder honest about the stat → pool relationship. */
 function makeUnit(base: UnitSpec): Combatant {
@@ -379,51 +396,16 @@ function makeUnit(base: UnitSpec): Combatant {
   return { ...base, hp: maxHp, maxHp, defending: false, strain: 0 }
 }
 
-// Slime: a feeble chip-attacker with no Ward — the unit Ward is designed to shrug.
-// Compact scale (24-budget pass): a 3-pack is ~36 HP of trash a competent build
-// clears, while staying lethal to a careless one.
+// Monster stat blocks live in content/monsters/ (the bestiary); these factories
+// apply the runtime side/procedure (and, for packs, an index-templated id/name).
 export function makeEnemy(index: number): Combatant {
-  return makeUnit({
-    id: `enemy-${index}`,
-    name: `Slime #${index}`,
-    side: 'enemy',
-    might: 2,
-    ward: 0,
-    fortitude: 3,
-    attunement: 0,
-    poise: 0,
-    celerity: 4,
-    procedure: ENEMY_PROCEDURE,
-  })
+  const def = MONSTERS.slime
+  return makeUnit({ ...def, id: `enemy-${index}`, name: `${def.name} #${index}`, side: 'enemy', procedure: ENEMY_PROCEDURE })
 }
 
-/**
- * The slice-4 "wall": a single boss that punishes restorative magic. Every time
- * a hero is healed, the Warden strikes the healed unit for `counterHeal`, which
- * more than undoes the Mend — so the naive "Mend when an ally is low" Procedure
- * is a trap. The only fix in the shipped vocabulary is for the Mender to STOP
- * mending and add its damage to the race instead (the Sentinel tanks on its own
- * Self·HP<30%→Defend rule). Tuned so the mend-spam default genuinely wipes.
- */
 export function makeWarden(): Combatant {
-  return makeUnit({
-    id: 'enemy-1',
-    name: 'Hex Warden',
-    side: 'enemy',
-    // Off-balance and unbounded (monsters ignore the player's caps): a big
-    // Fortitude pool so it survives the fast Mender's front-load, and a counter
-    // that exceeds the Mender's heal so mend-spam is a net loss. Tuned against the
-    // slice-4 discriminating tests under the CTB schedule.
-    might: 4,
-    ward: 0,
-    fortitude: 10,
-    attunement: 0,
-    poise: 0,
-    celerity: 4,
-    procedure: ENEMY_PROCEDURE,
-    counterHeal: 4,
-    isBoss: true,
-  })
+  // Runtime id 'enemy-1' (monsters aren't persisted; the bestiary id is 'hex-warden').
+  return makeUnit({ ...MONSTERS['hex-warden'], id: 'enemy-1', side: 'enemy', procedure: ENEMY_PROCEDURE })
 }
 
 /** Build a hero golem from an AUTHORED stat block + its Procedure — the generic,

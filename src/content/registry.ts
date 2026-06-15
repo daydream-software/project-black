@@ -35,3 +35,14 @@ export function collect<T extends { id: string; order: number }>(mods: Record<st
   }
   return [...items].sort((a, b) => a.order - b.order)
 }
+
+/** Assemble a glob record into a by-id map (for content looked up by id rather than
+ *  listed in order — e.g. the monster bestiary). De-dupes ids like `collect`. */
+export function indexById<T extends { id: string }>(mods: Record<string, T>): Record<string, T> {
+  const out: Record<string, T> = {}
+  for (const item of Object.values(mods)) {
+    if (item.id in out) throw new Error(`Duplicate content id: ${item.id}`)
+    out[item.id] = item
+  }
+  return out
+}
