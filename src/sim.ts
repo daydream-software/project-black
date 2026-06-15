@@ -24,8 +24,6 @@ import { MONSTERS } from './content/monsters'
 // dependency, no cycle. Combat primitives sim uses internally come from combat-core.
 import { SKILLS_BY_ID } from './content/skills'
 import { DAMAGE_MODIFIERS } from './content/combat/modifiers'
-import { REACTIONS } from './content/combat/reactions'
-import { livingEnemies, pickFirst } from './content/combat/targeting'
 import { attackDamage, poolFor, recovery } from './combat-core'
 
 export type Side = 'hero' | 'enemy'
@@ -81,11 +79,12 @@ export interface Combatant extends Stats {
    */
   strain?: number
   /**
-   * Wall trait: when an enemy of this unit is healed, this unit strikes the
-   * healed target for this much (it feeds on / punishes restorative magic).
-   * Undefined / 0 = no counter. Drives the slice-4 "counter-heal" wall.
+   * The reactive half of this unit's authored intelligence: rules that fire in
+   * response to battle events (the Hex Warden's counter-heal is one). Like the
+   * Procedure, these come from the unit's definition — we author monsters', the
+   * player will author golems' later. Absent = purely proactive (e.g. a slime).
    */
-  counterHeal?: number
+  reactions?: Reaction[]
   /** Render hint: draw larger / mark as a boss. */
   isBoss?: boolean
 }
@@ -200,16 +199,18 @@ export type CombatEvent =
   | { kind: 'damage'; target: Combatant; source: Combatant; amount: number; units: Combatant[] }
   | { kind: 'heal'; healed: Combatant; source: Combatant; units: Combatant[] }
 
-/** A generic reaction (content/combat/reactions/): it listens for one event `kind`
- *  and, when the engine emits that event, responds — mutating the (already-cloned)
- *  units in place and returning log entries to append. The engine folds whatever is
- *  registered for the event's kind; it never hard-codes any specific reaction (the
- *  counter-heal wall is just a `heal` reaction). Reactions fire in `order`. */
+/** A reaction a unit OWNS — part of its authored intelligence, like a Protocol is
+ *  part of its Procedure (players author golem Procedures; we author monster
+ *  Procedures AND reactions). It listens for one event `kind`; when the engine emits
+ *  that event, the OWNING unit reacts — `react(event, owner, meta)` runs as `owner`
+ *  (the Hex Warden's counter-heal strikes the healed enemy AS the Warden), mutating
+ *  the cloned units in place and returning log entries. Reusable reactions are
+ *  factories (e.g. `counterHeal(4)`) a monster file composes. Fire in `order`. */
 export interface Reaction {
   id: string
   order: number
   kind: CombatEvent['kind']
-  react: (event: CombatEvent, meta: { turn: number; round: number }) => LogEntry[]
+  react: (event: CombatEvent, owner: Combatant, meta: { turn: number; round: number }) => LogEntry[]
 }
 
 // --- Maneuver = Command + which --------------------------------------------
@@ -345,20 +346,6 @@ export interface GameState {
   outcome: Outcome
 }
 
-// Enemies share one trivial Procedure: hit the nearest hero. Generic by side —
-// from a slime's perspective "enemy" is the party. Composed from the shared targeting
-// helpers (the same ones the player's Subject content uses), not a tag the engine
-// interprets.
-const ENEMY_PROCEDURE: Procedure = [
-  {
-    state: {
-      subject: { id: 'enemy_near', label: 'Enemy · near', order: 0, candidates: livingEnemies, pick: pickFirst },
-      predicate: { id: 'always', label: 'Always', order: 0, holds: () => true },
-    },
-    maneuver: { command: 'attack' },
-    label: 'Enemy nearest · Always → Attack',
-  },
-]
 
 /** A unit's defining fields (everything except the derived hp/maxHp/defending). */
 type UnitSpec = Stats & {
@@ -366,19 +353,21 @@ type UnitSpec = Stats & {
   name: string
   side: Side
   procedure: Procedure
-  counterHeal?: number
+  reactions?: Reaction[]
   isBoss?: boolean
 }
 
-/** A monster's design-time bestiary entry: its stat block + trait values, with NO
- *  `side`/`procedure` (those are applied by the factory at battle build) and no
- *  derived hp. One file per monster under content/monsters/; assembled into the
- *  `MONSTERS` by-id map. The `id` is the bestiary key (monsters aren't persisted, so
- *  it is NOT a save contract); the factory templates the runtime id/name for packs. */
+/** A monster's design-time definition: its full authored intelligence — a stat block,
+ *  a `procedure` (the same WHEN→DO rules a golem runs, authored by US), and any
+ *  `reactions` it owns (the Hex Warden's counter-heal). No `side`/derived hp (the
+ *  factory applies those). One file per monster under content/monsters/, assembled
+ *  into `MONSTERS`. `id` is the bestiary key (monsters aren't persisted — not a save
+ *  contract); the factory templates the runtime id/name for packs. */
 export interface MonsterDef extends Stats {
   id: string
   name: string
-  counterHeal?: number
+  procedure: Procedure
+  reactions?: Reaction[]
   isBoss?: boolean
 }
 
@@ -389,16 +378,16 @@ function makeUnit(base: UnitSpec): Combatant {
   return { ...base, hp: maxHp, maxHp, defending: false, strain: 0 }
 }
 
-// Monster stat blocks live in content/monsters/ (the bestiary); these factories
-// apply the runtime side/procedure (and, for packs, an index-templated id/name).
+// Monster definitions (stats + procedure + reactions) live in content/monsters/; these
+// factories just stamp the runtime side and, for packs, an index-templated id/name.
 export function makeEnemy(index: number): Combatant {
   const def = MONSTERS.slime
-  return makeUnit({ ...def, id: `enemy-${index}`, name: `${def.name} #${index}`, side: 'enemy', procedure: ENEMY_PROCEDURE })
+  return makeUnit({ ...def, id: `enemy-${index}`, name: `${def.name} #${index}`, side: 'enemy' })
 }
 
 export function makeWarden(): Combatant {
   // Runtime id 'enemy-1' (monsters aren't persisted; the bestiary id is 'hex-warden').
-  return makeUnit({ ...MONSTERS['hex-warden'], id: 'enemy-1', side: 'enemy', procedure: ENEMY_PROCEDURE })
+  return makeUnit({ ...MONSTERS['hex-warden'], id: 'enemy-1', side: 'enemy' })
 }
 
 /** Build a hero golem from an AUTHORED stat block + its Procedure — the generic,
@@ -519,11 +508,19 @@ function advanceCharges(units: Combatant[], actorIdx: number): void {
 
 /* eslint-enable no-param-reassign */
 
-/** Fire every reaction registered for this event's kind, in `order`, and collect the
- *  log entries they return (they mutate the cloned units in place). The engine's whole
- *  knowledge of reactions is this fold — it never references a specific one. */
+/** Fire the matching reactions OWNED by each living unit and collect their log entries
+ *  (they mutate the cloned units in place). Each unit reacts with its own authored
+ *  intelligence — the engine never references a specific reaction, it just asks every
+ *  unit "do you react to this?". A unit's reactions fire in their listed order. */
 function emit(event: CombatEvent, meta: { turn: number; round: number }): LogEntry[] {
-  return REACTIONS.filter((r) => r.kind === event.kind).flatMap((r) => r.react(event, meta))
+  const entries: LogEntry[] = []
+  for (const owner of event.units) {
+    if (owner.hp <= 0) continue
+    for (const r of owner.reactions ?? []) {
+      if (r.kind === event.kind) entries.push(...r.react(event, owner, meta))
+    }
+  }
+  return entries
 }
 
 /** The events one resolved maneuver produces — `action` always, plus `damage`/`heal`
