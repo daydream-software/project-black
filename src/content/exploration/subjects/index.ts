@@ -4,7 +4,7 @@ import type { Option } from '../../registry'
 import type { ExSubject } from '../../../delve'
 import { collect } from '../../registry'
 
-const mods = import.meta.glob<Option<ExSubject>>(['./*.ts', '!./index.ts'], {
+const mods = import.meta.glob<Option<ExSubject>>(['./*.ts', '!./index.ts', '!./*.test.ts'], {
   eager: true,
   import: 'default',
 })

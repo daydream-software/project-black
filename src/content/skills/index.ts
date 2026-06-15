@@ -5,7 +5,7 @@
 import type { SkillDef } from '../../sim'
 import { collect, mapById } from '../registry'
 
-const mods = import.meta.glob<SkillDef>(['./*.ts', '!./index.ts'], {
+const mods = import.meta.glob<SkillDef>(['./*.ts', '!./index.ts', '!./*.test.ts'], {
   eager: true,
   import: 'default',
 })

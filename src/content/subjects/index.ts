@@ -5,7 +5,7 @@ import type { Option } from '../registry'
 import type { State } from '../../sim'
 import { collect } from '../registry'
 
-const mods = import.meta.glob<Option<State['subject']>>(['./*.ts', '!./index.ts'], {
+const mods = import.meta.glob<Option<State['subject']>>(['./*.ts', '!./index.ts', '!./*.test.ts'], {
   eager: true,
   import: 'default',
 })

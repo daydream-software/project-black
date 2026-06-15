@@ -4,7 +4,7 @@
 import type { MonsterDef } from '../../sim'
 import { indexById } from '../registry'
 
-const mods = import.meta.glob<MonsterDef>(['./*.ts', '!./index.ts'], {
+const mods = import.meta.glob<MonsterDef>(['./*.ts', '!./index.ts', '!./*.test.ts'], {
   eager: true,
   import: 'default',
 })

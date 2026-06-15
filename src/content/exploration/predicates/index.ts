@@ -4,7 +4,7 @@ import type { Option } from '../../registry'
 import type { ExPredicate } from '../../../delve'
 import { collect } from '../../registry'
 
-const mods = import.meta.glob<Option<ExPredicate>>(['./*.ts', '!./index.ts'], {
+const mods = import.meta.glob<Option<ExPredicate>>(['./*.ts', '!./index.ts', '!./*.test.ts'], {
   eager: true,
   import: 'default',
 })
