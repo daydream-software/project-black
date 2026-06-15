@@ -5,6 +5,7 @@ import type { LevelSkeleton } from './mapgraph'
 import lootRoom from './content/exploration/subjects/loot-room'
 import spikeTrap from './content/exploration/traps/spike-trap'
 import secretSight from './content/exploration/buffs/secret-sight'
+import cartographer from './content/exploration/buffs/cartographer'
 import { isKnown } from './content/exploration/navigation'
 
 // States reference vocab by id (the serialisable shape the sim resolves at runtime).
@@ -191,6 +192,55 @@ describe('hidden rooms stay secret to the crawler', () => {
     expect(isKnown(after, 'vault')).toBe(true) // now uncovered
     expect(lootRoom.reachable(after)).toBe(true) // a routable loot target...
     expect(lootRoom.stepToward(after)).toBe('vault') // ...one deliberate step from the entrance
+  })
+})
+
+// Feed-routing — a KNOWN-but-distant room (revealed by vision) becomes a goal the party
+// EXPLORES toward, opening the path one room at a time (never teleporting through unseen
+// space). This is what makes the vision buffs actionable in an AFK delve.
+describe('feed-routing toward a revealed distant room', () => {
+  // line in — f — loot: the loot room is TWO hops away, so it is NOT peeked at the start.
+  const lineLoot: LevelSkeleton = {
+    id: 't-feed', name: 'T', monsterPool: ['slime'], boss: 'hex-warden',
+    topology: {
+      slots: [
+        { id: 'in', type: 'entrance' },
+        { id: 'f', type: 'fight' },
+        { id: 'loot', type: 'loot' },
+        { id: 'boss', type: 'boss' },
+      ],
+      edges: [['in', 'f'], ['f', 'loot'], ['f', 'boss']],
+    },
+  }
+
+  it('a revealed distant loot room is a target the party heads TOWARD (no teleport)', () => {
+    const start = startDelve(strongParty(), 1, DEFAULT_EXPLORATION, lineLoot)
+    expect(lootRoom.reachable(start)).toBe(false) // 2 hops away, unpeeked → not a target yet
+
+    const seen = cartographer.apply(start) // reveal the whole map
+    expect(isKnown(seen, 'loot')).toBe(true)
+    expect(lootRoom.reachable(seen)).toBe(true) // now a known goal across the map
+    // the step EXPLORES toward it (into the intermediate f), it does NOT jump to loot
+    expect(lootRoom.stepToward(seen)).toBe('f')
+    expect(seen.explored).not.toContain('f') // and nothing was teleport-explored
+  })
+
+  it('with no reveal, a distant loot room stays out of reach (revealed ≠ free path)', () => {
+    const s = startDelve(strongParty(), 1, DEFAULT_EXPLORATION, lineLoot)
+    expect(lootRoom.reachable(s)).toBe(false) // unknown → inert, exactly as before vision
+  })
+
+  // The end-to-end proof THROUGH the registry (decideExploration resolves the vocab by id):
+  // a loot-routing Procedure + a revealed map drives the party across unexplored ground
+  // into the distant loot room — opening f on the way, never teleporting.
+  it('a loot-routing Procedure feed-routes the delve into a revealed distant room', () => {
+    const lootProc: ExProcedure = [{ subject: 'room_loot', predicate: 'known', move: 'head', label: 'Loot · known → head' }]
+    let s = startDelve(strongParty(), 1, lootProc, lineLoot)
+    s = { ...s, revealed: s.graph.rooms.map((r) => r.id) } // as a vision buff would set it
+    s = advance(s)
+    expect(s.explored).toContain('f') // opened the intermediate room en route...
+    expect(s.explored).toContain('loot') // ...and reached the distant loot room
+    expect(s.resolved).toContain('loot') // which it then looted
   })
 })
 

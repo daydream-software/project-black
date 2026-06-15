@@ -77,6 +77,19 @@ export function stepTowardRoom(s: DelveState, goal: string): string {
   return firstStep(s.graph, s.pos, goal, (r) => isExplored(s, r))
 }
 
+/** Step toward a KNOWN goal, EXPLORING toward it (feed-routing). Unlike stepTowardRoom
+ *  — which only walks already-explored rooms, so it stalls at the frontier — this heads
+ *  along the shortest graph path to the goal, opening one unexplored room per step. So a
+ *  revealed-but-distant room (a vision buff, a future hidden boss) becomes a destination
+ *  the party works toward, NEVER teleporting through unseen space: each step enters the
+ *  next room and fights/discovers it. It won't path THROUGH a hidden room (a secret room
+ *  is a wall until revealed-and-entered); the goal itself is always enterable on the last
+ *  step. "revealed ≠ explored": knowledge gives a direction, not a free through-path. */
+export function stepTowardKnown(s: DelveState, goal: string): string {
+  if (!isKnown(s, goal)) return ''
+  return firstStep(s.graph, s.pos, goal, (r) => isExplored(s, r) || !isHidden(s, r))
+}
+
 /** Next step toward the nearest UNEXPLORED room (the frontier): an explored room with
  *  an unexplored neighbour, then step into it. '' if everything reachable is explored. */
 export function stepTowardFrontier(s: DelveState): string {
@@ -100,13 +113,14 @@ export function stepTowardFrontier(s: DelveState): string {
   return ''
 }
 
-/** A room of the given type that the party can route to RIGHT NOW: known (peeked or
- *  explored) via the 1-hop type peek, not yet entered (so it's a fresh objective), and
- *  reachable through explored rooms. '' if none — lets a rule say "head for a loot room
- *  if one is in sight". First reachable candidate in graph order (deterministic). */
+/** A room of the given type the party can route to: KNOWN (peeked OR revealed by a vision
+ *  buff), not yet entered (a fresh objective). The party feed-routes toward it — heading
+ *  there even across unexplored ground (opening rooms en route), so a revealed loot room
+ *  on the far side of the map is a valid "head for loot" target, not just an adjacent one.
+ *  '' if none. First candidate in graph order (deterministic). */
 export function knownRoomOfType(s: DelveState, type: RoomType): string {
   for (const r of s.graph.rooms) {
-    if (r.type === type && !isExplored(s, r.id) && isKnown(s, r.id) && stepTowardRoom(s, r.id) !== '') return r.id
+    if (r.type === type && !isExplored(s, r.id) && isKnown(s, r.id) && stepTowardKnown(s, r.id) !== '') return r.id
   }
   return ''
 }
