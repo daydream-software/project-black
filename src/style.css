@@ -489,13 +489,6 @@ canvas {
   color: #e6e9ef;
 }
 
-.stat-derived {
-  width: 48px;
-  text-align: right;
-  font-size: 12px;
-  color: #4fd1ff;
-}
-
 .stat-row button {
   width: 26px;
   height: 26px;

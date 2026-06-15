@@ -1,5 +1,5 @@
 import './style.css'
-import { makeGolem, poolFor, type Combatant, type GameState, type Stats } from './sim'
+import { makeGolem, type Combatant, type GameState, type Stats } from './sim'
 import { startDelve, stepDelve, type DelveState, type ExProcedure } from './delve'
 import { BUILD_BUDGET, CHASSIS_COST, STAT_CAP, GOLEM_MAX, buildCost } from './party'
 import { LEVELS, applyClear, levelById, hasCleared } from './levels'
@@ -1050,12 +1050,6 @@ function renderStatEditor(): void {
     const inc = makeButton('+', `Raise ${label}`, () => { adjustStat(key, 1); })
     inc.disabled = locked || stats[key] >= STAT_CAP || left < 1
     row.append(name, dec, val, inc)
-    if (key === 'fortitude') {
-      const hp = document.createElement('span')
-      hp.className = 'stat-derived'
-      hp.textContent = `${poolFor(stats[key])} HP`
-      row.append(hp)
-    }
     statEditorEl.append(row)
   }
 }
