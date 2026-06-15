@@ -67,8 +67,8 @@ describe('protocol — exploration rule compiler', () => {
 
   it('available() offers always-on options + unlocked ones, hides locked-unowned (10b gating)', () => {
     const opts: Array<Option<number>> = [
-      { id: 'a', label: 'A', make: () => 1 }, // always available
-      { id: 'b', label: 'B', make: () => 2, unlock: 'buy-b' }, // locked
+      { id: 'a', label: 'A', order: 10, make: () => 1 }, // always available
+      { id: 'b', label: 'B', order: 20, make: () => 2, unlock: 'buy-b' }, // locked
     ]
     expect(available(opts, []).map((o) => o.id)).toEqual(['a']) // locked one hidden
     expect(available(opts, ['buy-b']).map((o) => o.id)).toEqual(['a', 'b']) // purchased → offered

@@ -3,20 +3,21 @@
 // (ExProcedure / ExProtocol from delve.ts). Kept out of main.ts so it has no DOM
 // dependency and is unit-testable — main.ts is just the DOM wiring around this.
 
-import type { ExProcedure, ExProtocol, ExSubject, ExPredicate, ExMove } from './delve'
+import type { ExProcedure, ExProtocol } from './delve'
 import type { Hero, ExProtocolRow, ProtocolRow } from './save'
-import type { State, Maneuver, Procedure, Protocol, SkillId } from './sim'
+import type { Maneuver, Procedure, Protocol, SkillId } from './sim'
+import type { Option } from './content/registry'
+import { SUBJECTS } from './content/subjects'
+import { PREDICATES } from './content/predicates'
+import { EX_SUBJECTS } from './content/exploration/subjects'
+import { EX_PREDICATES } from './content/exploration/predicates'
+import { EX_MOVES } from './content/exploration/moves'
 
-/** A dropdown choice: a stable `id` (persisted), a `label` (shown + journaled),
- *  and a `make()` that builds the model value. Shared by the combat editor too.
- *  `unlock` (10b) gates the option behind a Trainer purchase — absent = always
- *  available; present = only offered once its id is in the profile's `unlocked`. */
-export interface Option<T> {
-  id: string
-  label: string
-  make: () => T
-  unlock?: string
-}
+// `Option<T>` + the content catalogs now live under src/content/ (one file per item,
+// glob-assembled). Re-exported here so the editors and tests keep importing the
+// vocabulary from a single `./protocol` facade alongside the compiler below.
+export type { Option }
+export { SUBJECTS, PREDICATES, EX_SUBJECTS, EX_PREDICATES, EX_MOVES }
 
 /** The options the editor may offer right now: always-available ones, plus any
  *  whose `unlock` id the profile has purchased. Pure, so it's unit-testable. */
@@ -41,26 +42,9 @@ export function byId<T>(list: Array<Option<T>>, id: string): Option<T> {
 
 // --- Exploration vocabulary: the party-wide delve Procedure's dropdowns. -----
 // Subject · Predicate → Move (no Object — a Move carries no skill). Each row is one
-// ExProtocol (delve.ts); the ids round-trip through ExProtocolRow.
-
-export const EX_SUBJECTS: Array<Option<ExSubject>> = [
-  { id: 'target', label: 'Target', make: () => ({ what: 'target' }) },
-  { id: 'unexplored', label: 'Unexplored', make: () => ({ what: 'unexplored' }) },
-  { id: 'exit', label: 'Exit', make: () => ({ what: 'exit' }) },
-]
-
-export const EX_PREDICATES: Array<Option<ExPredicate>> = [
-  { id: 'always', label: 'Always', make: () => ({ p: 'always' }) },
-  { id: 'known', label: 'known', make: () => ({ p: 'known' }) },
-  { id: 'php_lt_50', label: 'party HP < 50%', make: () => ({ p: 'partyHpPctBelow', value: 50 }) },
-  { id: 'php_lt_30', label: 'party HP < 30%', make: () => ({ p: 'partyHpPctBelow', value: 30 }) },
-]
-
-export const EX_MOVES: Array<Option<ExMove>> = [
-  { id: 'head', label: 'head toward', make: () => 'headToward' },
-  { id: 'retreat', label: 'retreat', make: () => 'retreat' },
-  { id: 'rest', label: 'rest', make: () => 'rest' },
-]
+// ExProtocol (delve.ts); the ids round-trip through ExProtocolRow. The catalogs
+// (EX_SUBJECTS / EX_PREDICATES / EX_MOVES) live under content/exploration/ and are
+// re-exported above; the compiler below turns rows built from them into ExProtocols.
 
 /** The default exploration rows the editor starts with. Their compiled form must
  *  equal DEFAULT_EXPLORATION (delve.ts) — pinned by a test so the two can't drift. */
@@ -102,26 +86,9 @@ export function buildExploration(rows: ExProtocolRow[]): ExProcedure {
 
 // --- Combat vocabulary: a hero's Procedure dropdowns. ------------------------
 // Subject + Predicate (the State) and Command + Object (the Maneuver). The Object
-// dropdown (a skill) only applies to "Use Skill". Mirrors the exploration catalogs
-// above; ids round-trip through ProtocolRow. Lives here (not main.ts) so the
-// compiler is pure and unit-testable, like the exploration twin.
-
-export const SUBJECTS: Array<Option<State['subject']>> = [
-  { id: 'self', label: 'Self', make: () => ({ who: 'self' }) },
-  { id: 'ally_any', label: 'Ally · any', make: () => ({ who: 'ally', pick: 'first' }) },
-  { id: 'ally_low', label: 'Ally · low HP', make: () => ({ who: 'ally', pick: 'lowestHp' }) },
-  { id: 'enemy_near', label: 'Enemy · near', make: () => ({ who: 'enemy', pick: 'first' }) },
-  { id: 'enemy_low', label: 'Enemy · low HP', make: () => ({ who: 'enemy', pick: 'lowestHp' }) },
-  // Locked until learned at the Trainer (slice 10b): focus-fire the biggest threat.
-  { id: 'enemy_high', label: 'Enemy · most HP', make: () => ({ who: 'enemy', pick: 'highestHp' }), unlock: 'enemy-most-hp' },
-]
-
-export const PREDICATES: Array<Option<State['predicate']>> = [
-  { id: 'always', label: 'Always', make: () => ({ p: 'always' }) },
-  { id: 'hp_lt_30', label: 'HP < 30%', make: () => ({ p: 'hpPctBelow', value: 30 }) },
-  { id: 'hp_lt_50', label: 'HP < 50%', make: () => ({ p: 'hpPctBelow', value: 50 }) },
-  { id: 'hp_full', label: 'HP = 100%', make: () => ({ p: 'hpFull' }) },
-]
+// dropdown (a skill) only applies to "Use Skill". SUBJECTS / PREDICATES live under
+// content/ and are re-exported above; COMMANDS stays here (a closed union wired to
+// the compiler, not extensible content). The compiler below turns rows into Protocols.
 
 /** A combat command. "useSkill" carries an Object (a skill); the others do not.
  *  "useItem" exists in the model but waits on an item system, so it's omitted. */
