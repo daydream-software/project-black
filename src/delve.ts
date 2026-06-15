@@ -13,10 +13,10 @@
 //   whole state is JSON-serialisable (save/offline-replay safe).
 // - The log records the exploration DECISION (which rule fired), not just moves.
 
-import { generateDungeon, roomAt, floorNeighbours, dirBetween, type Dungeon, type Dir } from './dungeon'
-import { makeBattle, step, restToConvergence, type Combatant, type GameState } from './sim'
-import { LEVELS, type LevelConfig } from './levels'
-import { entranceCell } from './content/exploration/navigation'
+import { generateGraph, type DungeonGraph, type RoomType, type LevelSkeleton } from './mapgraph'
+import { makeBattleFrom, step, restToConvergence, type Combatant, type GameState } from './sim'
+import { LEVELS, levelById } from './levels'
+import { makeRng, range, pick } from './rng'
 import { EX_SUBJECTS_BY_ID } from './content/exploration/subjects'
 import { EX_PREDICATES_BY_ID } from './content/exploration/predicates'
 import { EX_MOVES_BY_ID } from './content/exploration/moves'
@@ -35,8 +35,8 @@ export interface ExSubjectDef {
   label: string
   order: number
   unlock?: string
-  /** Next cell to step toward this subject from the party's position (-1 if none). */
-  stepToward: (s: DelveState) => number
+  /** Next ROOM to step toward this subject from the party's room ('' if none). */
+  stepToward: (s: DelveState) => string
   /** Is this subject currently discovered & pathable? (gates the `known` predicate.) */
   reachable: (s: DelveState) => boolean
 }
@@ -55,8 +55,8 @@ export interface ExMoveDef {
   label: string
   order: number
   unlock?: string
-  /** The cell the party moves to: its OWN `pos` = rest in place, -1 = no move. */
-  resolve: (s: DelveState, subject: ExSubjectDef) => number
+  /** The ROOM the party moves to: its OWN `pos` = rest in place, '' = no move. */
+  resolve: (s: DelveState, subject: ExSubjectDef) => string
 }
 
 // One exploration rule: WHEN <Subject + Predicate> → DO <Move>. Like a combat
@@ -96,13 +96,12 @@ export interface DelveLogEntry {
 export interface DelveState {
   seed: number
   levelId: string // which level this delve is a run of (first-clear tracking, 10a)
-  rng: number // live rng state (starts where generation left off)
-  dungeon: Dungeon // stored whole; never regenerated
+  rng: number // live rng state (starts where generation left off; advances on pack rolls)
+  graph: DungeonGraph // the room graph, stored whole; never regenerated
   party: Combatant[] // hero units; HP/deaths persist across the delve
-  pos: number // party cell index
-  facing: Dir
-  explored: boolean[] // fog of war (length = cells.length)
-  clearedRooms: boolean[] // length = rooms.length
+  pos: string // current room id
+  explored: string[] // room ids the party has ENTERED (fog of war; serialisable)
+  cleared: string[] // fight/boss room ids already cleared
   exploration: ExProcedure
   battle: GameState | null // active combat, or null when exploring
   status: DelveStatus
@@ -112,22 +111,6 @@ export interface DelveState {
 
 const MAX_DELVE_STEPS = 4000 // defensive cap — a healthy delve ends far sooner
 
-// --- Fog-of-war reveal + frontier pathfinding -------------------------------
-
-/** Reveal a cell, its floor neighbours, and (if it's in a room) the whole room. */
-function reveal(d: Dungeon, cell: number, explored: boolean[]): void {
-  /* eslint-disable no-param-reassign -- fills the caller-owned fog buffer in place
-     (callers pass `s.explored.slice()`, a local copy); the fog-of-war idiom. */
-  explored[cell] = true
-  for (const nb of floorNeighbours(d, cell)) explored[nb] = true
-  const rid = roomAt(d, cell)
-  if (rid >= 0) {
-    const r = d.rooms[rid]
-    for (let {y} = r; y < r.y + r.h; y += 1) for (let {x} = r; x < r.x + r.w; x += 1) explored[y * d.width + x] = true
-  }
-  /* eslint-enable no-param-reassign */
-}
-
 // --- Exploration decision: the engine only orchestrates ---------------------
 // The navigation primitives (BFS to a goal / to the frontier, objective + entrance
 // cells, party HP) live in content/exploration/navigation.ts; the Subject/Predicate/
@@ -135,7 +118,7 @@ function reveal(d: Dungeon, cell: number, explored: boolean[]): void {
 
 interface ExDecision {
   reason: string
-  step: number // next cell to move to (party's own pos = rest), or -1 = no move
+  step: string // room to move to (party's own pos = rest), or '' = no move
 }
 
 /** One Protocol's decision: resolve its vocab from the registries by id (a stale id →
@@ -148,7 +131,7 @@ function protocolStep(s: DelveState, protocol: ExProtocol): ExDecision | null {
   if (subject === undefined || predicate === undefined || move === undefined) return null
   if (!predicate.holds(s, subject)) return null
   const step = move.resolve(s, subject)
-  return step === -1 ? null : { reason: protocol.label, step }
+  return step === '' ? null : { reason: protocol.label, step }
 }
 
 /** Scan the Procedure top-to-bottom; the first Protocol that yields a move wins. */
@@ -157,7 +140,7 @@ export function decideExploration(s: DelveState): ExDecision {
     const decided = protocolStep(s, protocol)
     if (decided !== null) return decided
   }
-  return { reason: 'no rule applied', step: -1 }
+  return { reason: 'no rule applied', step: '' }
 }
 
 // --- Start + step -----------------------------------------------------------
@@ -166,22 +149,18 @@ export function startDelve(
   party: Combatant[],
   seed: number,
   exploration: ExProcedure = DEFAULT_EXPLORATION,
-  level: LevelConfig = LEVELS[0],
+  level: LevelSkeleton = LEVELS[0],
 ): DelveState {
-  const { dungeon, rngState } = generateDungeon(seed, level)
-  const pos = entranceCell(dungeon)
-  const explored = new Array<boolean>(dungeon.cells.length).fill(false)
-  reveal(dungeon, pos, explored)
+  const graph = generateGraph(level, seed)
   return {
     seed,
     levelId: level.id,
-    rng: rngState,
-    dungeon,
+    rng: graph.rngState,
+    graph,
     party,
-    pos,
-    facing: 2, // facing South to start
-    explored,
-    clearedRooms: new Array<boolean>(dungeon.rooms.length).fill(false),
+    pos: graph.entranceId, // start in the entrance room (already explored)
+    explored: [graph.entranceId],
+    cleared: [],
     exploration,
     battle: null,
     status: 'delving',
@@ -194,10 +173,25 @@ function logged(s: DelveState, turn: number, e: Omit<DelveLogEntry, 'turn'>): De
   return [...s.log, { turn, ...e }].slice(-60)
 }
 
+/** The concrete type of a room id, or undefined if it isn't in the graph. */
+function roomType(s: DelveState, id: string): RoomType | undefined {
+  return s.graph.rooms.find((r) => r.id === id)?.type
+}
+
+/** Roll the encounter a fight/boss room spawns from the level's content, advancing the
+ *  delve rng (so the pack is fixed for the run, varied between descents). */
+function rollEncounter(s: DelveState, type: RoomType): { ids: string[]; rng: number } {
+  const level = levelById(s.levelId)
+  const rng = makeRng(s.rng)
+  if (type === 'boss') return { ids: [level.boss], rng: rng.s }
+  const n = level.monsterPool.length === 0 ? 0 : range(rng, 2, 3)
+  const ids = Array.from({ length: n }, () => pick(rng, level.monsterPool))
+  return { ids, rng: rng.s }
+}
+
 /** Mid-fight: advance the battle one action; on a finish, resolve the room — a wipe
  *  (dead), a pack cleared, or the objective slain (delve cleared). */
 function advanceCombat(s: DelveState, turn: number, current: GameState): DelveState {
-  const d = s.dungeon
   const battle = step(current)
   const party = battle.units.filter((u) => u.side === 'hero').map((u) => ({ ...u }))
   if (battle.outcome === 'ongoing') {
@@ -206,67 +200,66 @@ function advanceCombat(s: DelveState, turn: number, current: GameState): DelveSt
   if (battle.outcome === 'defeat') {
     return { ...s, party, battle, turn, status: 'dead', log: logged(s, turn, { kind: 'end', reason: 'wiped out', detail: 'the party fell in the dungeon' }) }
   }
-  // victory: the room is cleared
-  const rid = roomAt(d, s.pos)
-  const clearedRooms = s.clearedRooms.slice()
-  if (rid >= 0) clearedRooms[rid] = true
-  const wasObjective = rid === d.objectiveRoomId
+  // victory: this room is cleared
+  const wasBoss = s.pos === s.graph.bossId
+  const cleared = s.cleared.includes(s.pos) ? s.cleared : [...s.cleared, s.pos]
   return {
     ...s,
     party,
     battle: null,
-    clearedRooms,
+    cleared,
     turn,
-    status: wasObjective ? 'cleared' : 'delving',
-    log: logged(s, turn, wasObjective
+    status: wasBoss ? 'cleared' : 'delving',
+    log: logged(s, turn, wasBoss
       ? { kind: 'end', reason: 'objective slain', detail: 'the delve is cleared!' }
       : { kind: 'clear', reason: 'room cleared', detail: 'the pack is dead' }),
   }
 }
 
-/** Exploring: decide and move one cell — rest in place, get stuck, or step (entering
- *  an uncleared monster/objective room starts a fight). */
+/** Exploring: decide and move one room — rest in place, get stuck, or step into a room
+ *  (an uncleared fight/boss room starts a fight from the level's content). */
+interface RoomEntry {
+  battle: GameState | null
+  rng: number
+  kind: DelveLogEntry['kind']
+  detail: string
+}
+
+/** What entering `room` produces: an uncleared fight/boss room starts a fight rolled
+ *  from the level's content (advancing the rng); anything else is just a step in. */
+function enterRoom(s: DelveState, room: string): RoomEntry {
+  const type = roomType(s, room)
+  if ((type === 'fight' || type === 'boss') && !s.cleared.includes(room)) {
+    const rolled = rollEncounter(s, type)
+    return {
+      battle: makeBattleFrom(s.party, rolled.ids),
+      rng: rolled.rng,
+      kind: 'enter',
+      detail: type === 'boss' ? 'reached the objective — the boss awaits!' : 'entered a monster room — fight!',
+    }
+  }
+  return { battle: null, rng: s.rng, kind: 'explore', detail: `enter the ${type ?? '?'} room` }
+}
+
 function advanceMove(s: DelveState, turn: number): DelveState {
-  const d = s.dungeon
   const decision = decideExploration(s)
-  if (decision.step < 0) {
+  if (decision.step === '') {
     return { ...s, turn, status: 'stuck', log: logged(s, turn, { kind: 'end', reason: 'no path forward', detail: 'the party is stuck' }) }
   }
 
   const next = decision.step
   if (next === s.pos) {
-    // a 'rest' — NOT a movement step: the party tends itself off-combat by running
-    // its own Mend rules to convergence (same Attunement potency, same Poise/Strain
-    // budget as in combat). A party with no healer gets nothing; the Strain it spends
-    // carries into the next fight. ("si c'est un repos, ce n'est pas un pas.")
+    // a 'rest' — NOT a movement step: the party tends itself off-combat by running its
+    // own Mend rules to convergence (same Attunement/Poise/Strain budget as in combat).
+    // ("si c'est un repos, ce n'est pas un pas.")
     const { units: party, mends } = restToConvergence(s.party)
     const detail = mends > 0 ? `rest — ${mends} mend${mends > 1 ? 's' : ''}` : 'rest — nothing to mend'
     return { ...s, party, turn, log: logged(s, turn, { kind: 'explore', reason: decision.reason, detail }) }
   }
 
-  const facing = dirBetween(d.width, s.pos, next)
-  const explored = s.explored.slice()
-  reveal(d, next, explored)
-
-  // entering an uncleared monster room (or the objective) starts a fight
-  const rid = roomAt(d, next)
-  let battle: GameState | null = null
-  let kind: DelveLogEntry['kind'] = 'explore'
-  let detail = `move to cell ${next}`
-  if (rid >= 0 && !s.clearedRooms[rid]) {
-    const room = d.rooms[rid]
-    if (room.type === 'monster') {
-      battle = makeBattle(s.party, 'pack')
-      kind = 'enter'
-      detail = 'entered a monster room — fight!'
-    } else if (room.type === 'target') {
-      battle = makeBattle(s.party, 'warden')
-      kind = 'enter'
-      detail = 'reached the objective — the boss awaits!'
-    }
-  }
-
-  return { ...s, pos: next, facing, explored, battle, turn, log: logged(s, turn, { kind, reason: decision.reason, detail }) }
+  const explored = s.explored.includes(next) ? s.explored : [...s.explored, next]
+  const e = enterRoom(s, next)
+  return { ...s, pos: next, explored, battle: e.battle, rng: e.rng, turn, log: logged(s, turn, { kind: e.kind, reason: decision.reason, detail: e.detail }) }
 }
 
 /** Advance the delve by one tick: a combat action if mid-fight, else one move. */

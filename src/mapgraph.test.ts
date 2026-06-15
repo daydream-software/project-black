@@ -7,6 +7,7 @@ const cross: LevelSkeleton = {
   id: 'test',
   name: 'Test',
   monsterPool: ['slime'],
+  boss: 'hex-warden',
   topology: {
     slots: [
       { id: 'in', type: 'entrance' },
@@ -95,7 +96,7 @@ describe('mapgraph — seeded hybrid generation of a room graph', () => {
     // line: in — f — (buff, optional) — boss. The optional buff is the ONLY link to
     // the boss, so a descent that drops it would orphan the boss — an authoring error.
     const badLine: LevelSkeleton = {
-      id: 'bad', name: 'Bad', monsterPool: [],
+      id: 'bad', name: 'Bad', monsterPool: [], boss: 'hex-warden',
       topology: {
         slots: [
           { id: 'in', type: 'entrance' },
@@ -112,7 +113,7 @@ describe('mapgraph — seeded hybrid generation of a room graph', () => {
 
   it('throws on bad authoring — not exactly one entrance', () => {
     const twoEntrances: LevelSkeleton = {
-      id: 'x', name: 'X', monsterPool: [],
+      id: 'x', name: 'X', monsterPool: [], boss: 'hex-warden',
       topology: { slots: [{ id: 'a', type: 'entrance' }, { id: 'b', type: 'entrance' }], edges: [['a', 'b']] },
     }
     expect(() => generateGraph(twoEntrances, 1)).toThrow(/exactly one entrance/u)

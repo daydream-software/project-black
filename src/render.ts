@@ -11,8 +11,9 @@
 // device-pixel backing store).
 
 import { upcomingTurns, type Combatant, type GameState } from './sim'
-import { DX, DY, roomAt, type Dir } from './dungeon'
+import type { RoomType } from './mapgraph'
 import type { DelveState } from './delve'
+import { neighbours } from './content/exploration/navigation'
 import { buildingRects, foyerLayout, type BuildingId, type BuildingRect } from './buildings'
 
 const HUD_SAFE = 72 // px reserved at the top for the floating HUD bar (DOM)
@@ -336,22 +337,13 @@ export function render(
 // Delve view — a stylized first-person "scrying" viewport + a fog-of-war minimap
 // ---------------------------------------------------------------------------
 
-const DIR_LABEL = ['North', 'East', 'South', 'West']
-
-function neighbourCell(d: DelveState['dungeon'], cell: number, dir: Dir): number {
-  const x = (cell % d.width) + DX[dir]
-  const y = ((cell / d.width) | 0) + DY[dir]
-  if (x < 0 || y < 0 || x >= d.width || y >= d.height) return -1
-  return y * d.width + x
-}
-
 export function renderDelve(ctx: CanvasRenderingContext2D, delve: DelveState, sprites: Sprites): void {
   const { width, height } = cssSize(ctx)
   ctx.fillStyle = '#0e0e16'
   ctx.fillRect(0, 0, width, height)
 
-  drawDungeonView(ctx, delve, sprites) // one first-person view for exploring AND fighting
-  drawMinimap(ctx, delve)
+  drawDelveScene(ctx, delve, sprites) // one scrying view for exploring AND fighting
+  drawGraphMinimap(ctx, delve)
 
   if (delve.status === 'cleared') drawBanner(ctx, 'DELVE CLEARED', 'The objective is slain', '#9fe0a8')
   else if (delve.status === 'dead') drawBanner(ctx, 'GOLEMS WIPED', 'Read the journal, reprogram, delve again', '#ff6b6b')
@@ -367,51 +359,34 @@ function poly(ctx: CanvasRenderingContext2D, pts: number[], fill: string): void 
   ctx.fill()
 }
 
-// First-person "scrying" view: a perspective corridor with the party seen from
-// behind in the foreground (Nevergrind-style over-the-shoulder framing).
-interface Corridor { nx0: number; nx1: number; ny0: number; ny1: number; vx: number; vy: number }
-interface Sight { aheadFloor: boolean; aheadSeen: boolean; aheadRoom: number; exitL: boolean; exitR: boolean }
-
-/** What the scrying eye makes out from the party's cell + facing: floor/seen ahead,
- *  the room ahead (or -1), and the two side exits. */
-function corridorSight(d: DelveState['dungeon'], delve: DelveState): Sight {
-  const fwd = delve.facing
-  const DIRS = [0, 1, 2, 3] as const // index back into Dir without an unsafe assertion
-  const aheadCell = neighbourCell(d, delve.pos, fwd)
-  const leftCell = neighbourCell(d, delve.pos, DIRS[(fwd + 3) % 4])
-  const rightCell = neighbourCell(d, delve.pos, DIRS[(fwd + 1) % 4])
-  const aheadFloor = aheadCell >= 0 && d.cells[aheadCell]
-  const aheadSeen = aheadFloor && delve.explored[aheadCell]
-  const aheadRoom = aheadFloor ? roomAt(d, aheadCell) : -1
-  const exitL = leftCell >= 0 && d.cells[leftCell]
-  const exitR = rightCell >= 0 && d.cells[rightCell]
-  return { aheadFloor, aheadSeen, aheadRoom, exitL, exitR }
+const ROOM_COLOR: Record<RoomType, string> = {
+  entrance: '#9fe0a8', fight: '#ff6b6b', loot: '#ffd166', buff: '#6bd1ff', boss: '#c78bff',
 }
 
-/** The tunnel itself: ceiling/floor/walls converging on the vanishing point, side
- *  doorways where there are exits, the far end, and the depth ribs. */
-function drawCorridor(ctx: CanvasRenderingContext2D, c: Corridor, width: number, height: number, sight: Sight): void {
-  const { nx0, nx1, ny0, ny1, vx, vy } = c
-  const wallShade = sight.aheadFloor ? '#181826' : '#14141e'
-  poly(ctx, [nx0, ny0, nx1, ny0, vx, vy], '#0c0c14') // ceiling
-  poly(ctx, [nx0, ny1, nx1, ny1, vx, vy], '#23233a') // floor
-  poly(ctx, [nx0, ny0, nx0, ny1, vx, vy], wallShade) // left wall
-  poly(ctx, [nx1, ny0, nx1, ny1, vx, vy], wallShade) // right wall
+interface Exit { id: string; type: RoomType; explored: boolean }
+function delveExits(delve: DelveState): Exit[] {
+  return neighbours(delve.graph, delve.pos).map((id) => {
+    const room = delve.graph.rooms.find((r) => r.id === id)
+    return { id, type: room?.type ?? 'fight', explored: delve.explored.includes(id) }
+  })
+}
 
-  // doorways carved into the side walls where there's an exit that way
-  const dvy = Math.round(height * 0.12) // doorway half-extent at the near frame
-  const dvx = Math.round(width * 0.048) // doorway inset toward the vanishing point
+interface Frame { nx0: number; nx1: number; ny0: number; ny1: number; vx: number; vy: number }
+
+/** The generic perspective tunnel (ceiling/floor/walls to a vanishing point), with a
+ *  side doorway per connected room. The graph view has no compass facing — the tunnel
+ *  is the room you're in; the chips at the far end are the connected rooms (the peek). */
+function drawTunnel(ctx: CanvasRenderingContext2D, f: Frame, width: number, height: number, exits: number): void {
+  const { nx0, nx1, ny0, ny1, vx, vy } = f
+  poly(ctx, [nx0, ny0, nx1, ny0, vx, vy], '#0c0c14')
+  poly(ctx, [nx0, ny1, nx1, ny1, vx, vy], '#23233a')
+  poly(ctx, [nx0, ny0, nx0, ny1, vx, vy], '#181826')
+  poly(ctx, [nx1, ny0, nx1, ny1, vx, vy], '#181826')
+  const dvy = Math.round(height * 0.12)
+  const dvx = Math.round(width * 0.048)
   const dvh = Math.round(height * 0.05)
-  if (sight.exitL) poly(ctx, [nx0, ny0 + dvy, nx0, ny1 - dvy, vx - dvx, vy + dvh, vx - dvx, vy - dvh], '#05050a')
-  if (sight.exitR) poly(ctx, [nx1, ny0 + dvy, nx1, ny1 - dvy, vx + dvx, vy + dvh, vx + dvx, vy - dvh], '#05050a')
-
-  // the far end at the vanishing point
-  const fw2 = Math.round(width * 0.033)
-  const fh2 = Math.round(height * 0.05)
-  ctx.fillStyle = sight.aheadFloor ? (sight.aheadSeen ? '#08080f' : '#040409') : '#2a2a40'
-  ctx.fillRect(vx - fw2, vy - fh2, fw2 * 2, fh2 * 2)
-
-  // depth ribs (floor seams)
+  if (exits >= 1) poly(ctx, [nx0, ny0 + dvy, nx0, ny1 - dvy, vx - dvx, vy + dvh, vx - dvx, vy - dvh], '#05050a')
+  if (exits >= 2) poly(ctx, [nx1, ny0 + dvy, nx1, ny1 - dvy, vx + dvx, vy + dvh, vx + dvx, vy - dvh], '#05050a')
   ctx.strokeStyle = '#2c2c46'
   for (const t of [0.42, 0.68]) {
     const lx = nx0 + (vx - nx0) * t
@@ -424,78 +399,66 @@ function drawCorridor(ctx: CanvasRenderingContext2D, c: Corridor, width: number,
   }
 }
 
-/** The static preview of the room ahead (when seen but not yet entered): a couple of
- *  slimes for a monster room, the haloed boss for the target room. */
-function drawRoomPreview(ctx: CanvasRenderingContext2D, d: DelveState['dungeon'], aheadRoom: number, c: Corridor, ss: number, sprites: Sprites): void {
-  const { vx, vy } = c
-  const t = d.rooms[aheadRoom].type
-  if (t === 'monster') {
-    drawSprite(ctx, sprites.slime, vx - Math.round(ss * 6.5), vy - 4, Math.round(ss * 0.75))
-    drawSprite(ctx, sprites.slime, vx + ss, vy + 2, ss)
-  } else if (t === 'target') {
-    ctx.fillStyle = 'rgba(199,139,255,0.18)'
-    ctx.beginPath()
-    ctx.arc(vx, vy + Math.round(ss * 1.5), ss * 8, 0, Math.PI * 2)
+/** The 1-hop peek: connected rooms as small typed chips down the tunnel (✓ if entered). */
+function drawExitChips(ctx: CanvasRenderingContext2D, exits: Exit[], f: Frame, ss: number): void {
+  if (exits.length === 0) return
+  const cw = Math.round(ss * 3.4)
+  const ch = Math.round(ss * 1.5)
+  const gap = Math.round(ss * 0.7)
+  const totalW = exits.length * cw + (exits.length - 1) * gap
+  let x = f.vx - totalW / 2
+  const y = f.vy - Math.round(ss * 2.6)
+  ctx.textAlign = 'center'
+  ctx.textBaseline = 'middle'
+  ctx.font = `bold ${Math.round(ss * 0.85)}px system-ui, sans-serif`
+  for (const e of exits) {
+    ctx.globalAlpha = e.explored ? 0.4 : 1
+    ctx.fillStyle = ROOM_COLOR[e.type]
+    roundRect(ctx, x, y, cw, ch, 5)
     ctx.fill()
-    drawSprite(ctx, sprites.slime, vx - Math.round(ss * 6.5), vy - Math.round(ss * 4.5), bossOf(ss))
+    ctx.globalAlpha = 1
+    ctx.fillStyle = '#0a0a12'
+    ctx.fillText(`${e.type}${e.explored ? ' ✓' : ''}`, x + cw / 2, y + ch / 2 + 1)
+    x += cw + gap
   }
+  ctx.textAlign = 'left'
+  ctx.textBaseline = 'alphabetic'
 }
 
-function drawDungeonView(ctx: CanvasRenderingContext2D, delve: DelveState, sprites: Sprites): void {
-  const { width, height } = cssSize(ctx)
-  const SS = unitScale(height)
-  const d = delve.dungeon
-  const fwd = delve.facing
-  const sight = corridorSight(d, delve)
+/** Draw the live enemies down the tunnel (during a fight). */
+function drawEnemies(ctx: CanvasRenderingContext2D, enemies: Combatant[], f: Frame, ss: number, sprites: Sprites): void {
+  enemies.forEach((e, i) => {
+    const dead = e.hp <= 0
+    const boss = e.isBoss === true
+    const sc = boss ? bossOf(ss) : ss
+    const ew = sprites.slime.width * sc
+    const gap = Math.round(ss * 2.2)
+    const totalW = enemies.length * ew + (enemies.length - 1) * gap
+    const ex = f.vx - totalW / 2 + i * (ew + gap)
+    const ey = f.vy - (boss ? Math.round(ss * 5.5) : Math.round(ss * 1.8))
+    if (boss) {
+      ctx.fillStyle = 'rgba(199,139,255,0.16)'
+      ctx.beginPath()
+      ctx.arc(ex + ew / 2, ey + ew / 2, ew * 0.7, 0, Math.PI * 2)
+      ctx.fill()
+    }
+    ctx.save()
+    ctx.globalAlpha = dead ? 0.2 : 1
+    drawSprite(ctx, sprites.slime, ex, ey, sc)
+    ctx.restore()
+    if (!dead) drawHpBar(ctx, { x: ex, y: ey - 9, w: ew, frac: e.hp / e.maxHp, fill: '#ff6b6b' })
+  })
+}
 
-  // near frame + vanishing point of the corridor tunnel (all proportional)
-  const nx0 = Math.round(width * 0.05)
-  const nx1 = width - nx0
-  const ny0 = Math.round(height * 0.05)
-  const ny1 = height - Math.round(height * 0.09)
-  const vx = (nx0 + nx1) / 2
-  const vy = ny0 + (ny1 - ny0) * 0.4
-  const c: Corridor = { nx0, nx1, ny0, ny1, vx, vy }
-
-  drawCorridor(ctx, c, width, height, sight)
-
-  // --- what's down the corridor: the live enemies if fighting, else a preview ---
-  if (delve.battle !== null) {
-    const enemies = delve.battle.units.filter((u) => u.side === 'enemy')
-    enemies.forEach((e, i) => {
-      const dead = e.hp <= 0
-      const boss = e.isBoss === true
-      const sc = boss ? bossOf(SS) : SS
-      const ew = sprites.slime.width * sc
-      const gap = Math.round(SS * 2.2)
-      const totalW = enemies.length * ew + (enemies.length - 1) * gap
-      const ex = vx - totalW / 2 + i * (ew + gap)
-      const ey = vy - (boss ? Math.round(SS * 5.5) : Math.round(SS * 1.8))
-      if (boss) {
-        ctx.fillStyle = 'rgba(199,139,255,0.16)'
-        ctx.beginPath()
-        ctx.arc(ex + ew / 2, ey + ew / 2, ew * 0.7, 0, Math.PI * 2)
-        ctx.fill()
-      }
-      ctx.save()
-      ctx.globalAlpha = dead ? 0.2 : 1
-      drawSprite(ctx, sprites.slime, ex, ey, sc)
-      ctx.restore()
-      if (!dead) drawHpBar(ctx, { x: ex, y: ey - 9, w: ew, frac: e.hp / e.maxHp, fill: '#ff6b6b' })
-    })
-  } else if (sight.aheadSeen && sight.aheadRoom >= 0 && !delve.clearedRooms[sight.aheadRoom]) {
-    drawRoomPreview(ctx, d, sight.aheadRoom, c, SS, sprites)
-  }
-
-  // --- the party, seen from BEHIND, in the foreground (live HP if fighting) ---
-  const heroes = delve.battle === null ? delve.party : delve.battle.units.filter((u) => u.side === 'hero')
+/** Draw the party from BEHIND, foreground (live HP + Strain if fighting). */
+function drawParty(ctx: CanvasRenderingContext2D, heroes: Combatant[], f: Frame, ss: number, sprites: Sprites): void {
   const back = sprites.heroBack
-  const scale = Math.round(SS * 1.3)
+  const scale = Math.round(ss * 1.3)
   const spW = back.width * scale
   const spH = back.height * scale
   heroes.forEach((h, i) => {
-    const x = vx + (i === 0 ? -spW - Math.round(SS * 1.5) : Math.round(SS * 1.5))
-    const y = ny1 + Math.round(SS) - spH
+    const x = f.vx + (i === 0 ? -spW - Math.round(ss * 1.5) : Math.round(ss * 1.5))
+    const y = f.ny1 + Math.round(ss) - spH
     const dead = h.hp <= 0
     ctx.save()
     ctx.globalAlpha = dead ? 0.3 : 1
@@ -506,10 +469,7 @@ function drawDungeonView(ctx: CanvasRenderingContext2D, delve: DelveState, sprit
     ctx.font = '14px system-ui, sans-serif'
     ctx.textAlign = 'center'
     ctx.fillText(`${h.name} ${Math.max(0, h.hp)}/${h.maxHp}`, x + spW / 2, y + spH + 4)
-    // Strain readout for channelers (Poise > 0): the arcane budget, amber once it
-    // overdraws into Fortitude. The trade-off (cast now vs. save it to rest) must be
-    // legible in a game you watch.
-    const {poise} = h
+    const { poise } = h
     if (poise > 0 && !dead) {
       const strain = h.strain ?? 0
       const over = strain > poise
@@ -519,23 +479,40 @@ function drawDungeonView(ctx: CanvasRenderingContext2D, delve: DelveState, sprit
     }
     ctx.textAlign = 'left'
   })
+}
 
-  // "scrying orb" vignette: darken the edges
-  const vg = ctx.createRadialGradient(vx, vy + 20, 60, vx, vy + 20, Math.max(width, height) * 0.72)
+/** One scrying view for exploring AND fighting: the room you're in (the tunnel), the
+ *  connected rooms peeked at the far end (or the live enemies during a fight), and the
+ *  party from behind in the foreground. */
+function drawDelveScene(ctx: CanvasRenderingContext2D, delve: DelveState, sprites: Sprites): void {
+  const { width, height } = cssSize(ctx)
+  const SS = unitScale(height)
+  const exits = delveExits(delve)
+  const nx0 = Math.round(width * 0.05)
+  const nx1 = width - nx0
+  const ny0 = Math.round(height * 0.05)
+  const ny1 = height - Math.round(height * 0.09)
+  const f: Frame = { nx0, nx1, ny0, ny1, vx: (nx0 + nx1) / 2, vy: ny0 + (ny1 - ny0) * 0.4 }
+
+  drawTunnel(ctx, f, width, height, exits.length)
+  if (delve.battle === null) drawExitChips(ctx, exits, f, SS)
+  else drawEnemies(ctx, delve.battle.units.filter((u) => u.side === 'enemy'), f, SS, sprites)
+  drawParty(ctx, delve.battle === null ? delve.party : delve.battle.units.filter((u) => u.side === 'hero'), f, SS, sprites)
+
+  // scrying-orb vignette
+  const vg = ctx.createRadialGradient(f.vx, f.vy + 20, 60, f.vx, f.vy + 20, Math.max(width, height) * 0.72)
   vg.addColorStop(0, 'rgba(0,0,0,0)')
   vg.addColorStop(1, 'rgba(0,0,0,0.55)')
   ctx.fillStyle = vg
   ctx.fillRect(0, 0, width, height)
 
-  // header overlay (below the floating HUD bar)
+  const cur = delve.graph.rooms.find((r) => r.id === delve.pos)
   ctx.textAlign = 'left'
   ctx.textBaseline = 'top'
   ctx.fillStyle = '#9aa0b0'
   ctx.font = '15px system-ui, sans-serif'
-  ctx.fillText(`Scrying · turn ${delve.turn} · facing ${DIR_LABEL[fwd]}${sight.exitL ? ' · ◄ exit' : ''}${sight.exitR ? ' · exit ►' : ''}`, 16, HUD_SAFE)
+  ctx.fillText(`Scrying · turn ${delve.turn} · in the ${cur?.type ?? '?'} room · ${exits.length} exit${exits.length === 1 ? '' : 's'}`, 16, HUD_SAFE)
 
-  // the CTB turn-order carousel (only while fighting) — makes Celerity legible: a
-  // fast golem shows up more often in the upcoming-turns strip.
   if (delve.battle !== null) drawTurnCarousel(ctx, delve.battle.units, width)
 }
 
@@ -589,39 +566,87 @@ function roundRect(ctx: CanvasRenderingContext2D, x: number, y: number, w: numbe
   ctx.closePath()
 }
 
-function drawMinimap(ctx: CanvasRenderingContext2D, delve: DelveState): void {
-  const d = delve.dungeon
-  const { width, height } = cssSize(ctx)
-  const cs = Math.max(4, Math.round(height / 90))
-  const mw = d.width * cs
-  const mh = d.height * cs
-  const x0 = width - mw - 14
-  const y0 = HUD_SAFE // clear the floating HUD bar at the top
-  ctx.fillStyle = '#000000'
-  ctx.fillRect(x0 - 2, y0 - 2, mw + 4, mh + 4)
-  for (let y = 0; y < d.height; y += 1) {
-    for (let x = 0; x < d.width; x += 1) {
-      const c = y * d.width + x
-      ctx.fillStyle = delve.explored[c] ? (d.cells[c] ? '#3a3a52' : '#191926') : '#0a0a12'
-      ctx.fillRect(x0 + x * cs, y0 + y * cs, cs - 1, cs - 1)
+/** Layered BFS layout: each room's column = its hop-depth from the entrance, row =
+ *  its index among rooms at that depth. A graph map, not a grid. */
+function layoutGraph(delve: DelveState): Map<string, { col: number; row: number }> {
+  const g = delve.graph
+  const depth = new Map<string, number>([[g.entranceId, 0]])
+  const queue = [g.entranceId]
+  for (const cur of queue) {
+    for (const nb of neighbours(g, cur)) {
+      if (!depth.has(nb)) {
+        depth.set(nb, (depth.get(cur) ?? 0) + 1)
+        queue.push(nb)
+      }
     }
   }
-  // objective, if discovered
-  const obj = d.rooms[d.objectiveRoomId]
-  let objKnown = false
-  for (let {y} = obj; y < obj.y + obj.h && !objKnown; y += 1) for (let {x} = obj; x < obj.x + obj.w; x += 1) if (delve.explored[y * d.width + x]) objKnown = true
-  if (objKnown) {
-    ctx.fillStyle = '#c78bff'
-    ctx.fillRect(x0 + (obj.x + (obj.w >> 1)) * cs, y0 + (obj.y + (obj.h >> 1)) * cs, cs - 1, cs - 1)
+  const rowCount = new Map<number, number>()
+  const out = new Map<string, { col: number; row: number }>()
+  for (const r of g.rooms) {
+    const col = depth.get(r.id) ?? 0
+    const row = rowCount.get(col) ?? 0
+    rowCount.set(col, row + 1)
+    out.set(r.id, { col, row })
   }
-  // party + facing
-  const px = delve.pos % d.width
-  const py = (delve.pos / d.width) | 0
-  ctx.fillStyle = '#4fd1ff'
-  ctx.fillRect(x0 + px * cs, y0 + py * cs, cs - 1, cs - 1)
-  ctx.fillStyle = '#cfd6e0'
-  ctx.font = '13px system-ui, sans-serif'
+  return out
+}
+
+function drawGraphMinimap(ctx: CanvasRenderingContext2D, delve: DelveState): void {
+  const g = delve.graph
+  const { width } = cssSize(ctx)
+  const pos = layoutGraph(delve)
+  const known = (id: string): boolean =>
+    delve.explored.includes(id) || neighbours(g, id).some((nb) => delve.explored.includes(nb))
+  const cell = 26
+  const cols = Math.max(...[...pos.values()].map((p) => p.col)) + 1
+  const rows = Math.max(...[...pos.values()].map((p) => p.row)) + 1
+  const pad = 10
+  const mw = cols * cell + pad * 2
+  const mh = rows * cell + pad * 2
+  const x0 = width - mw - 14
+  const y0 = HUD_SAFE
+  const center = (id: string): { x: number; y: number } => {
+    const p = pos.get(id) ?? { col: 0, row: 0 }
+    return { x: x0 + pad + p.col * cell + cell / 2, y: y0 + pad + p.row * cell + cell / 2 }
+  }
+  ctx.fillStyle = 'rgba(0,0,0,0.6)'
+  ctx.fillRect(x0, y0, mw, mh)
+  ctx.strokeStyle = '#33334d'
+  ctx.lineWidth = 1
+  for (const c of g.corridors) {
+    const a = center(c.a)
+    const b = center(c.b)
+    ctx.beginPath()
+    ctx.moveTo(a.x, a.y)
+    ctx.lineTo(b.x, b.y)
+    ctx.stroke()
+  }
+  const sz = Math.round(cell * 0.56)
   ctx.textAlign = 'center'
-  ctx.fillText(['↑', '→', '↓', '←'][delve.facing], x0 + px * cs + cs / 2 - 0.5, y0 + py * cs - 2)
+  ctx.textBaseline = 'middle'
+  ctx.font = `${Math.round(sz * 0.8)}px system-ui, sans-serif`
+  for (const r of g.rooms) {
+    const c = center(r.id)
+    if (!known(r.id)) {
+      ctx.fillStyle = '#15151f'
+      ctx.fillRect(c.x - sz / 2, c.y - sz / 2, sz, sz)
+      continue
+    }
+    const explored = delve.explored.includes(r.id)
+    ctx.globalAlpha = explored ? 1 : 0.4
+    ctx.fillStyle = ROOM_COLOR[r.type]
+    ctx.fillRect(c.x - sz / 2, c.y - sz / 2, sz, sz)
+    ctx.globalAlpha = 1
+    if (explored) {
+      ctx.fillStyle = '#0a0a12'
+      ctx.fillText('✓', c.x, c.y + 0.5)
+    }
+    if (r.id === delve.pos) {
+      ctx.strokeStyle = '#4fd1ff'
+      ctx.lineWidth = 2
+      ctx.strokeRect(c.x - sz / 2 - 2, c.y - sz / 2 - 2, sz + 4, sz + 4)
+    }
+  }
   ctx.textAlign = 'left'
+  ctx.textBaseline = 'alphabetic'
 }

@@ -89,15 +89,19 @@ function isDelveStatus(x: unknown): x is DelveStatus {
   return x === 'delving' || x === 'cleared' || x === 'dead' || x === 'stuck'
 }
 
+/** A resumable in-progress delve in the ROOM-GRAPH shape (pos is a room id string, the
+ *  map is a `graph`, fog is room-id arrays). An old cell-grid delve (pos number, a
+ *  `dungeon`) fails this — it's dropped to town by dropStaleDelve, not resumed. */
 function isDelveState(x: unknown): x is DelveState {
   return (
     isObj(x) &&
     isDelveStatus(x.status) &&
-    typeof x.pos === 'number' &&
+    typeof x.pos === 'string' &&
     typeof x.turn === 'number' &&
-    isObj(x.dungeon) &&
+    isObj(x.graph) &&
     Array.isArray(x.party) &&
     Array.isArray(x.explored) &&
+    Array.isArray(x.cleared) &&
     Array.isArray(x.exploration)
   )
 }
@@ -117,7 +121,9 @@ function isAuxFields(x: Record<string, unknown>): boolean {
     (x.insight === undefined || typeof x.insight === 'number') &&
     isOptArray(x.unlocked) &&
     (x.mode === 'camp' || x.mode === 'delve') &&
-    (x.delve === null || isDelveState(x.delve))
+    // loose here (just object-or-null) so an INCOMPATIBLE in-progress delve (old grid
+    // format) doesn't reject the whole profile; dropStaleDelve sanitises it to town.
+    (x.delve === null || isObj(x.delve))
   )
 }
 
@@ -210,9 +216,13 @@ export function salvageMeta(index: number, store: KVStore = localStorage): Salva
  *  of the defensive load: a format change never bricks a profile. */
 function dropStaleDelve(data: SaveData): SaveData {
   if (data.delve === null) return data
-  const partyHasStats = data.delve.party.every((u) => isObj(u) && typeof u.might === 'number' && typeof u.ward === 'number')
-  if (partyHasStats) return data
-  return { ...data, delve: null, mode: 'camp' }
+  // Resumable only if it's a valid graph-shape delve whose party carries the six stats.
+  // An old cell-grid delve, or a pre-six-stat one, is dropped back to town (roster +
+  // meta untouched; the town party is always rebuilt fresh). A format change never bricks.
+  const resumable =
+    isDelveState(data.delve) &&
+    data.delve.party.every((u) => isObj(u) && typeof u.might === 'number' && typeof u.ward === 'number')
+  return resumable ? data : { ...data, delve: null, mode: 'camp' }
 }
 
 /** Read a key, returning null if storage is unavailable/blocked (never throws). */

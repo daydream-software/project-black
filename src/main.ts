@@ -733,7 +733,9 @@ function renderLevelSelect(): void {
 
     const meta = document.createElement('span')
     meta.className = 'lvl-meta'
-    meta.textContent = `${level.rooms[0]}–${level.rooms[1]} rooms`
+    const { slots } = level.topology
+    const mandatory = slots.filter((sl) => sl.optional !== true).length
+    meta.textContent = mandatory === slots.length ? `${mandatory} rooms` : `${mandatory}–${slots.length} rooms`
 
     const badge = document.createElement('span')
     const cleared = hasCleared(clearedLevels, level.id)

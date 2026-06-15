@@ -30,8 +30,8 @@ describe('delve — the party crawls and hunts the objective', () => {
     for (const seed of [1, 2, 3, 7, 11, 42, 99]) {
       const end = runToEnd(seed)
       expect(end.status).toBe('cleared')
-      // the objective room was entered and cleared
-      expect(end.clearedRooms[end.dungeon.objectiveRoomId]).toBe(true)
+      // the boss room was entered and cleared
+      expect(end.cleared.includes(end.graph.bossId)).toBe(true)
       // the journal shows exploration decisions, not just moves
       expect(end.log.some((e) => e.reason.includes('→ head toward'))).toBe(true)
       expect(end.log.some((e) => e.kind === 'enter')).toBe(true)
@@ -60,22 +60,17 @@ describe('delve — the party crawls and hunts the objective', () => {
     const stuck = stepDelve(startDelve(strongParty(), seed, []))
     expect(stuck.status).toBe('stuck')
 
-    // "explore-only" (no beeline-to-target rule) still clears (the frontier walks
-    // into every room, the objective included) but never FEWER steps than the
-    // default, which beelines as soon as the objective is seen — and strictly
-    // more on at least one seed. That proves the target rule changes navigation.
-    const exploreOnly: ExProcedure = [
-      { subject: 'unexplored', predicate: 'always', move: 'head', label: 'Unexplored · Always → head toward' },
+    // "target-only" (the beeline rule WITHOUT the explore rule): the boss is unseen at
+    // the start (not adjacent to the entrance), so `target · known` never fires and the
+    // party gets stuck — it can't find an unseen boss. The default (which also explores)
+    // clears the same seeds. Removing the explore rule decisively changes the outcome →
+    // the authored Procedure genuinely drives the delve, not a hardcoded explorer.
+    const targetOnly: ExProcedure = [
+      { subject: 'target', predicate: 'known', move: 'head', label: 'Target · known → head toward' },
     ]
-    let strictlyFasterSomewhere = false
     for (const s of [1, 2, 3, 7, 11, 42, 99, 123, 256]) {
-      const def = runToEnd(s)
-      const slow = runToEnd(s, exploreOnly)
-      expect(def.status).toBe('cleared')
-      expect(slow.status).toBe('cleared')
-      expect(def.turn).toBeLessThanOrEqual(slow.turn) // beelining is never worse
-      if (def.turn < slow.turn) strictlyFasterSomewhere = true
+      expect(advance(startDelve(strongParty(), s, targetOnly)).status).not.toBe('cleared')
+      expect(runToEnd(s).status).toBe('cleared')
     }
-    expect(strictlyFasterSomewhere).toBe(true)
   })
 })

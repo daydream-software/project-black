@@ -406,14 +406,45 @@ function makeUnit(base: UnitSpec): Combatant {
 
 // Monster definitions (stats + procedure + reactions) live in content/monsters/; these
 // factories just stamp the runtime side and, for packs, an index-templated id/name.
+/** The bestiary entry for an id, throwing on a miss (a level pool / builder calling
+ *  with a bad id is an authoring error, not stale player data). */
+function requireMonster(defId: string): MonsterDef {
+  const def = MONSTERS.get(defId)
+  if (def === undefined) throw new Error(`unknown monster: ${defId}`)
+  return def
+}
+
 export function makeEnemy(index: number): Combatant {
-  const def = MONSTERS.slime
+  const def = requireMonster('slime')
   return makeUnit({ ...def, id: `enemy-${index}`, name: `${def.name} #${index}`, side: 'enemy' })
+}
+
+/** Build one monster Combatant from a bestiary id with an explicit runtime id + name. */
+export function makeMonster(defId: string, id: string, name: string): Combatant {
+  return makeUnit({ ...requireMonster(defId), id, name, side: 'enemy' })
+}
+
+/** Build an encounter against the given party from an explicit list of monster ids —
+ *  the content-driven spawn (a room's rolled pack / the level's boss), replacing the
+ *  hardcoded `pack`/`warden`. Packs get index-templated names; a lone foe keeps its
+ *  bestiary name. Battle-scoped resets (defending/charge) like makeBattle. */
+export function makeBattleFrom(heroes: Combatant[], monsterIds: string[]): GameState {
+  const multi = monsterIds.length > 1
+  const enemies = monsterIds.map((mid, i) => {
+    const { name } = requireMonster(mid)
+    return makeMonster(mid, `enemy-${i + 1}`, multi ? `${name} #${i + 1}` : name)
+  })
+  const units = [...heroes.map((h) => ({ ...h })), ...enemies].map((u) => ({
+    ...u,
+    defending: false,
+    charge: recovery(u.celerity),
+  }))
+  return { units, turn: 0, round: 0, cursor: -1, log: [], outcome: 'ongoing' }
 }
 
 export function makeWarden(): Combatant {
   // Runtime id 'enemy-1' (monsters aren't persisted; the bestiary id is 'hex-warden').
-  return makeUnit({ ...MONSTERS['hex-warden'], id: 'enemy-1', side: 'enemy' })
+  return makeUnit({ ...requireMonster('hex-warden'), id: 'enemy-1', side: 'enemy' })
 }
 
 /** Build a hero golem from an AUTHORED stat block + its Procedure — the generic,

@@ -143,6 +143,8 @@ describe('save — slots', () => {
       mode: 'delve',
       insight: 3,
       unlocked: ['enemy-most-hp'],
+      // old cell-grid shape (pos number, `dungeon`) AND a pre-six-stat party — both
+      // reasons it can't resume; loadSlot drops it to town.
       delve: { status: 'delving', pos: 5, turn: 9, dungeon: {}, party: staleParty, explored: [], exploration: [] },
     }
     const store = fakeStore({ 'project-black/save/slot/0': JSON.stringify(blob) })
@@ -153,9 +155,15 @@ describe('save — slots', () => {
     expect(loaded?.insight).toBe(3) // meta preserved
     expect(loaded?.unlocked).toEqual(['enemy-most-hp'])
 
-    // A delve whose party DOES carry stats is left intact (not over-eagerly dropped).
+    // A valid GRAPH delve (room-id pos, a `graph`, room-id fog) whose party carries the
+    // six stats is left intact (not over-eagerly dropped).
     const freshParty = [{ ...staleParty[0], might: 5, ward: 2, fortitude: 10, attunement: 0, poise: 0, celerity: 5 }]
-    const fresh = { ...blob, delve: { ...blob.delve, party: freshParty } }
+    const graphDelve = {
+      status: 'delving', pos: 'in', turn: 9,
+      graph: { rooms: [{ id: 'in', type: 'entrance' }], corridors: [], entranceId: 'in', bossId: 'in', rngState: 1 },
+      party: freshParty, explored: ['in'], cleared: [], exploration: [],
+    }
+    const fresh = { ...blob, delve: graphDelve }
     const store2 = fakeStore({ 'project-black/save/slot/0': JSON.stringify(fresh) })
     expect(loadSlot(0, store2)?.delve).not.toBeNull()
     expect(loadSlot(0, store2)?.mode).toBe('delve')

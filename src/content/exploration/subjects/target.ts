@@ -1,15 +1,12 @@
 import type { ExSubjectDef } from '../../../delve'
-import { knownObjectiveCell, stepTowardKnown, knownIn } from '../navigation'
+import { isKnown, stepTowardRoom } from '../navigation'
 
-// The objective room. Reachable once any of its cells is discovered; steps toward the
-// nearest known objective cell through explored space.
+// The boss room. Reachable once it's known (entered, or peeked from a connected room);
+// steps toward it through explored rooms.
 export default {
   id: 'target',
   label: 'Target',
   order: 10,
-  reachable: (s) => knownObjectiveCell(s) !== -1,
-  stepToward: (s) => {
-    const goal = knownObjectiveCell(s)
-    return goal === -1 ? -1 : stepTowardKnown(s.dungeon, s.pos, goal, knownIn(s))
-  },
+  reachable: (s) => isKnown(s, s.graph.bossId),
+  stepToward: (s) => stepTowardRoom(s, s.graph.bossId),
 } satisfies ExSubjectDef

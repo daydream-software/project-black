@@ -1,27 +1,27 @@
 import { describe, it, expect } from 'vitest'
 import { LEVELS, levelById, hasCleared, recordClear, applyClear } from './levels'
-import { generateDungeon } from './dungeon'
+import { generateGraph } from './mapgraph'
 
-describe('levels — config-driven, well-formed', () => {
-  it('every level has a unique id and sane ranges', () => {
+describe('levels — well-formed skeletons', () => {
+  it('every level has a unique id and exactly one entrance + boss slot', () => {
     const ids = LEVELS.map((l) => l.id)
     expect(new Set(ids).size).toBe(ids.length)
     for (const l of LEVELS) {
-      expect(l.width).toBeGreaterThan(0)
-      expect(l.height).toBeGreaterThan(0)
-      expect(l.rooms[0]).toBeLessThanOrEqual(l.rooms[1])
-      expect(l.rooms[0]).toBeGreaterThanOrEqual(2) // need at least entrance + target
-      expect(l.packs[0]).toBeLessThanOrEqual(l.packs[1])
-      expect(l.packs[0]).toBeGreaterThanOrEqual(0)
+      const types = l.topology.slots.map((s) => s.type)
+      expect(types.filter((t) => t === 'entrance')).toHaveLength(1)
+      expect(types.filter((t) => t === 'boss')).toHaveLength(1)
+      expect(l.boss.length).toBeGreaterThan(0)
+      expect(l.monsterPool.length).toBeGreaterThan(0)
     }
   })
 
-  it("every level's grid actually fits its room range (generation stays in range)", () => {
+  it("every level's skeleton generates a connected graph across seeds (no throw)", () => {
     for (const l of LEVELS) {
-      for (let seed = 0; seed < 150; seed += 1) {
-        const n = generateDungeon(seed, l).dungeon.rooms.length
-        expect(n).toBeGreaterThanOrEqual(l.rooms[0])
-        expect(n).toBeLessThanOrEqual(l.rooms[1])
+      for (let seed = 0; seed < 100; seed += 1) {
+        const g = generateGraph(l, seed)
+        // entrance + boss always present; generateGraph guarantees connectivity/asserts.
+        expect(g.rooms.some((r) => r.id === g.entranceId)).toBe(true)
+        expect(g.rooms.some((r) => r.id === g.bossId)).toBe(true)
       }
     }
   })

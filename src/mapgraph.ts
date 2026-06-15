@@ -39,9 +39,11 @@ export interface LevelSkeleton {
   id: string
   name: string
   topology: Topology
-  /** Monster ids that room encounters draw from (consumed when the delve builds a
-   *  room fight — a later slice). Authored per level. */
+  /** Monster ids a `fight` room's pack is drawn from (the delve rolls the pack on
+   *  entry). Authored per level. */
   monsterPool: string[]
+  /** Monster id the `boss` room spawns. Per-level (no more hardcoded Warden-everywhere). */
+  boss: string
 }
 
 /** A concrete room in a generated graph (a present slot with its resolved type). */
