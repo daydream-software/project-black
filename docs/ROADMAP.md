@@ -49,6 +49,37 @@ and deterministic. English codebase. See [ARCHITECTURE.md](ARCHITECTURE.md).
 
 Screenshots: [docs/progress/](progress/).
 
+## Post-slice-9 — combat redesign + modular content + the dungeon-graph rework
+
+On branch **`refactor/modular-content`** (built 2026-06; **pending landing** via squash/ff
+— not yet merged). All green: 133 tests, `tsc` + ESLint clean, build OK; proven in-browser
+(town → descend → real-time delve with combat / loot / corridor traps / boss; the victory
+path is covered by `delve.test` + engine runs).
+
+- **6-stat combat + monotonic point-buy** — Might/Ward/Fortitude/Attunement/Poise/Celerity;
+  the player authors each golem from an empty 24-point budget, frozen on descend.
+- **Modular content registry** — one file per item under `src/content/` assembled by
+  `import.meta.glob`; the engine knows no variants. Combat *and* exploration vocabulary,
+  skills, monsters (own their Procedure + reactions), damage modifiers, the event-bus
+  reactions, sfx, corridor traps, and **buffs** are all standalone, id-dispatched,
+  serialisable content (design pillar #4, finally structural).
+- **Dungeon-graph rework** — the cell grid is gone; dungeons are a **room graph** (typed
+  rooms, corridor edges) with hybrid authored-topology + seeded fill (`mapgraph.ts`).
+  Fog + 1-hop type peek; room fights unavoidable, **type-routing** programmable;
+  corridor traps (map-owned reaction twin).
+- **Buff / loot rooms** — buff rooms grant a run-scoped boon rolled from the level pool
+  (2× Might/Celerity, full heal, vision, enemy-Fortitude debuff); loot is symbolic until
+  slice 10.
+- **Hidden rooms + feed-routing** — secret rooms the crawler never finds until **Secret
+  Sight** reveals them; a known-but-distant room (revealed or peeked) is a goal the party
+  *explores toward* (never teleporting): "revealed ≠ explored".
+- **Minimap** — fixed-size, centred on the current room, fogged (only discovered structure),
+  ✓ = cleared/resolved (not merely entered).
+
+Still pending here: **loot economy** (slice 10), **corridor enemies** (avoidable fights —
+unlocks the `retreat`/avoid move), an optional **hidden boss room** (needs a winnability
+rule), and landing the branch on `main`.
+
 ## Planned slices — toward the dungeon-crawler ([VISION.md](VISION.md))
 
 The vision pivoted (2026-06-09) to a **programmable, AFK, procedural
