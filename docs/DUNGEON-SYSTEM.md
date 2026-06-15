@@ -169,8 +169,14 @@ Each slice proven in-browser, not just by tests.
      physically reach it. A revealed room you can't yet reach is shown, not walked. This
      preserves the distinction by design; making a revealed room actionable as a one-step
      target is folded into the hidden-rooms slice (same nav machinery).
-   - **Deferred: hidden rooms** — the "reveal hidden rooms" buff needs a generation-level
-     `hidden` slot flag + a pathing gate first (its own slice).
+   - **Hidden rooms (DONE).** A slot may be `hidden: true` → its `RoomNode` carries it.
+     The nav gate keeps it secret: the 1-hop peek never reveals it (`isKnown=false`) and
+     the frontier explorer never blunders in, even when it's adjacent. Entrance/boss may
+     not be hidden (asserted). The **Secret Sight** buff adds hidden ids to `revealed` →
+     the room becomes known + a routable ONE-STEP target where it adjoins explored ground
+     (so a "head for loot" rule reaches it) — but the frontier explorer still ignores it,
+     so reaching a secret room stays a deliberate, programmed choice. Render unified: the
+     minimap's "known" now IS `navigation.isKnown`, so display + routing can't disagree.
 5. **Corridor traps (`DelveEvent`)** — corridor-owned trap reactions, the delve event
    bus (the combat-reaction twin).
 6. **Rendering adaptation** — first-person scrying + room-graph minimap over the new

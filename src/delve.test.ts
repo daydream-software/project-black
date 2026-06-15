@@ -4,6 +4,7 @@ import { makeWarrior, makeHealer, type Combatant, type Procedure } from './sim'
 import type { LevelSkeleton } from './mapgraph'
 import lootRoom from './content/exploration/subjects/loot-room'
 import spikeTrap from './content/exploration/traps/spike-trap'
+import secretSight from './content/exploration/buffs/secret-sight'
 import { isKnown } from './content/exploration/navigation'
 
 // States reference vocab by id (the serialisable shape the sim resolves at runtime).
@@ -178,6 +179,18 @@ describe('hidden rooms stay secret to the crawler', () => {
     const s = startDelve(strongParty(), 1, DEFAULT_EXPLORATION, withVault)
     expect(isKnown(s, 'f')).toBe(true) // ordinary neighbour → peeked
     expect(isKnown(s, 'vault')).toBe(false) // hidden neighbour → still invisible
+  })
+
+  // H2 — Secret Sight uncovers a hidden room: it becomes known + a one-step loot target
+  // (revealed ≠ explored — adjacency to explored ground makes it reachable as a target).
+  it('Secret Sight reveals the vault → known and a one-step loot target', () => {
+    const before = startDelve(strongParty(), 1, DEFAULT_EXPLORATION, withVault)
+    expect(lootRoom.reachable(before)).toBe(false) // hidden → not a target yet
+
+    const after = secretSight.apply(before)
+    expect(isKnown(after, 'vault')).toBe(true) // now uncovered
+    expect(lootRoom.reachable(after)).toBe(true) // a routable loot target...
+    expect(lootRoom.stepToward(after)).toBe('vault') // ...one deliberate step from the entrance
   })
 })
 

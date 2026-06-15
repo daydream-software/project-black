@@ -33,19 +33,21 @@ export const LEVELS: LevelSkeleton[] = [
     monsterPool: ['slime'],
     boss: 'hex-warden',
     traps: ['spike-trap'],
-    buffPool: ['might-surge', 'swift-wind', 'mending-tide', 'cartographer', 'treasure-sense', 'enfeeble'],
-    // A hub off f1: optional loot + buff leaves, a ??? room, then f2 → boss.
+    buffPool: ['might-surge', 'swift-wind', 'mending-tide', 'cartographer', 'treasure-sense', 'enfeeble', 'secret-sight'],
+    // A hub off f1: optional loot + buff leaves, a ??? room, a HIDDEN vault (only Secret
+    // Sight uncovers it), then f2 → boss.
     topology: {
       slots: [
         { id: 'in', type: 'entrance' },
         { id: 'f1', type: 'fight' },
         { id: 'loot', type: 'loot', optional: true },
         { id: 'buff', type: 'buff', optional: true },
+        { id: 'vault', type: 'loot', hidden: true },
         { id: 'q', type: 'mystery' },
         { id: 'f2', type: 'fight' },
         { id: 'boss', type: 'boss' },
       ],
-      edges: [['in', 'f1'], ['f1', 'loot'], ['f1', 'buff'], ['f1', 'q'], ['f1', 'f2'], ['f2', 'boss']],
+      edges: [['in', 'f1'], ['f1', 'loot'], ['f1', 'buff'], ['f1', 'vault'], ['f1', 'q'], ['f1', 'f2'], ['f2', 'boss']],
     },
   },
 ]

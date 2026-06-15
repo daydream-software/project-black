@@ -13,7 +13,7 @@
 import { upcomingTurns, type Combatant, type GameState } from './sim'
 import type { RoomType } from './mapgraph'
 import type { DelveState } from './delve'
-import { neighbours } from './content/exploration/navigation'
+import { neighbours, isKnown } from './content/exploration/navigation'
 import { buildingRects, foyerLayout, type BuildingId, type BuildingRect } from './buildings'
 
 const HUD_SAFE = 72 // px reserved at the top for the floating HUD bar (DOM)
@@ -365,10 +365,15 @@ const ROOM_COLOR: Record<RoomType, string> = {
 
 interface Exit { id: string; type: RoomType; explored: boolean }
 function delveExits(delve: DelveState): Exit[] {
-  return neighbours(delve.graph, delve.pos).map((id) => {
-    const room = delve.graph.rooms.find((r) => r.id === id)
-    return { id, type: room?.type ?? 'fight', explored: delve.explored.includes(id) }
-  })
+  // Only KNOWN neighbours get a doorway chip — same predicate as the minimap, so a hidden
+  // (unrevealed) room next door leaks no door + no type into the first-person scene. A
+  // reveal (Secret Sight) makes isKnown true → the secret door then appears.
+  return neighbours(delve.graph, delve.pos)
+    .filter((id) => isKnown(delve, id))
+    .map((id) => {
+      const room = delve.graph.rooms.find((r) => r.id === id)
+      return { id, type: room?.type ?? 'fight', explored: delve.explored.includes(id) }
+    })
 }
 
 interface Frame { nx0: number; nx1: number; ny0: number; ny1: number; vx: number; vy: number }
@@ -595,10 +600,10 @@ function drawGraphMinimap(ctx: CanvasRenderingContext2D, delve: DelveState): voi
   const g = delve.graph
   const { width } = cssSize(ctx)
   const pos = layoutGraph(delve)
-  const known = (id: string): boolean =>
-    delve.explored.includes(id) ||
-    delve.revealed.includes(id) ||
-    neighbours(g, id).some((nb) => delve.explored.includes(nb))
+  // The same notion of "known" the router uses (explored / revealed / 1-hop peek, but a
+  // hidden room stays dark until revealed) — shared so the minimap and routing never
+  // disagree about what the party can see.
+  const known = (id: string): boolean => isKnown(delve, id)
   const cell = 26
   const cols = Math.max(...[...pos.values()].map((p) => p.col)) + 1
   const rows = Math.max(...[...pos.values()].map((p) => p.row)) + 1
