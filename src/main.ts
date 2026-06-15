@@ -985,6 +985,7 @@ function addGolem(): void {
   activeHero = roster.length - 1
   renderTabs()
   renderEditor()
+  renderRunBar() // roster 0→≥1 flips the Descend button from disabled — refresh it
   saveNow()
 }
 
@@ -996,6 +997,7 @@ function removeGolem(): void {
   activeHero = Math.max(0, Math.min(activeHero, roster.length - 1))
   renderTabs()
   renderEditor()
+  renderRunBar() // back to 0 golems re-disables Descend (and restores the hint)
   saveNow()
 }
 
