@@ -23,6 +23,9 @@ import { MONSTERS } from './content/monsters'
 // Skill effects are content too (content/skills/), dispatched by id; same erased-type
 // dependency, no cycle. Combat primitives sim uses internally come from combat-core.
 import { SKILLS_BY_ID } from './content/skills'
+import { DAMAGE_MODIFIERS } from './content/combat/modifiers'
+import { HEAL_REACTIONS } from './content/combat/reactions'
+import { livingEnemies, pickFirst } from './content/combat/targeting'
 import { attackDamage, poolFor, recovery } from './combat-core'
 
 export type Side = 'hero' | 'enemy'
@@ -141,29 +144,56 @@ export function upcomingTurns(units: Combatant[], n: number): string[] {
 }
 
 // --- State = Subject + Predicate -------------------------------------------
+//
+// The interpretation of each vocabulary piece is NOT in this engine — it lives in
+// the content file for that item (content/subjects, content/predicates), which
+// carries its own behaviour. The engine only orchestrates (filter-then-pick). So a
+// new predicate or pick strategy is a new content file, never an edit here.
 
-/**
- * How to pick one unit among those matching a Subject's class+predicate.
- * `first` covers "any" and "nearest" — there is no geometry yet, so "nearest"
- * is operationally the front of the list (lowest index). `lowestHp` picks the
- * most-hurt by HP ratio; `highestHp` picks the healthiest (focus the biggest
- * threat — the boss/tank); both tie-broken by index.
- */
-export type Pick = 'first' | 'lowestHp' | 'highestHp'
+/** A combat State subject: which living units it considers (`candidates`, the who)
+ *  and how it narrows to one (`pick`). Both come from the content file under
+ *  content/subjects/ — the engine never enumerates subject/pick variants.
+ *  id/label/order/unlock are the editor face (a CatalogItem). */
+export interface SubjectDef {
+  id: string
+  label: string
+  order: number
+  unlock?: string
+  candidates: (self: Combatant, units: Combatant[]) => Combatant[]
+  pick: (list: Combatant[]) => Combatant | null
+}
 
-export type Subject =
-  | { who: 'self' }
-  | { who: 'ally'; pick: Pick } // allies = same side, INCLUDING self
-  | { who: 'enemy'; pick: Pick }
-
-export type Predicate =
-  | { p: 'hpPctBelow'; value: number }
-  | { p: 'hpFull' }
-  | { p: 'always' }
+/** A combat State predicate: does it hold for a unit? The test (and any threshold it
+ *  closes over) lives in the content file under content/predicates/. */
+export interface PredicateDef {
+  id: string
+  label: string
+  order: number
+  unlock?: string
+  holds: (unit: Combatant) => boolean
+}
 
 export interface State {
-  subject: Subject
-  predicate: Predicate
+  subject: SubjectDef
+  predicate: PredicateDef
+}
+
+/** A passive damage modifier folded into every Attack's resolution (content/combat/
+ *  modifiers/). Lets a status like Defending alter incoming damage WITHOUT the engine
+ *  knowing what "defending" means — it just folds whatever is registered. */
+export interface DamageModifier {
+  id: string
+  order: number
+  apply: (damage: number, attacker: Combatant, target: Combatant) => number
+}
+
+/** A reaction to a unit being healed (content/combat/reactions/). The slice-4
+ *  counter-heal wall is one: the engine fires every registered reaction after a heal
+ *  and appends what they return — it never hard-codes the counter itself. */
+export interface HealReaction {
+  id: string
+  order: number
+  onHeal: (healed: Combatant, units: Combatant[], meta: { turn: number; round: number }) => LogEntry[]
 }
 
 // --- Maneuver = Command + which --------------------------------------------
@@ -216,58 +246,21 @@ export interface Decision {
   reason: string
 }
 
-// --- Target resolution: the heart of this slice ----------------------------
-
-/** Does this predicate hold for a given unit? */
-export function predicateHolds(pred: Predicate, u: Combatant): boolean {
-  switch (pred.p) {
-    case 'always':
-      return true
-    case 'hpFull':
-      return u.hp >= u.maxHp
-    case 'hpPctBelow':
-      return (u.hp / u.maxHp) * 100 < pred.value
-  }
-}
-
-/** Living units matching the Subject's class (self / ally / enemy). */
-function candidatesFor(subject: Subject, self: Combatant, units: Combatant[]): Combatant[] {
-  switch (subject.who) {
-    case 'self':
-      return self.hp > 0 ? [self] : []
-    case 'ally':
-      return units.filter((u) => u.hp > 0 && u.side === self.side)
-    case 'enemy':
-      return units.filter((u) => u.hp > 0 && u.side !== self.side)
-  }
-}
-
-/** Choose one unit from a non-empty candidate list per the pick strategy. */
-function pickOne(pick: Pick, list: Combatant[]): Combatant | null {
-  if (list.length === 0) return null
-  if (pick === 'first') return list[0]
-  // lowestHp / highestHp: by HP ratio; strict comparison keeps the earliest on a tie.
-  let best = list[0]
-  for (const u of list) {
-    const r = u.hp / u.maxHp
-    const b = best.hp / best.maxHp
-    if (pick === 'lowestHp' ? r < b : r > b) best = u
-  }
-  return best
-}
+// --- Target resolution: the engine's only job here is orchestration ---------
 
 /**
  * Resolve a State to a concrete target unit, or null if the State does not hold.
  *
- * Order is FILTER-then-PICK: we keep only the candidates that pass the
- * predicate, *then* pick among those. That makes "Ally lowest-HP · HP<50%" mean
- * "the most-hurt ally that is also below 50%", not "the most-hurt ally, only if
- * it happens to be below 50%". An empty result means the State is false.
+ * Order is FILTER-then-PICK: keep only the candidates the predicate passes, *then*
+ * pick among those. That makes "Ally lowest-HP · HP<50%" mean "the most-hurt ally
+ * that is also below 50%", not "the most-hurt ally, only if it happens to be below
+ * 50%". An empty result means the State is false. The *behaviour* of each piece
+ * (which candidates, how to pick, what the predicate tests) is supplied by the
+ * Subject/Predicate content files — this function only wires them together.
  */
 export function resolveTarget(state: State, self: Combatant, units: Combatant[]): Combatant | null {
-  const passing = candidatesFor(state.subject, self, units).filter((u) => predicateHolds(state.predicate, u))
-  const pick: Pick = state.subject.who === 'self' ? 'first' : state.subject.pick
-  return pickOne(pick, passing)
+  const passing = state.subject.candidates(self, units).filter((u) => state.predicate.holds(u))
+  return state.subject.pick(passing)
 }
 
 /**
@@ -337,10 +330,15 @@ export interface GameState {
 }
 
 // Enemies share one trivial Procedure: hit the nearest hero. Generic by side —
-// from a slime's perspective "enemy" is the party.
+// from a slime's perspective "enemy" is the party. Composed from the shared targeting
+// helpers (the same ones the player's Subject content uses), not a tag the engine
+// interprets.
 const ENEMY_PROCEDURE: Procedure = [
   {
-    state: { subject: { who: 'enemy', pick: 'first' }, predicate: { p: 'always' } },
+    state: {
+      subject: { id: 'enemy_near', label: 'Enemy · near', order: 0, candidates: livingEnemies, pick: pickFirst },
+      predicate: { id: 'always', label: 'Always', order: 0, holds: () => true },
+    },
     maneuver: { command: 'attack' },
     label: 'Enemy nearest · Always → Attack',
   },
@@ -463,13 +461,15 @@ export function initialState(warriorProc: Procedure, healerProc: Procedure, enco
 /** Resolve a Mend onto its target: heal by Attunement, then bite the caster's own
  *  Fortitude for any Strain past Poise (Mend is a Fortitude → heal converter — same
  *  path in combat and at rest, "c'est Mend pareil"). */
-/** Resolve an Attack onto its target: damage = Might − Ward (floored, halved when
- *  the target Defends). Attack is a Command (not a skill), so it lives here, not in
- *  the skill registry. */
+/** Resolve an Attack onto its target: base damage = Might − Ward (floored), then the
+ *  registered passive damage modifiers fold in (e.g. Defending halves it). Attack is a
+ *  Command (not a skill), so it lives here, not in the skill registry; the modifiers
+ *  are content, so the engine never branches on a status like "defending". */
 function applyAttack(actor: Combatant, target: Combatant | null): string {
   if (target !== null && target.side !== actor.side && target.hp > 0) {
     const before = target.hp
-    const dmg = attackDamage(actor, target)
+    const base = attackDamage(actor, target)
+    const dmg = DAMAGE_MODIFIERS.reduce((d, mod) => mod.apply(d, actor, target), base)
     target.hp = Math.max(0, target.hp - dmg)
     let detail = `ATTACK −${dmg} → ${target.name} (HP ${before} → ${target.hp})`
     if (target.hp <= 0) detail += ` • ${target.name} defeated!`
@@ -501,26 +501,6 @@ function advanceCharges(units: Combatant[], actorIdx: number): void {
   actor.charge = recovery(actor.celerity)
 }
 
-/** The wall reaction: every opposing unit with a counter-heal trait punishes the
- *  just-healed target. A REACTION (shares the turn), so it returns log entries to
- *  append rather than advancing the clock. Mutates `healed.hp` in place. */
-function counterReactions(units: Combatant[], healed: Combatant, turn: number, round: number): LogEntry[] {
-  const entries: LogEntry[] = []
-  for (const c of units) {
-    if (healed.hp <= 0) break
-    const counter = c.counterHeal ?? 0
-    if (c.hp <= 0 || c.side === healed.side || counter <= 0) continue
-    const before = healed.hp
-    healed.hp = Math.max(0, healed.hp - counter)
-    let punish = `COUNTER −${counter} → ${healed.name} (HP ${before} → ${healed.hp})`
-    if (healed.hp <= 0) punish += ` • ${healed.name} defeated!`
-    entries.push({
-      turn, round, actorId: c.id, actorName: c.name, kind: 'counter',
-      targetName: healed.name, protocolIndex: -1, reason: 'punishes the heal', detail: punish,
-    })
-  }
-  return entries
-}
 /* eslint-enable no-param-reassign */
 
 /** Find the targeted unit in the (cloned) roster by id, or null. */
@@ -576,10 +556,12 @@ export function step(state: GameState): GameState {
     detail,
   }
 
-  // If this action actually healed a unit, opposing counter-heal traits punish it
-  // before we judge the outcome (the slice-4 wall).
+  // If this action actually healed a unit, fire every registered heal reaction
+  // (the slice-4 counter-heal wall is one) before we judge the outcome. The engine
+  // doesn't know what any reaction does — it just folds what content registered.
   const healed = kind === 'heal' && target !== null && target.hp > hpBefore ? target : null
-  const entries = healed === null ? [mainEntry] : [mainEntry, ...counterReactions(units, healed, turn, round)]
+  const reactions = healed === null ? [] : HEAL_REACTIONS.flatMap((r) => r.onHeal(healed, units, { turn, round }))
+  const entries = [mainEntry, ...reactions]
 
   return {
     units,

@@ -25,14 +25,14 @@ export function poolFor(fortitude: number): number {
 export const MIN_DAMAGE = 1
 
 /**
- * Physical damage `attacker` deals to `target` with an Attack: Might minus the
- * target's flat Ward, floored at MIN_DAMAGE, then halved (round up) if the target
- * is Defending. Flat Ward is what makes it anti-swarm — it eats a 3-Might slime's
- * chip but barely dents a 6-Might boss.
+ * BASE physical damage `attacker` deals to `target` with an Attack: Might minus the
+ * target's flat Ward, floored at MIN_DAMAGE. Flat Ward is what makes it anti-swarm —
+ * it eats a 3-Might slime's chip but barely dents a 6-Might boss. Passive modifiers
+ * (e.g. Defending's halving) are folded on top by `applyAttack`, from content — this
+ * is only the base so it stays a pure stat→number primitive with no status logic.
  */
 export function attackDamage(attacker: Combatant, target: Combatant): number {
-  const base = Math.max(MIN_DAMAGE, attacker.might - target.ward)
-  return target.defending ? Math.ceil(base / 2) : base
+  return Math.max(MIN_DAMAGE, attacker.might - target.ward)
 }
 
 /** How much a unit's Mend restores — its Attunement (skill potency). */

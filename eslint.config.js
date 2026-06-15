@@ -43,11 +43,13 @@ export default [
     rules: { 'no-param-reassign': ['error', { props: false }] },
   },
   {
-    // A skill's `effect(actor, target)` mutates the combatants in place BY DESIGN:
-    // the sim clones the roster before dispatching, so these params are the working
-    // copy an effect is meant to write (HP, Strain, defending) — the same contract
-    // sim.ts applies to its own act() helpers. Rebinding a param is still forbidden.
-    files: ['src/content/skills/*.ts'],
+    // Combat content effects mutate the combatants in place BY DESIGN: the sim clones
+    // the roster before dispatching, so these params are the working copy a skill's
+    // `effect` or a reaction's `onHeal` is meant to write (HP, Strain, defending) —
+    // the same contract sim.ts applies to its own act() helpers. (Damage modifiers
+    // are pure — they return a number — so they don't need this.) Rebinding a param
+    // is still forbidden.
+    files: ['src/content/skills/*.ts', 'src/content/combat/reactions/*.ts'],
     rules: { 'no-param-reassign': ['error', { props: false }] },
   },
   {

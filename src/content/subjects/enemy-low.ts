@@ -1,9 +1,10 @@
-import type { Option } from '../registry'
-import type { State } from '../../sim'
+import type { SubjectDef } from '../../sim'
+import { livingEnemies, pickLowestHp } from '../combat/targeting'
 
 export default {
   id: 'enemy_low',
   label: 'Enemy · low HP',
   order: 50,
-  make: () => ({ who: 'enemy', pick: 'lowestHp' }),
-} satisfies Option<State['subject']>
+  candidates: livingEnemies,
+  pick: pickLowestHp,
+} satisfies SubjectDef

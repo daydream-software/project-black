@@ -1,9 +1,18 @@
 import { describe, it, expect } from 'vitest'
 import { startDelve, stepDelve, DEFAULT_EXPLORATION, type ExProcedure, type DelveState } from './delve'
 import { makeWarrior, makeHealer, type Combatant, type Procedure } from './sim'
+import { SUBJECTS } from './content/subjects'
+import { PREDICATES } from './content/predicates'
 
 const attack: Procedure = [
-  { state: { subject: { who: 'enemy', pick: 'first' }, predicate: { p: 'always' } }, maneuver: { command: 'attack' }, label: 'attack' },
+  {
+    state: {
+      subject: SUBJECTS.find((s) => s.id === 'enemy_near')!,
+      predicate: PREDICATES.find((p) => p.id === 'always')!,
+    },
+    maneuver: { command: 'attack' },
+    label: 'attack',
+  },
 ]
 
 // A party that one-shots everything, so fights never stop the delve — lets us

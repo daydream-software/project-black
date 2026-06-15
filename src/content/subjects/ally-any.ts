@@ -1,9 +1,10 @@
-import type { Option } from '../registry'
-import type { State } from '../../sim'
+import type { SubjectDef } from '../../sim'
+import { livingAllies, pickFirst } from '../combat/targeting'
 
 export default {
   id: 'ally_any',
   label: 'Ally · any',
   order: 20,
-  make: () => ({ who: 'ally', pick: 'first' }),
-} satisfies Option<State['subject']>
+  candidates: livingAllies,
+  pick: pickFirst,
+} satisfies SubjectDef

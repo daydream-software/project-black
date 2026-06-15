@@ -1,9 +1,10 @@
-import type { Option } from '../registry'
-import type { State } from '../../sim'
+import type { SubjectDef } from '../../sim'
+import { selfIfAlive, pickFirst } from '../combat/targeting'
 
 export default {
   id: 'self',
   label: 'Self',
   order: 10,
-  make: () => ({ who: 'self' }),
-} satisfies Option<State['subject']>
+  candidates: (self) => selfIfAlive(self),
+  pick: pickFirst,
+} satisfies SubjectDef

@@ -101,7 +101,9 @@ describe('protocol — combat rule compiler', () => {
     expect(proc).toHaveLength(2)
     expect(proc[0].label).toBe('Self · HP < 30% → Use Skill · Defend')
     expect(proc[1].label).toBe('Enemy · near · Always → Attack')
-    expect(proc[0].state).toEqual({ subject: { who: 'self' }, predicate: { p: 'hpPctBelow', value: 30 } })
+    // The compiled State now carries the behaviour-bearing catalog defs; assert by id.
+    expect(proc[0].state.subject.id).toBe('self')
+    expect(proc[0].state.predicate.id).toBe('hp_lt_30')
     expect(proc[0].maneuver).toEqual({ command: 'useSkill', skill: 'defend' })
     expect(proc[1].maneuver).toEqual({ command: 'attack' })
   })
@@ -126,13 +128,13 @@ describe('protocol — combat rule compiler', () => {
     expect(rowResolves(h.rows[0])).toBe(false)
     const proc = procedureFor(h)
     expect(proc).toHaveLength(1) // the stale row is gone, the valid one remains
-    expect(proc[0].state.subject).toEqual({ who: 'enemy', pick: 'first' })
+    expect(proc[0].state.subject.id).toBe('enemy_near')
   })
 
-  it('rowToProtocol maps each dropdown id to the right model value', () => {
+  it('rowToProtocol maps each dropdown id to the right catalog def', () => {
     const p = rowToProtocol({ subjectId: 'ally_low', predId: 'hp_lt_50', command: 'useSkill', skillId: 'mend', enabled: true })
-    expect(p.state.subject).toEqual({ who: 'ally', pick: 'lowestHp' })
-    expect(p.state.predicate).toEqual({ p: 'hpPctBelow', value: 50 })
+    expect(p.state.subject.id).toBe('ally_low')
+    expect(p.state.predicate.id).toBe('hp_lt_50')
     expect(p.maneuver).toEqual({ command: 'useSkill', skill: 'mend' })
   })
 

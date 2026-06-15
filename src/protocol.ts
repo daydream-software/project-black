@@ -20,22 +20,27 @@ import { SKILLS } from './content/skills'
 export type { Option }
 export { SUBJECTS, PREDICATES, EX_SUBJECTS, EX_PREDICATES, EX_MOVES, SKILLS }
 
+// These helpers work over ANY catalog item — the exploration Option<T> (a `make`
+// tag factory) and the combat SubjectDef/PredicateDef/SkillDef (which carry their own
+// behaviour). All share `{ id, label, order, unlock? }`, so a minimal structural
+// constraint covers them and each returns its concrete type.
+
 /** The options the editor may offer right now: always-available ones, plus any
  *  whose `unlock` id the profile has purchased. Pure, so it's unit-testable. */
-export function available<T>(options: Array<Option<T>>, unlocked: readonly string[]): Array<Option<T>> {
+export function available<T extends { unlock?: string }>(options: T[], unlocked: readonly string[]): T[] {
   return options.filter((o) => o.unlock === undefined || unlocked.includes(o.unlock))
 }
 
-/** Look up an option by id, or `undefined` if no option has it. The tolerant form
- *  used when compiling persisted rows, where a stale/renamed id must not throw. */
-export function tryById<T>(list: Array<Option<T>>, id: string): Option<T> | undefined {
+/** Look up an item by id, or `undefined` if none has it. The tolerant form used when
+ *  compiling persisted rows, where a stale/renamed id must not throw. */
+export function tryById<T extends { id: string }>(list: T[], id: string): T | undefined {
   return list.find((o) => o.id === id)
 }
 
-/** Look up an option by id, throwing on an unknown id. For call sites where an
- *  unknown id is a genuine programmer error, not stale player data — the row
- *  compilers below use the tolerant `tryById` + a resolve check instead. */
-export function byId<T>(list: Array<Option<T>>, id: string): Option<T> {
+/** Look up an item by id, throwing on an unknown id. For call sites where an unknown
+ *  id is a genuine programmer error, not stale player data — the row compilers below
+ *  use the tolerant `tryById` + a resolve check instead. */
+export function byId<T extends { id: string }>(list: T[], id: string): T {
   const found = tryById(list, id)
   if (found === undefined) throw new Error(`Unknown option: ${id}`)
   return found
@@ -134,8 +139,9 @@ function maneuverLabel(row: ProtocolRow): string {
 export function rowToProtocol(row: ProtocolRow): Protocol {
   const subject = byId(SUBJECTS, row.subjectId)
   const pred = byId(PREDICATES, row.predId)
+  // The catalog entries ARE the State's behaviour-bearing defs now (no `make` tag).
   return {
-    state: { subject: subject.make(), predicate: pred.make() },
+    state: { subject, predicate: pred },
     maneuver: maneuverFor(row),
     label: `${subject.label} · ${pred.label} → ${maneuverLabel(row)}`,
   }

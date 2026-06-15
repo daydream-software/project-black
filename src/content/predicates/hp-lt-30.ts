@@ -1,9 +1,8 @@
-import type { Option } from '../registry'
-import type { State } from '../../sim'
+import type { PredicateDef } from '../../sim'
 
 export default {
   id: 'hp_lt_30',
   label: 'HP < 30%',
   order: 20,
-  make: () => ({ p: 'hpPctBelow', value: 30 }),
-} satisfies Option<State['predicate']>
+  holds: (u) => (u.hp / u.maxHp) * 100 < 30,
+} satisfies PredicateDef

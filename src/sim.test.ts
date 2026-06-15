@@ -2,7 +2,6 @@ import { describe, it, expect } from 'vitest'
 import {
   decide,
   resolveTarget,
-  predicateHolds,
   step,
   initialState,
   makeBattle,
@@ -20,7 +19,12 @@ import {
   type Procedure,
   type State,
   type Stats,
+  type SubjectDef,
+  type PredicateDef,
 } from './sim'
+import { SUBJECTS } from './content/subjects'
+import { PREDICATES } from './content/predicates'
+import defendingModifier from './content/combat/modifiers/defending'
 
 // --- Builders ---------------------------------------------------------------
 
@@ -40,9 +44,14 @@ const ATTACK = { command: 'attack' } as const
 const MEND = { command: 'useSkill', skill: 'mend' } as const
 const DEFEND = { command: 'useSkill', skill: 'defend' } as const
 
-const enemyNearest: State = { subject: { who: 'enemy', pick: 'first' }, predicate: { p: 'always' } }
-const allyLowestHurt: State = { subject: { who: 'ally', pick: 'lowestHp' }, predicate: { p: 'hpPctBelow', value: 50 } }
-const selfLow: State = { subject: { who: 'self' }, predicate: { p: 'hpPctBelow', value: 30 } }
+// Look up the real catalog defs by id — tests build States from the SAME content the
+// game ships, so a behaviour change in a subject/predicate file is what they exercise.
+const subj = (id: string): SubjectDef => SUBJECTS.find((s) => s.id === id)!
+const pred = (id: string): PredicateDef => PREDICATES.find((p) => p.id === id)!
+
+const enemyNearest: State = { subject: subj('enemy_near'), predicate: pred('always') }
+const allyLowestHurt: State = { subject: subj('ally_low'), predicate: pred('hp_lt_50') }
+const selfLow: State = { subject: subj('self'), predicate: pred('hp_lt_30') }
 
 // --- The six stats: Ward is flat, anti-swarm damage reduction ---------------
 
@@ -64,10 +73,14 @@ describe('attackDamage — Might minus flat Ward, floored at 1', () => {
     expect(attackDamage(slime, fortress)).toBe(1)
   })
 
-  it('Defending halves the post-Ward damage (rounded up)', () => {
+  it('Defending halves the post-Ward damage (rounded up) — via the content modifier', () => {
     const warden = makeWarden() // Might 4
     const mender: Combatant = { ...makeHealer([]), defending: true } // Ward 0
-    expect(attackDamage(warden, mender)).toBe(Math.ceil(4 / 2)) // (4 − 0) halved (round up) = 2
+    const base = attackDamage(warden, mender) // 4 − 0 = 4 (base only, no status logic)
+    expect(base).toBe(4)
+    // The halving now lives in content/combat/modifiers/defending.ts, not attackDamage.
+    expect(defendingModifier.apply(base, warden, mender)).toBe(Math.ceil(4 / 2)) // → 2
+    expect(defendingModifier.apply(base, warden, { ...mender, defending: false })).toBe(4) // not defending → unchanged
   })
 })
 
@@ -87,7 +100,7 @@ describe('overdraw — Strain past Poise bites Fortitude (proportional to the ov
 
 describe('Strain in combat — a Mender that over-casts hurts itself', () => {
   const mendSelf: Procedure = [
-    { state: { subject: { who: 'self' }, predicate: { p: 'always' } }, maneuver: { command: 'useSkill', skill: 'mend' }, label: 'mend self' },
+    { state: { subject: subj('self'), predicate: pred('always') }, maneuver: { command: 'useSkill', skill: 'mend' }, label: 'mend self' },
   ]
   // A Mender (Poise 6, MEND_STRAIN 2 → 3 free casts) mends a dummy ally each turn.
   function menderCuring(poise: number) {
@@ -207,27 +220,29 @@ describe('CTB scheduler — turn frequency scales with Celerity', () => {
   })
 })
 
-describe('predicateHolds', () => {
+// The predicate behaviour now lives in each predicate's content file; test its
+// `holds` directly (the engine no longer has a predicateHolds switch).
+describe('predicate holds (content/predicates)', () => {
   it('always is unconditionally true', () => {
-    expect(predicateHolds({ p: 'always' }, unit('hero', 1, 100))).toBe(true)
+    expect(pred('always').holds(unit('hero', 1, 100))).toBe(true)
   })
   it('hpFull only at max HP', () => {
-    expect(predicateHolds({ p: 'hpFull' }, unit('hero', 100, 100))).toBe(true)
-    expect(predicateHolds({ p: 'hpFull' }, unit('hero', 99, 100))).toBe(false)
+    expect(pred('hp_full').holds(unit('hero', 100, 100))).toBe(true)
+    expect(pred('hp_full').holds(unit('hero', 99, 100))).toBe(false)
   })
-  it('hpPctBelow uses the ratio, not raw HP, and the boundary is strict', () => {
+  it('hp_lt_30 uses the ratio, not raw HP, and the boundary is strict', () => {
     const tank = unit('hero', 40, 200) // 20%
-    expect(predicateHolds({ p: 'hpPctBelow', value: 30 }, tank)).toBe(true)
+    expect(pred('hp_lt_30').holds(tank)).toBe(true)
     // Exactly 30% is NOT below 30% — an off-by-one (<=) flips this and fails.
-    expect(predicateHolds({ p: 'hpPctBelow', value: 30 }, unit('hero', 30, 100))).toBe(false)
-    expect(predicateHolds({ p: 'hpPctBelow', value: 30 }, unit('hero', 29, 100))).toBe(true)
+    expect(pred('hp_lt_30').holds(unit('hero', 30, 100))).toBe(false)
+    expect(pred('hp_lt_30').holds(unit('hero', 29, 100))).toBe(true)
   })
 })
 
 describe('resolveTarget — the subject IS the target', () => {
   it('Self resolves to the acting unit', () => {
     const me = unit('hero', 100, 100)
-    expect(resolveTarget({ subject: { who: 'self' }, predicate: { p: 'always' } }, me, [me])?.id).toBe(me.id)
+    expect(resolveTarget({ subject: subj('self'), predicate: pred('always') }, me, [me])?.id).toBe(me.id)
   })
 
   it('Enemy nearest = front of the list (lowest index)', () => {
@@ -241,7 +256,7 @@ describe('resolveTarget — the subject IS the target', () => {
     const me = unit('hero', 100, 100)
     const e1 = unit('enemy', 9, 30) // 30%
     const e2 = unit('enemy', 3, 30) // 10% — most hurt
-    const lowest: State = { subject: { who: 'enemy', pick: 'lowestHp' }, predicate: { p: 'always' } }
+    const lowest: State = { subject: subj('enemy_low'), predicate: pred('always') }
     expect(resolveTarget(lowest, me, [me, e1, e2])?.id).toBe(e2.id)
     // Tie at 10%: the earlier index wins.
     const e3 = unit('enemy', 3, 30)
@@ -252,7 +267,7 @@ describe('resolveTarget — the subject IS the target', () => {
     const me = unit('hero', 100, 100)
     const e1 = unit('enemy', 9, 30) // 30%
     const e2 = unit('enemy', 27, 30) // 90% — healthiest
-    const highest: State = { subject: { who: 'enemy', pick: 'highestHp' }, predicate: { p: 'always' } }
+    const highest: State = { subject: subj('enemy_high'), predicate: pred('always') }
     expect(resolveTarget(highest, me, [me, e1, e2])?.id).toBe(e2.id)
     // Tie at 90%: the earlier index wins.
     const e3 = unit('enemy', 27, 30)
@@ -370,7 +385,7 @@ describe('step — one unit-action of the simulation', () => {
 
   it('Defend halves the damage the unit takes before its next turn', () => {
     // The Sentinel (pool 40, Ward 2) defends; a Might-8 attacker then hits for half.
-    const warrior: Procedure = [{ state: { subject: { who: 'self' }, predicate: { p: 'always' } }, maneuver: DEFEND, label: 'defend' }]
+    const warrior: Procedure = [{ state: { subject: subj('self'), predicate: pred('always') }, maneuver: DEFEND, label: 'defend' }]
     const w = makeWarrior(warrior)
     const foe = { ...makeWarrior([]), side: 'enemy' as const, id: 'enemy-1', name: 'Slime', might: 8 }
     let s = { ...initialState(warrior, []), units: [w, foe] }
@@ -409,7 +424,7 @@ describe('step — one unit-action of the simulation', () => {
   it('healing is capped at maxHp', () => {
     // Mender Attunement 5 heals +5; from 78/80 that would overshoot, so it clamps.
     const me = { ...makeHealer([]), hp: 78, maxHp: 80 }
-    const proc: Procedure = [{ state: { subject: { who: 'self' }, predicate: { p: 'always' } }, maneuver: MEND, label: 'mend self' }]
+    const proc: Procedure = [{ state: { subject: subj('self'), predicate: pred('always') }, maneuver: MEND, label: 'mend self' }]
     const healer = { ...me, procedure: proc }
     const dummyEnemy = { ...makeWarrior([]), side: 'enemy' as const, id: 'enemy-1', name: 'E' }
     const s = step({ ...initialState([], []), units: [healer, dummyEnemy] })
@@ -421,7 +436,7 @@ describe('step — one unit-action of the simulation', () => {
 
 describe('counter-heal — the wall reacts to restorative magic', () => {
   const mendSelf: Procedure = [
-    { state: { subject: { who: 'self' }, predicate: { p: 'always' } }, maneuver: MEND, label: 'mend self' },
+    { state: { subject: subj('self'), predicate: pred('always') }, maneuver: MEND, label: 'mend self' },
   ]
 
   function healerVsWarden(healerProc: Procedure, warden: Partial<Combatant> = {}) {
@@ -452,7 +467,7 @@ describe('counter-heal — the wall reacts to restorative magic', () => {
   })
 
   it('an Attack never draws a counter — only healing does', () => {
-    const attackProc: Procedure = [{ state: { subject: { who: 'enemy', pick: 'first' }, predicate: { p: 'always' } }, maneuver: ATTACK, label: 'attack' }]
+    const attackProc: Procedure = [{ state: { subject: subj('enemy_near'), predicate: pred('always') }, maneuver: ATTACK, label: 'attack' }]
     const s = step(healerVsWarden(attackProc))
     expect(s.log.some((e) => e.kind === 'counter')).toBe(false)
   })
@@ -487,11 +502,11 @@ describe('counter-heal — the wall reacts to restorative magic', () => {
   // that rule wins the DPS race against the compact Warden. (24-budget balance pass.)
   const TITAN: Stats = { might: 6, ward: 1, fortitude: 7, attunement: 3, poise: 0, celerity: 4 } // 21
   const titanMends: Procedure = [
-    { state: { subject: { who: 'self' }, predicate: { p: 'hpPctBelow', value: 50 } }, maneuver: MEND, label: 'mend self when low' },
-    { state: { subject: { who: 'enemy', pick: 'first' }, predicate: { p: 'always' } }, maneuver: ATTACK, label: 'attack' },
+    { state: { subject: subj('self'), predicate: pred('hp_lt_50') }, maneuver: MEND, label: 'mend self when low' },
+    { state: { subject: subj('enemy_near'), predicate: pred('always') }, maneuver: ATTACK, label: 'attack' },
   ]
   const titanAttacks: Procedure = [
-    { state: { subject: { who: 'enemy', pick: 'first' }, predicate: { p: 'always' } }, maneuver: ATTACK, label: 'attack' },
+    { state: { subject: subj('enemy_near'), predicate: pred('always') }, maneuver: ATTACK, label: 'attack' },
   ]
   function titanVsWarden(proc: Procedure): ReturnType<typeof makeBattle> {
     return makeBattle([makeGolem({ id: 'hero-1', name: 'Titan', stats: TITAN, procedure: proc })], 'warden')

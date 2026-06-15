@@ -87,12 +87,30 @@ wall. Three load-bearing rules:
   by-id **Map** for keys that may be stale (skills), so `.get()` returns
   `T | undefined` and a dropped item reads as inert, never a crash.
 
-Content that carries *behaviour* (a skill's `effect`) imports its numeric primitives
-from `combat-core.ts`, never from `sim.ts` — that keeps the dependency a DAG
-(`sim → content → combat-core`) with no runtime cycle. Effect functions mutate the
-combatants the sim already cloned (a scoped `no-param-reassign` exception, like
-`render.ts`'s ctx). Enemy *trait values* (`counterHeal`) are data on the monster def;
-the trait *logic* stays in `sim.ts` — content moved definitions, not the effect system.
+**The engine knows no variants — it only orchestrates.** All *interpretation* of the
+combat vocabulary lives in content, not `sim.ts`:
+
+- a **Subject** file carries `candidates(self, units)` + `pick(list)` (shared selectors
+  and pick strategies live in `content/combat/targeting.ts`); a **Predicate** file
+  carries `holds(unit)`. `resolveTarget` is just `subject.pick(subject.candidates(…)
+  .filter(predicate.holds))` — filter-then-pick, nothing variant-specific.
+- a **skill** carries its active `effect` (`content/skills/`).
+- a passive/reactive effect is a registered **hook**: `content/combat/modifiers/` are
+  damage modifiers folded into every Attack (Defending's halving is one — the skill
+  sets the `defending` flag, the modifier owns what it *means*); `content/combat/
+  reactions/` fire after a heal (the slice-4 counter-heal *wall* is one — the monster
+  carries the `counterHeal` *value*, the reaction owns the *logic*). The engine folds
+  whatever is registered; adding a wall or a status is a new file, never an engine edit.
+
+Content that carries *behaviour* imports its numeric primitives from `combat-core.ts`,
+never from `sim.ts` — that keeps the dependency a DAG (`sim → content → combat-core`)
+with no runtime cycle. Effect/reaction functions mutate the combatants the sim already
+cloned (a scoped `no-param-reassign` exception, like `render.ts`'s ctx); damage
+modifiers are pure (they return a number). `attackDamage` in `combat-core` is the BASE
+(Might − Ward, floored); status logic is folded on top from content.
+
+(Exploration's vocabulary — `delve.ts`'s `ExSubject/ExPredicate/ExMove` — is still
+interpreted by central conditionals; the same externalisation is its own later slice.)
 
 `main.ts` owns the only mutable loop and the town ↔ delve UI. A launched delve is
 autonomous: in town the player authors two **Procedures** (ordered lists of
