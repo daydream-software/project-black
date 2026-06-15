@@ -83,6 +83,14 @@ describe('mapgraph — seeded hybrid generation of a room graph', () => {
     expect(hasE.some((x) => !x)).toBe(true) // and is dropped sometimes
   })
 
+  it('places traps on some corridors when the level authors a trap pool (seeded)', () => {
+    const trapped: LevelSkeleton = { ...cross, traps: ['spike-trap'] }
+    const anyTrap = SEEDS.some((s) => generateGraph(trapped, s).corridors.some((c) => (c.reactions?.length ?? 0) > 0))
+    const noTrapWithoutPool = SEEDS.every((s) => generateGraph(cross, s).corridors.every((c) => c.reactions === undefined))
+    expect(anyTrap).toBe(true) // a trap pool → some corridors get a trap
+    expect(noTrapWithoutPool).toBe(true) // no pool → never any traps
+  })
+
   it('the ??? room resolves to one of fight / loot / buff', () => {
     const allowed: RoomType[] = ['fight', 'loot', 'buff']
     for (const s of SEEDS) {

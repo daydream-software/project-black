@@ -11,6 +11,7 @@
 // descents. Connectivity is guaranteed by construction (see generateGraph).
 
 import { makeRng, int, pick, type Rng } from './rng'
+import type { ReactionRef } from './sim'
 
 export type RoomType = 'entrance' | 'fight' | 'loot' | 'buff' | 'boss'
 
@@ -44,6 +45,9 @@ export interface LevelSkeleton {
   monsterPool: string[]
   /** Monster id the `boss` room spawns. Per-level (no more hardcoded Warden-everywhere). */
   boss: string
+  /** Trap ids that may be placed (seeded) on this level's corridors. Absent/empty = no
+   *  traps. A corridor that gets one carries it as a serialisable ReactionRef. */
+  traps?: string[]
 }
 
 /** A concrete room in a generated graph (a present slot with its resolved type). */
@@ -55,6 +59,10 @@ export interface RoomNode {
 export interface Corridor {
   a: string
   b: string
+  /** Traps the party triggers when it traverses this corridor (serialisable refs;
+   *  the behaviour is resolved by id from the trap registry — owned by the CORRIDOR,
+   *  not a unit). Absent = a clear corridor. */
+  reactions?: ReactionRef[]
 }
 
 export interface DungeonGraph {
@@ -155,9 +163,14 @@ export function generateGraph(level: LevelSkeleton, seed: number): DungeonGraph 
   const rooms: RoomNode[] = [...typeOf]
     .filter(([id]) => reachable.has(id))
     .map(([id, type]) => ({ id, type }))
+  const traps = level.traps ?? []
   const corridors: Corridor[] = edges
     .filter(([a, b]) => reachable.has(a) && reachable.has(b))
-    .map(([a, b]) => ({ a, b }))
+    .map(([a, b]) => {
+      // ~1 in 3 corridors gets a trap (seeded) when the level authors a trap pool.
+      if (traps.length > 0 && int(rng, 3) === 0) return { a, b, reactions: [{ id: pick(rng, traps) }] }
+      return { a, b }
+    })
 
   return { rooms, corridors, entranceId, bossId, rngState: rng.s }
 }

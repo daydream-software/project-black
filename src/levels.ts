@@ -13,6 +13,7 @@ export const LEVELS: LevelSkeleton[] = [
     name: 'The Ruin',
     monsterPool: ['slime'],
     boss: 'hex-warden',
+    traps: ['spike-trap'],
     // A short spine in → f1 → f2 → boss, with an optional loot room branching off f1.
     topology: {
       slots: [
@@ -30,6 +31,7 @@ export const LEVELS: LevelSkeleton[] = [
     name: 'The Vault',
     monsterPool: ['slime'],
     boss: 'hex-warden',
+    traps: ['spike-trap'],
     // A hub off f1: optional loot + buff leaves, a ??? room, then f2 → boss.
     topology: {
       slots: [

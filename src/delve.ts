@@ -13,13 +13,14 @@
 //   whole state is JSON-serialisable (save/offline-replay safe).
 // - The log records the exploration DECISION (which rule fired), not just moves.
 
-import { generateGraph, type DungeonGraph, type RoomType, type LevelSkeleton } from './mapgraph'
-import { makeBattleFrom, step, restToConvergence, type Combatant, type GameState } from './sim'
+import { generateGraph, type DungeonGraph, type RoomType, type LevelSkeleton, type Corridor } from './mapgraph'
+import { makeBattleFrom, step, restToConvergence, type Combatant, type GameState, type ReactionRef } from './sim'
 import { LEVELS, levelById } from './levels'
 import { makeRng, range, pick } from './rng'
 import { EX_SUBJECTS_BY_ID } from './content/exploration/subjects'
 import { EX_PREDICATES_BY_ID } from './content/exploration/predicates'
 import { EX_MOVES_BY_ID } from './content/exploration/moves'
+import { TRAPS_BY_ID } from './content/exploration/traps'
 
 // --- Exploration Protocol: WHEN <Subject + Predicate> → Move ----------------
 //
@@ -88,9 +89,17 @@ export type DelveStatus = 'delving' | 'cleared' | 'dead' | 'stuck'
 
 export interface DelveLogEntry {
   turn: number
-  kind: 'explore' | 'enter' | 'combat' | 'clear' | 'end'
+  kind: 'explore' | 'enter' | 'combat' | 'clear' | 'end' | 'trap'
   reason: string
   detail: string
+}
+
+/** A trap a corridor OWNS (content/exploration/traps/), dispatched by id. It fires when
+ *  the party traverses the corridor: returns the party after its effect + a journal
+ *  detail. The delve twin of a combat reaction — owned by the map, not a unit. */
+export interface TrapDef {
+  id: string
+  trigger: (party: Combatant[], ref: ReactionRef) => { party: Combatant[]; detail: string }
 }
 
 export interface DelveState {
@@ -241,6 +250,26 @@ function enterRoom(s: DelveState, room: string): RoomEntry {
   return { battle: null, rng: s.rng, kind: 'explore', detail: `enter the ${type ?? '?'} room` }
 }
 
+/** The corridor between two rooms (undirected), or undefined if they aren't joined. */
+function corridorBetween(graph: DungeonGraph, a: string, b: string): Corridor | undefined {
+  return graph.corridors.find((c) => (c.a === a && c.b === b) || (c.a === b && c.b === a))
+}
+
+/** Fire every trap a traversed corridor owns (resolved by id), threading the party
+ *  through each. Returns the party after the traps + their journal entries. */
+function springTraps(party: Combatant[], corridor: Corridor | undefined, turn: number): { party: Combatant[]; entries: DelveLogEntry[] } {
+  let current = party
+  const entries: DelveLogEntry[] = []
+  for (const ref of corridor?.reactions ?? []) {
+    const trap = TRAPS_BY_ID.get(ref.id)
+    if (trap === undefined) continue
+    const fired = trap.trigger(current, ref)
+    current = fired.party
+    entries.push({ turn, kind: 'trap', reason: 'a corridor trap', detail: fired.detail })
+  }
+  return { party: current, entries }
+}
+
 function advanceMove(s: DelveState, turn: number): DelveState {
   const decision = decideExploration(s)
   if (decision.step === '') {
@@ -258,8 +287,16 @@ function advanceMove(s: DelveState, turn: number): DelveState {
   }
 
   const explored = s.explored.includes(next) ? s.explored : [...s.explored, next]
-  const e = enterRoom(s, next)
-  return { ...s, pos: next, explored, battle: e.battle, rng: e.rng, turn, log: logged(s, turn, { kind: e.kind, reason: decision.reason, detail: e.detail }) }
+  // traverse the corridor: any traps it owns spring on the party on the way through
+  const trapped = springTraps(s.party, corridorBetween(s.graph, s.pos, next), turn)
+  const baseLog = [...s.log, ...trapped.entries].slice(-60)
+  if (trapped.party.every((u) => u.hp <= 0)) {
+    const wiped: DelveLogEntry = { turn, kind: 'end', reason: 'wiped out', detail: 'the party fell to a trap' }
+    return { ...s, party: trapped.party, pos: next, explored, turn, status: 'dead', log: [...baseLog, wiped].slice(-60) }
+  }
+  const e = enterRoom({ ...s, party: trapped.party }, next)
+  const entry: DelveLogEntry = { turn, kind: e.kind, reason: decision.reason, detail: e.detail }
+  return { ...s, party: trapped.party, pos: next, explored, battle: e.battle, rng: e.rng, turn, log: [...baseLog, entry].slice(-60) }
 }
 
 /** Advance the delve by one tick: a combat action if mid-fight, else one move. */

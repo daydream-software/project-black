@@ -3,6 +3,7 @@ import { startDelve, stepDelve, DEFAULT_EXPLORATION, type ExProcedure, type Delv
 import { makeWarrior, makeHealer, type Combatant, type Procedure } from './sim'
 import type { LevelSkeleton } from './mapgraph'
 import lootRoom from './content/exploration/subjects/loot-room'
+import spikeTrap from './content/exploration/traps/spike-trap'
 
 // States reference vocab by id (the serialisable shape the sim resolves at runtime).
 const attack: Procedure = [
@@ -106,5 +107,17 @@ describe('routing by room type (the peek made actionable)', () => {
     const s = startDelve(strongParty(), 1, DEFAULT_EXPLORATION, noLoot)
     expect(lootRoom.reachable(s)).toBe(false)
     expect(lootRoom.stepToward(s)).toBe('')
+  })
+})
+
+// Slice 5 — corridor traps: a trap is OWNED by a corridor and springs on the party as
+// it traverses (the delve twin of a combat reaction, dispatched by id).
+describe('corridor traps', () => {
+  it('a spike trap hits each LIVING golem; a downed one is untouched', () => {
+    const party: Combatant[] = [{ ...makeWarrior([]), hp: 30 }, { ...makeHealer([]), hp: 0 }]
+    const fired = spikeTrap.trigger(party, { id: 'spike-trap', value: 5 })
+    expect(fired.party[0].hp).toBe(25) // living golem −5
+    expect(fired.party[1].hp).toBe(0) // already down → unchanged
+    expect(fired.detail).toContain('5')
   })
 })
