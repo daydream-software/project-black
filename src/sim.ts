@@ -24,7 +24,7 @@ import { MONSTERS } from './content/monsters'
 // dependency, no cycle. Combat primitives sim uses internally come from combat-core.
 import { SKILLS_BY_ID } from './content/skills'
 import { DAMAGE_MODIFIERS } from './content/combat/modifiers'
-import { HEAL_REACTIONS } from './content/combat/reactions'
+import { REACTIONS } from './content/combat/reactions'
 import { livingEnemies, pickFirst } from './content/combat/targeting'
 import { attackDamage, poolFor, recovery } from './combat-core'
 
@@ -187,13 +187,29 @@ export interface DamageModifier {
   apply: (damage: number, attacker: Combatant, target: Combatant) => number
 }
 
-/** A reaction to a unit being healed (content/combat/reactions/). The slice-4
- *  counter-heal wall is one: the engine fires every registered reaction after a heal
- *  and appends what they return — it never hard-codes the counter itself. */
-export interface HealReaction {
+/**
+ * Something that happened in a battle that content can react to. A discriminated
+ * union so the set of reactable moments grows by adding a variant — `action` (any
+ * maneuver resolved — e.g. a counterspell), `damage` (a hit landed — e.g. thorns),
+ * `heal` (HP restored — e.g. the slice-4 counter-heal wall). `units` is the live
+ * (cloned) roster the reaction may read/mutate. (Exploration moments — onMove / trap —
+ * are a separate DelveEvent union emitted by the delve layer, same pattern.)
+ */
+export type CombatEvent =
+  | { kind: 'action'; actor: Combatant; maneuver: Maneuver; units: Combatant[] }
+  | { kind: 'damage'; target: Combatant; source: Combatant; amount: number; units: Combatant[] }
+  | { kind: 'heal'; healed: Combatant; source: Combatant; units: Combatant[] }
+
+/** A generic reaction (content/combat/reactions/): it listens for one event `kind`
+ *  and, when the engine emits that event, responds — mutating the (already-cloned)
+ *  units in place and returning log entries to append. The engine folds whatever is
+ *  registered for the event's kind; it never hard-codes any specific reaction (the
+ *  counter-heal wall is just a `heal` reaction). Reactions fire in `order`. */
+export interface Reaction {
   id: string
   order: number
-  onHeal: (healed: Combatant, units: Combatant[], meta: { turn: number; round: number }) => LogEntry[]
+  kind: CombatEvent['kind']
+  react: (event: CombatEvent, meta: { turn: number; round: number }) => LogEntry[]
 }
 
 // --- Maneuver = Command + which --------------------------------------------
@@ -503,6 +519,35 @@ function advanceCharges(units: Combatant[], actorIdx: number): void {
 
 /* eslint-enable no-param-reassign */
 
+/** Fire every reaction registered for this event's kind, in `order`, and collect the
+ *  log entries they return (they mutate the cloned units in place). The engine's whole
+ *  knowledge of reactions is this fold — it never references a specific one. */
+function emit(event: CombatEvent, meta: { turn: number; round: number }): LogEntry[] {
+  return REACTIONS.filter((r) => r.kind === event.kind).flatMap((r) => r.react(event, meta))
+}
+
+/** The events one resolved maneuver produces — `action` always, plus `damage`/`heal`
+ *  when the target's HP changed — each emitted to its reactions. Kept out of `step`
+ *  so the emit fan-out doesn't inflate the step's branching. */
+function reactionsForAction(
+  actor: Combatant,
+  maneuver: Maneuver,
+  target: Combatant | null,
+  hpBefore: number,
+  kind: LogKind,
+  units: Combatant[],
+  meta: { turn: number; round: number },
+): LogEntry[] {
+  const entries = emit({ kind: 'action', actor, maneuver, units }, meta)
+  if (target !== null && target.hp < hpBefore) {
+    entries.push(...emit({ kind: 'damage', target, source: actor, amount: hpBefore - target.hp, units }, meta))
+  }
+  if (kind === 'heal' && target !== null && target.hp > hpBefore) {
+    entries.push(...emit({ kind: 'heal', healed: target, source: actor, units }, meta))
+  }
+  return entries
+}
+
 /** Find the targeted unit in the (cloned) roster by id, or null. */
 function findTargetById(units: Combatant[], targetId: string | null): Combatant | null {
   if (targetId === null) return null
@@ -556,12 +601,13 @@ export function step(state: GameState): GameState {
     detail,
   }
 
-  // If this action actually healed a unit, fire every registered heal reaction
-  // (the slice-4 counter-heal wall is one) before we judge the outcome. The engine
-  // doesn't know what any reaction does — it just folds what content registered.
-  const healed = kind === 'heal' && target !== null && target.hp > hpBefore ? target : null
-  const reactions = healed === null ? [] : HEAL_REACTIONS.flatMap((r) => r.onHeal(healed, units, { turn, round }))
-  const entries = [mainEntry, ...reactions]
+  // Emit the moments this action produced; registered reactions for each kind fold in
+  // before we judge the outcome. The engine never names a specific reaction — the
+  // slice-4 counter-heal wall is just a `heal` listener. `action`/`damage` have no
+  // listeners yet, but emitting them is what makes the system generic (a new reaction
+  // file just works); the fold is a no-op when nothing is registered.
+  const reactionEntries = reactionsForAction(actor, decision.maneuver, target, hpBefore, kind, units, { turn, round })
+  const entries = [mainEntry, ...reactionEntries]
 
   return {
     units,

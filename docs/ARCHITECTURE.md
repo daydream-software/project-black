@@ -98,9 +98,15 @@ combat vocabulary lives in content, not `sim.ts`:
 - a passive/reactive effect is a registered **hook**: `content/combat/modifiers/` are
   damage modifiers folded into every Attack (Defending's halving is one — the skill
   sets the `defending` flag, the modifier owns what it *means*); `content/combat/
-  reactions/` fire after a heal (the slice-4 counter-heal *wall* is one — the monster
-  carries the `counterHeal` *value*, the reaction owns the *logic*). The engine folds
-  whatever is registered; adding a wall or a status is a new file, never an engine edit.
+  reactions/` listen to **battle events**. The engine emits a `CombatEvent` (a
+  discriminated union — `action` / `damage` / `heal`, extensible) at each natural point
+  in `step`; a Reaction declares the `kind` it listens for and `react`s (mutate + log).
+  The slice-4 counter-heal *wall* is just a `heal` reaction (the monster carries the
+  `counterHeal` *value*, the reaction owns the *logic*). The engine folds whatever is
+  registered for the event's kind and never names a specific reaction — adding a wall,
+  a thorns effect, a counterspell is a new file + (if a new moment) one `emit` call,
+  never an engine branch. (Exploration moments — onMove / trap — will be a sibling
+  `DelveEvent` union emitted by the delve layer, same pattern.)
 
 Content that carries *behaviour* imports its numeric primitives from `combat-core.ts`,
 never from `sim.ts` — that keeps the dependency a DAG (`sim → content → combat-core`)
