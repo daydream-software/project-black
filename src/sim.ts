@@ -23,7 +23,10 @@ import { MONSTERS } from './content/monsters'
 // Skill effects are content too (content/skills/), dispatched by id; same erased-type
 // dependency, no cycle. Combat primitives sim uses internally come from combat-core.
 import { SKILLS_BY_ID } from './content/skills'
+import { SUBJECTS_BY_ID } from './content/subjects'
+import { PREDICATES_BY_ID } from './content/predicates'
 import { DAMAGE_MODIFIERS } from './content/combat/modifiers'
+import { REACTIONS_BY_ID } from './content/combat/reactions'
 import { attackDamage, poolFor, recovery } from './combat-core'
 
 export type Side = 'hero' | 'enemy'
@@ -79,12 +82,13 @@ export interface Combatant extends Stats {
    */
   strain?: number
   /**
-   * The reactive half of this unit's authored intelligence: rules that fire in
-   * response to battle events (the Hex Warden's counter-heal is one). Like the
+   * The reactive half of this unit's authored intelligence: serialisable references
+   * to the reactions it owns (the Hex Warden's counter-heal is one). Like the
    * Procedure, these come from the unit's definition — we author monsters', the
-   * player will author golems' later. Absent = purely proactive (e.g. a slime).
+   * player will author golems' later. Absent = purely proactive (e.g. a slime). The
+   * behaviour is resolved from the reaction registry by id at emit time.
    */
-  reactions?: Reaction[]
+  reactions?: ReactionRef[]
   /** Render hint: draw larger / mark as a boss. */
   isBoss?: boolean
 }
@@ -172,9 +176,15 @@ export interface PredicateDef {
   holds: (unit: Combatant) => boolean
 }
 
+/** A compiled combat rule's State references its Subject/Predicate by **id** (the
+ *  same ids the editor persists), NOT by holding the behaviour-bearing defs. The
+ *  engine resolves the def from the content registry at runtime (like a skill id).
+ *  This keeps a Procedure — and thus a saved in-progress delve — fully serialisable:
+ *  functions never end up in the JSON. A stale id resolves to nothing → the rule is
+ *  inert (it doesn't crash a resumed delve). */
 export interface State {
-  subject: SubjectDef
-  predicate: PredicateDef
+  subject: string
+  predicate: string
 }
 
 /** A passive damage modifier folded into every Attack's resolution (content/combat/
@@ -199,18 +209,25 @@ export type CombatEvent =
   | { kind: 'damage'; target: Combatant; source: Combatant; amount: number; units: Combatant[] }
   | { kind: 'heal'; healed: Combatant; source: Combatant; units: Combatant[] }
 
-/** A reaction a unit OWNS — part of its authored intelligence, like a Protocol is
- *  part of its Procedure (players author golem Procedures; we author monster
- *  Procedures AND reactions). It listens for one event `kind`; when the engine emits
- *  that event, the OWNING unit reacts — `react(event, owner, meta)` runs as `owner`
- *  (the Hex Warden's counter-heal strikes the healed enemy AS the Warden), mutating
- *  the cloned units in place and returning log entries. Reusable reactions are
- *  factories (e.g. `counterHeal(4)`) a monster file composes. Fire in `order`. */
-export interface Reaction {
+/** A reference a unit OWNS to one of its reactions: the reaction's `id` plus any
+ *  parameters (e.g. counter-heal's `value`). SERIALISABLE data — this is what lives on
+ *  a Combatant and survives a save, the reaction twin of a Maneuver's skill id. The
+ *  behaviour is resolved from the reaction registry by id at emit time. */
+export interface ReactionRef {
   id: string
-  order: number
+  /** A single numeric parameter (e.g. counter-heal strength); extend as reactions need. */
+  value?: number
+}
+
+/** A reaction's design-time definition (content/combat/reactions/): which event `kind`
+ *  it listens for, and `react` — run AS its owner when the engine emits that event,
+ *  reading the owner's `ref` for parameters, mutating the cloned units in place and
+ *  returning log entries. Dispatched by id (the counter-heal wall is just one), so
+ *  adding a reaction is dropping a file — no engine edit. */
+export interface ReactionDef {
+  id: string
   kind: CombatEvent['kind']
-  react: (event: CombatEvent, owner: Combatant, meta: { turn: number; round: number }) => LogEntry[]
+  react: (event: CombatEvent, owner: Combatant, ref: ReactionRef, meta: { turn: number; round: number }) => LogEntry[]
 }
 
 // --- Maneuver = Command + which --------------------------------------------
@@ -281,8 +298,12 @@ export interface Decision {
  * Subject/Predicate content files — this function only wires them together.
  */
 export function resolveTarget(state: State, self: Combatant, units: Combatant[]): Combatant | null {
-  const passing = state.subject.candidates(self, units).filter((u) => state.predicate.holds(u))
-  return state.subject.pick(passing)
+  // Resolve the behaviour from the content registries by id (like a skill id). A stale
+  // id (vocabulary churned since the row was saved) → undefined → the State is inert.
+  const subject = SUBJECTS_BY_ID.get(state.subject)
+  const predicate = PREDICATES_BY_ID.get(state.predicate)
+  if (subject === undefined || predicate === undefined) return null
+  return subject.pick(subject.candidates(self, units).filter((u) => predicate.holds(u)))
 }
 
 /**
@@ -358,7 +379,7 @@ type UnitSpec = Stats & {
   name: string
   side: Side
   procedure: Procedure
-  reactions?: Reaction[]
+  reactions?: ReactionRef[]
   isBoss?: boolean
 }
 
@@ -372,7 +393,7 @@ export interface MonsterDef extends Stats {
   id: string
   name: string
   procedure: Procedure
-  reactions?: Reaction[]
+  reactions?: ReactionRef[]
   isBoss?: boolean
 }
 
@@ -521,8 +542,11 @@ function emit(event: CombatEvent, meta: { turn: number; round: number }): LogEnt
   const entries: LogEntry[] = []
   for (const owner of event.units) {
     if (owner.hp <= 0) continue
-    for (const r of owner.reactions ?? []) {
-      if (r.kind === event.kind) entries.push(...r.react(event, owner, meta))
+    for (const ref of owner.reactions ?? []) {
+      // Resolve the reaction's behaviour from the registry by id (the ref is just data);
+      // a stale id → undefined → skipped, so a resumed delve never crashes.
+      const def = REACTIONS_BY_ID.get(ref.id)
+      if (def?.kind === event.kind) entries.push(...def.react(event, owner, ref, meta))
     }
   }
   return entries

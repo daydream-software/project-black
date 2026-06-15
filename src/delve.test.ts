@@ -1,21 +1,10 @@
 import { describe, it, expect } from 'vitest'
 import { startDelve, stepDelve, DEFAULT_EXPLORATION, type ExProcedure, type DelveState } from './delve'
 import { makeWarrior, makeHealer, type Combatant, type Procedure } from './sim'
-import { SUBJECTS } from './content/subjects'
-import { PREDICATES } from './content/predicates'
-import unexploredSubject from './content/exploration/subjects/unexplored'
-import alwaysExPredicate from './content/exploration/predicates/always'
-import headExMove from './content/exploration/moves/head'
 
+// States reference vocab by id (the serialisable shape the sim resolves at runtime).
 const attack: Procedure = [
-  {
-    state: {
-      subject: SUBJECTS.find((s) => s.id === 'enemy_near')!,
-      predicate: PREDICATES.find((p) => p.id === 'always')!,
-    },
-    maneuver: { command: 'attack' },
-    label: 'attack',
-  },
+  { state: { subject: 'enemy_near', predicate: 'always' }, maneuver: { command: 'attack' }, label: 'attack' },
 ]
 
 // A party that one-shots everything, so fights never stop the delve — lets us
@@ -76,7 +65,7 @@ describe('delve — the party crawls and hunts the objective', () => {
     // default, which beelines as soon as the objective is seen — and strictly
     // more on at least one seed. That proves the target rule changes navigation.
     const exploreOnly: ExProcedure = [
-      { subject: unexploredSubject, predicate: alwaysExPredicate, move: headExMove, label: 'Unexplored · Always → head toward' },
+      { subject: 'unexplored', predicate: 'always', move: 'head', label: 'Unexplored · Always → head toward' },
     ]
     let strictlyFasterSomewhere = false
     for (const s of [1, 2, 3, 7, 11, 42, 99, 123, 256]) {

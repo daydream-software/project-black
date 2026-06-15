@@ -1,6 +1,5 @@
 import type { MonsterDef } from '../../sim'
 import { attackNearest } from '../combat/procedures'
-import { counterHeal } from '../combat/reactions/counter-heal'
 
 // The slice-4 "wall", defined by its own intelligence (like a player's golem, but
 // authored by us): it attacks the nearest enemy AND owns a counter-heal reaction —
@@ -19,6 +18,6 @@ export default {
   poise: 0,
   celerity: 4,
   procedure: [attackNearest()],
-  reactions: [counterHeal(4)],
+  reactions: [{ id: 'counter-heal', value: 4 }], // it OWNS a counter-heal of strength 4 (a serialisable ref)
   isBoss: true,
 } satisfies MonsterDef

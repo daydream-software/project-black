@@ -60,6 +60,7 @@ export default [
       '@typescript-eslint/no-unsafe-assignment': 'off',
       '@typescript-eslint/no-unsafe-member-access': 'off',
       '@typescript-eslint/no-unsafe-argument': 'off',
+      '@typescript-eslint/no-unsafe-type-assertion': 'off', // tests cast JSON round-trips / fixtures freely
       '@typescript-eslint/explicit-function-return-type': 'off', // test fixtures/helpers don't need explicit returns
     },
   },

@@ -17,11 +17,9 @@ import { generateDungeon, roomAt, floorNeighbours, dirBetween, type Dungeon, typ
 import { makeBattle, step, restToConvergence, type Combatant, type GameState } from './sim'
 import { LEVELS, type LevelConfig } from './levels'
 import { entranceCell } from './content/exploration/navigation'
-import targetSubject from './content/exploration/subjects/target'
-import unexploredSubject from './content/exploration/subjects/unexplored'
-import knownPredicate from './content/exploration/predicates/known'
-import alwaysPredicate from './content/exploration/predicates/always'
-import headMove from './content/exploration/moves/head'
+import { EX_SUBJECTS_BY_ID } from './content/exploration/subjects'
+import { EX_PREDICATES_BY_ID } from './content/exploration/predicates'
+import { EX_MOVES_BY_ID } from './content/exploration/moves'
 
 // --- Exploration Protocol: WHEN <Subject + Predicate> → Move ----------------
 //
@@ -61,12 +59,14 @@ export interface ExMoveDef {
   resolve: (s: DelveState, subject: ExSubjectDef) => number
 }
 
-// One exploration rule: WHEN <Subject + Predicate> → DO <Move>. A single Protocol,
-// mirroring a combat Protocol in sim.ts (Procedure = Protocol[] there too).
+// One exploration rule: WHEN <Subject + Predicate> → DO <Move>. Like a combat
+// Protocol, it references its vocab by **id** (serialisable — so a saved in-progress
+// delve round-trips through JSON); the delve resolves the behaviour-bearing defs from
+// the registries at runtime.
 export interface ExProtocol {
-  subject: ExSubjectDef
-  predicate: ExPredicateDef
-  move: ExMoveDef
+  subject: string
+  predicate: string
+  move: string
   label: string
 }
 
@@ -75,11 +75,11 @@ export interface ExProtocol {
 export type ExProcedure = ExProtocol[]
 
 /** Default exploration Procedure: beeline to the objective once seen, else explore.
- *  Built from the catalog defs by DIRECT import (same singleton instances the editor
- *  compiler resolves by id) — so protocol.test's anti-drift check stays meaningful. */
+ *  Id-based (the same ids the editor persists) — protocol.test pins that the compiled
+ *  DEFAULT_EX_ROWS equal this, so the two can't drift. */
 export const DEFAULT_EXPLORATION: ExProcedure = [
-  { subject: targetSubject, predicate: knownPredicate, move: headMove, label: 'Target · known → head toward' },
-  { subject: unexploredSubject, predicate: alwaysPredicate, move: headMove, label: 'Unexplored · Always → head toward' },
+  { subject: 'target', predicate: 'known', move: 'head', label: 'Target · known → head toward' },
+  { subject: 'unexplored', predicate: 'always', move: 'head', label: 'Unexplored · Always → head toward' },
 ]
 
 // --- Delve state ------------------------------------------------------------
@@ -138,11 +138,16 @@ interface ExDecision {
   step: number // next cell to move to (party's own pos = rest), or -1 = no move
 }
 
-/** One Protocol's decision: if its Predicate holds, ask its Move for the next cell.
- *  -1 (no move) means the rule doesn't apply — scan continues. */
+/** One Protocol's decision: resolve its vocab from the registries by id (a stale id →
+ *  inert), then if its Predicate holds, ask its Move for the next cell. -1 (no move)
+ *  means the rule doesn't apply — scan continues. */
 function protocolStep(s: DelveState, protocol: ExProtocol): ExDecision | null {
-  if (!protocol.predicate.holds(s, protocol.subject)) return null
-  const step = protocol.move.resolve(s, protocol.subject)
+  const subject = EX_SUBJECTS_BY_ID.get(protocol.subject)
+  const predicate = EX_PREDICATES_BY_ID.get(protocol.predicate)
+  const move = EX_MOVES_BY_ID.get(protocol.move)
+  if (subject === undefined || predicate === undefined || move === undefined) return null
+  if (!predicate.holds(s, subject)) return null
+  const step = move.resolve(s, subject)
   return step === -1 ? null : { reason: protocol.label, step }
 }
 

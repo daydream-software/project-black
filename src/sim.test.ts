@@ -16,10 +16,10 @@ import {
   upcomingTurns,
   MEND_STRAIN,
   type Combatant,
+  type GameState,
   type Procedure,
   type State,
   type Stats,
-  type SubjectDef,
   type PredicateDef,
 } from './sim'
 import { SUBJECTS } from './content/subjects'
@@ -44,10 +44,15 @@ const ATTACK = { command: 'attack' } as const
 const MEND = { command: 'useSkill', skill: 'mend' } as const
 const DEFEND = { command: 'useSkill', skill: 'defend' } as const
 
-// Look up the real catalog defs by id — tests build States from the SAME content the
-// game ships, so a behaviour change in a subject/predicate file is what they exercise.
-const subj = (id: string): SubjectDef => SUBJECTS.find((s) => s.id === id)!
-const pred = (id: string): PredicateDef => PREDICATES.find((p) => p.id === id)!
+// A State references its vocab by id (the serialisable shape the sim resolves at
+// runtime). `subj`/`pred` validate the id exists in the shipped catalog, then return
+// it — so a typo in a test id is caught, and the State is the real thing the editor
+// would compile. `predDef` returns the def itself for the few tests that exercise a
+// predicate's `holds` behaviour directly.
+const subj = (id: string): string => (SUBJECTS.find((s) => s.id === id) ?? raise(`no subject ${id}`)).id
+const pred = (id: string): string => (PREDICATES.find((p) => p.id === id) ?? raise(`no predicate ${id}`)).id
+const predDef = (id: string): PredicateDef => PREDICATES.find((p) => p.id === id) ?? raise(`no predicate ${id}`)
+function raise(msg: string): never { throw new Error(msg) }
 
 const enemyNearest: State = { subject: subj('enemy_near'), predicate: pred('always') }
 const allyLowestHurt: State = { subject: subj('ally_low'), predicate: pred('hp_lt_50') }
@@ -224,18 +229,18 @@ describe('CTB scheduler — turn frequency scales with Celerity', () => {
 // `holds` directly (the engine no longer has a predicateHolds switch).
 describe('predicate holds (content/predicates)', () => {
   it('always is unconditionally true', () => {
-    expect(pred('always').holds(unit('hero', 1, 100))).toBe(true)
+    expect(predDef('always').holds(unit('hero', 1, 100))).toBe(true)
   })
   it('hpFull only at max HP', () => {
-    expect(pred('hp_full').holds(unit('hero', 100, 100))).toBe(true)
-    expect(pred('hp_full').holds(unit('hero', 99, 100))).toBe(false)
+    expect(predDef('hp_full').holds(unit('hero', 100, 100))).toBe(true)
+    expect(predDef('hp_full').holds(unit('hero', 99, 100))).toBe(false)
   })
   it('hp_lt_30 uses the ratio, not raw HP, and the boundary is strict', () => {
     const tank = unit('hero', 40, 200) // 20%
-    expect(pred('hp_lt_30').holds(tank)).toBe(true)
+    expect(predDef('hp_lt_30').holds(tank)).toBe(true)
     // Exactly 30% is NOT below 30% — an off-by-one (<=) flips this and fails.
-    expect(pred('hp_lt_30').holds(unit('hero', 30, 100))).toBe(false)
-    expect(pred('hp_lt_30').holds(unit('hero', 29, 100))).toBe(true)
+    expect(predDef('hp_lt_30').holds(unit('hero', 30, 100))).toBe(false)
+    expect(predDef('hp_lt_30').holds(unit('hero', 29, 100))).toBe(true)
   })
 })
 
@@ -520,5 +525,31 @@ describe('counter-heal — the wall reacts to restorative magic', () => {
   it('the SAME build WINS once it stops curing and just attacks', () => {
     const s = runToEnd(titanVsWarden(titanAttacks))
     expect(s.outcome).toBe('victory')
+  })
+})
+
+// The regression net for the id-dispatch model: a compiled Procedure / a unit's
+// reactions must reference content by ID (serialisable), never hold functions — so a
+// saved in-progress delve survives a JSON round-trip and resumes. Before this, the
+// State held behaviour-bearing defs whose functions JSON dropped, and a resumed delve
+// threw "state.subject.candidates is not a function" on the first combat step.
+describe('serialisation — a JSON round-tripped battle resumes (the resume-crash net)', () => {
+  const roundTrip = (s: GameState): GameState => JSON.parse(JSON.stringify(s)) as GameState
+
+  it('still resolves targets by id after serialisation (no functions lost)', () => {
+    const proc: Procedure = [{ state: { subject: subj('enemy_near'), predicate: pred('always') }, maneuver: ATTACK, label: 'attack' }]
+    let s = roundTrip(makeBattle([makeWarrior(proc)], 'warden'))
+    for (let i = 0; i < 12; i += 1) s = step(s)
+    // the warrior found + hit the Warden — subject/predicate resolved from ids post-JSON
+    expect(s.log.some((e) => e.kind === 'attack' && e.detail.includes('Hex Warden'))).toBe(true)
+  })
+
+  it("still fires a unit's owned reaction by ref after serialisation (the slice-4 wall survives)", () => {
+    const mendSelf: Procedure = [{ state: { subject: subj('self'), predicate: pred('always') }, maneuver: MEND, label: 'mend self' }]
+    const healer = { ...makeHealer(mendSelf), hp: 10 } // hurt, so a self-mend restores HP and draws the counter
+    let s = roundTrip(makeBattle([healer], 'warden'))
+    for (let i = 0; i < 12; i += 1) s = step(s)
+    // the Warden's counter-heal reaction (a serialisable {id,value} ref) still punished the heal
+    expect(s.log.some((e) => e.kind === 'counter')).toBe(true)
   })
 })

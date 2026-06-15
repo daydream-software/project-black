@@ -47,11 +47,11 @@ describe('protocol — exploration rule compiler', () => {
     expect(buildExploration(rows)).toEqual([])
   })
 
-  it('maps each dropdown id to the right catalog def', () => {
+  it('maps each dropdown id to the right vocab id in the compiled State', () => {
     const rule = exRowToProtocol({ subjectId: 'exit', predId: 'php_lt_50', moveId: 'rest', enabled: true })
-    expect(rule.subject.id).toBe('exit')
-    expect(rule.predicate.id).toBe('php_lt_50')
-    expect(rule.move.id).toBe('rest')
+    expect(rule.subject).toBe('exit') // the State references the vocab by id (serialisable)
+    expect(rule.predicate).toBe('php_lt_50')
+    expect(rule.move).toBe('rest')
   })
 
   it('every catalog option has a unique id (ids are the persisted, round-tripped key)', () => {
@@ -101,9 +101,9 @@ describe('protocol — combat rule compiler', () => {
     expect(proc).toHaveLength(2)
     expect(proc[0].label).toBe('Self · HP < 30% → Use Skill · Defend')
     expect(proc[1].label).toBe('Enemy · near · Always → Attack')
-    // The compiled State now carries the behaviour-bearing catalog defs; assert by id.
-    expect(proc[0].state.subject.id).toBe('self')
-    expect(proc[0].state.predicate.id).toBe('hp_lt_30')
+    // The compiled State references the vocab by id (serialisable; the sim resolves it).
+    expect(proc[0].state.subject).toBe('self')
+    expect(proc[0].state.predicate).toBe('hp_lt_30')
     expect(proc[0].maneuver).toEqual({ command: 'useSkill', skill: 'defend' })
     expect(proc[1].maneuver).toEqual({ command: 'attack' })
   })
@@ -128,13 +128,13 @@ describe('protocol — combat rule compiler', () => {
     expect(rowResolves(h.rows[0])).toBe(false)
     const proc = procedureFor(h)
     expect(proc).toHaveLength(1) // the stale row is gone, the valid one remains
-    expect(proc[0].state.subject.id).toBe('enemy_near')
+    expect(proc[0].state.subject).toBe('enemy_near')
   })
 
-  it('rowToProtocol maps each dropdown id to the right catalog def', () => {
+  it('rowToProtocol maps each dropdown id to the right vocab id in the State', () => {
     const p = rowToProtocol({ subjectId: 'ally_low', predId: 'hp_lt_50', command: 'useSkill', skillId: 'mend', enabled: true })
-    expect(p.state.subject.id).toBe('ally_low')
-    expect(p.state.predicate.id).toBe('hp_lt_50')
+    expect(p.state.subject).toBe('ally_low')
+    expect(p.state.predicate).toBe('hp_lt_50')
     expect(p.maneuver).toEqual({ command: 'useSkill', skill: 'mend' })
   })
 

@@ -65,10 +65,11 @@ export function exRowToProtocol(row: ExProtocolRow): ExProtocol {
   const subject = byId(EX_SUBJECTS, row.subjectId)
   const pred = byId(EX_PREDICATES, row.predId)
   const mv = byId(EX_MOVES, row.moveId)
+  // Store ids (serialisable); the delve resolves the behaviour-bearing defs at runtime.
   return {
-    subject,
-    predicate: pred,
-    move: mv,
+    subject: subject.id,
+    predicate: pred.id,
+    move: mv.id,
     label: `${subject.label} · ${pred.label} → ${mv.label}`,
   }
 }
@@ -144,9 +145,10 @@ function maneuverLabel(row: ProtocolRow): string {
 export function rowToProtocol(row: ProtocolRow): Protocol {
   const subject = byId(SUBJECTS, row.subjectId)
   const pred = byId(PREDICATES, row.predId)
-  // The catalog entries ARE the State's behaviour-bearing defs now (no `make` tag).
+  // The State references the vocab by id (serialisable); the sim resolves the def at
+  // runtime. byId here is just to throw on a bad id + build the human label.
   return {
-    state: { subject, predicate: pred },
+    state: { subject: subject.id, predicate: pred.id },
     maneuver: maneuverFor(row),
     label: `${subject.label} · ${pred.label} → ${maneuverLabel(row)}`,
   }
