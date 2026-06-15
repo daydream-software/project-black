@@ -4,6 +4,7 @@ import { makeWarrior, makeHealer, type Combatant, type Procedure } from './sim'
 import type { LevelSkeleton } from './mapgraph'
 import lootRoom from './content/exploration/subjects/loot-room'
 import spikeTrap from './content/exploration/traps/spike-trap'
+import { isKnown } from './content/exploration/navigation'
 
 // States reference vocab by id (the serialisable shape the sim resolves at runtime).
 const attack: Procedure = [
@@ -139,6 +140,44 @@ describe('buff rooms grant a run-scoped boon', () => {
     const end = advance(startDelve(strongParty(), 1, DEFAULT_EXPLORATION, enfeebleLine))
     expect(end.status).toBe('cleared') // onSpawn fold ran on the boss; the delve still resolves
     expect(end.buffs).toContain('enfeeble')
+  })
+})
+
+// Hidden-rooms slice H1 — a secret room is in the graph but the crawler never finds it:
+// the 1-hop peek doesn't reveal it and the frontier explorer never blunders in. Only a
+// reveal (H2) opens it.
+describe('hidden rooms stay secret to the crawler', () => {
+  // The hidden vault hangs DIRECTLY off the entrance and is listed FIRST — so the frontier
+  // explorer would step into it on turn 1 if the hidden gate weren\'t enforced. The open
+  // path is in → f → boss. The vault is a dead-end secret room.
+  const withVault: LevelSkeleton = {
+    id: 't-secret', name: 'T', monsterPool: ['slime'], boss: 'hex-warden',
+    topology: {
+      slots: [
+        { id: 'in', type: 'entrance' },
+        { id: 'vault', type: 'loot', hidden: true },
+        { id: 'f', type: 'fight' },
+        { id: 'boss', type: 'boss' },
+      ],
+      edges: [['in', 'vault'], ['in', 'f'], ['f', 'boss']],
+    },
+  }
+
+  it('the party clears the delve but never explores the hidden vault', () => {
+    for (const seed of [1, 2, 3, 7, 11, 42]) {
+      const end = advance(startDelve(strongParty(), seed, DEFAULT_EXPLORATION, withVault))
+      expect(end.status).toBe('cleared')
+      expect(end.explored).not.toContain('vault') // never blundered in, even adjacent + first
+      expect(isKnown(end, 'vault')).toBe(false) // and never even peeked (still secret)
+    }
+  })
+
+  it('a hidden room adjacent to the party is NOT peeked (unlike an open neighbour)', () => {
+    // at the entrance, both the vault (hidden) and f (open) are neighbours. f is peeked;
+    // the vault stays invisible despite the adjacency — only a reveal would uncover it.
+    const s = startDelve(strongParty(), 1, DEFAULT_EXPLORATION, withVault)
+    expect(isKnown(s, 'f')).toBe(true) // ordinary neighbour → peeked
+    expect(isKnown(s, 'vault')).toBe(false) // hidden neighbour → still invisible
   })
 })
 

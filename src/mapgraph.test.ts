@@ -119,6 +119,35 @@ describe('mapgraph — seeded hybrid generation of a room graph', () => {
     expect(SEEDS.some((s) => throwsAt(badLine, s))).toBe(true)
   })
 
+  it('carries a HIDDEN slot onto its room node (a secret room exists in the graph)', () => {
+    const withSecret: LevelSkeleton = {
+      id: 'sec', name: 'Sec', monsterPool: ['slime'], boss: 'hex-warden',
+      topology: {
+        slots: [
+          { id: 'in', type: 'entrance' },
+          { id: 'vault', type: 'loot', hidden: true },
+          { id: 'boss', type: 'boss' },
+        ],
+        edges: [['in', 'vault'], ['in', 'boss']],
+      },
+    }
+    for (const s of SEEDS) {
+      const vault = generateGraph(withSecret, s).rooms.find((r) => r.id === 'vault')
+      expect(vault?.hidden).toBe(true) // present in the graph, flagged secret
+    }
+  })
+
+  it('throws when the entrance or boss is marked hidden (authoring error)', () => {
+    const hiddenBoss: LevelSkeleton = {
+      id: 'hb', name: 'HB', monsterPool: [], boss: 'hex-warden',
+      topology: {
+        slots: [{ id: 'in', type: 'entrance' }, { id: 'b', type: 'boss', hidden: true }],
+        edges: [['in', 'b']],
+      },
+    }
+    expect(() => generateGraph(hiddenBoss, 1)).toThrow(/may not be hidden/u)
+  })
+
   it('throws on bad authoring — not exactly one entrance', () => {
     const twoEntrances: LevelSkeleton = {
       id: 'x', name: 'X', monsterPool: [], boss: 'hex-warden',

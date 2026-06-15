@@ -28,6 +28,12 @@ export interface Slot {
    *  be the sole bridge between mandatory rooms, so dropping it can't disconnect the
    *  level (the entrance always reaches the boss). */
   optional?: boolean
+  /** A HIDDEN room exists in the graph but is never discovered by normal crawling: the
+   *  1-hop peek doesn't reveal its type and the frontier explorer never steps into it.
+   *  It becomes known + enterable only once a vision buff reveals it (a secret room).
+   *  AUTHORING RULE: like an optional room it must be a SIDE room (never the sole bridge
+   *  between mandatory rooms), and the entrance/boss may never be hidden. */
+  hidden?: boolean
 }
 
 export interface Topology {
@@ -57,6 +63,9 @@ export interface LevelSkeleton {
 export interface RoomNode {
   id: string
   type: RoomType
+  /** A secret room: present in the graph but undiscoverable until a vision buff reveals
+   *  it (see Slot.hidden). Absent = an ordinary room. */
+  hidden?: boolean
 }
 
 export interface Corridor {
@@ -159,13 +168,18 @@ export function generateGraph(level: LevelSkeleton, seed: number): DungeonGraph 
   const entranceId = soleRoomOfType(typeOf, 'entrance')
   const bossId = soleRoomOfType(typeOf, 'boss')
 
+  const hiddenIds = new Set(slots.filter((s) => s.hidden === true).map((s) => s.id))
+  if (hiddenIds.has(entranceId) || hiddenIds.has(bossId)) {
+    throw new Error('the entrance and boss rooms may not be hidden')
+  }
+
   const adj = buildAdjacency(edges, present)
   const reachable = reachableFrom(entranceId, adj)
   if (!reachable.has(bossId)) throw new Error('level topology disconnects the boss from the entrance')
 
   const rooms: RoomNode[] = [...typeOf]
     .filter(([id]) => reachable.has(id))
-    .map(([id, type]) => ({ id, type }))
+    .map(([id, type]) => (hiddenIds.has(id) ? { id, type, hidden: true } : { id, type }))
   const traps = level.traps ?? []
   const corridors: Corridor[] = edges
     .filter(([a, b]) => reachable.has(a) && reachable.has(b))

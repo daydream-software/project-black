@@ -56,10 +56,17 @@ export function isExplored(s: DelveState, room: string): boolean {
   return s.explored.includes(room)
 }
 
-/** Known = explored, OR adjacent to an explored room (the 1-hop TYPE peek), OR revealed
- *  by a vision buff (Cartographer's Eye / Treasure Sense fill `revealed`). */
+/** A HIDDEN (secret) room: present in the graph but undiscoverable by normal crawling. */
+export function isHidden(s: DelveState, room: string): boolean {
+  return s.graph.rooms.find((r) => r.id === room)?.hidden === true
+}
+
+/** Known = explored, OR revealed by a vision buff, OR adjacent to an explored room (the
+ *  1-hop TYPE peek) — BUT a hidden room is never peeked: only being explored or revealed
+ *  makes it known (so a secret room stays secret until a buff uncovers it). */
 export function isKnown(s: DelveState, room: string): boolean {
   if (isExplored(s, room) || s.revealed.includes(room)) return true
+  if (isHidden(s, room)) return false
   return neighbours(s.graph, room).some((nb) => isExplored(s, nb))
 }
 
@@ -73,8 +80,11 @@ export function stepTowardRoom(s: DelveState, goal: string): string {
 /** Next step toward the nearest UNEXPLORED room (the frontier): an explored room with
  *  an unexplored neighbour, then step into it. '' if everything reachable is explored. */
 export function stepTowardFrontier(s: DelveState): string {
-  // adjacent unexplored? step straight in.
-  for (const nb of neighbours(s.graph, s.pos)) if (!isExplored(s, nb)) return nb
+  // a room the party may discover by crawling: unexplored AND not a hidden secret room
+  // (the frontier explorer must never blunder into a hidden room — only a reveal opens it).
+  const isOpenFrontier = (room: string): boolean => !isExplored(s, room) && !isHidden(s, room)
+  // adjacent open frontier? step straight in.
+  for (const nb of neighbours(s.graph, s.pos)) if (isOpenFrontier(nb)) return nb
   const prev = new Map<string, string>()
   const seen = new Set<string>([s.pos])
   const queue = [s.pos]
@@ -83,7 +93,7 @@ export function stepTowardFrontier(s: DelveState): string {
       if (!isExplored(s, nb) || seen.has(nb)) continue // travel only through the known
       seen.add(nb)
       prev.set(nb, cur)
-      if (neighbours(s.graph, nb).some((n2) => !isExplored(s, n2))) return stepBack(prev, s.pos, nb)
+      if (neighbours(s.graph, nb).some(isOpenFrontier)) return stepBack(prev, s.pos, nb)
       queue.push(nb)
     }
   }
