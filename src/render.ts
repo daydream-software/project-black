@@ -11,7 +11,7 @@
 // device-pixel backing store).
 
 import { upcomingTurns, type Combatant, type GameState } from './sim'
-import type { RoomType } from './mapgraph'
+import type { RoomType, RoomNode } from './mapgraph'
 import type { DelveState } from './delve'
 import { neighbours, isKnown } from './content/exploration/navigation'
 import { buildingRects, foyerLayout, type BuildingId, type BuildingRect } from './buildings'
@@ -618,8 +618,10 @@ function drawGraphMinimap(ctx: CanvasRenderingContext2D, delve: DelveState): voi
   }
   ctx.fillStyle = 'rgba(0,0,0,0.6)'
   ctx.fillRect(x0, y0, mw, mh)
-  ctx.strokeStyle = '#33334d'
-  ctx.lineWidth = 1
+  // corridors: a brighter, 2px line so the graph's connections actually read on the
+  // dark overlay (a 1px near-black line was invisible at this scale).
+  ctx.strokeStyle = '#8a8ab0'
+  ctx.lineWidth = 2
   for (const c of g.corridors) {
     const a = center(c.a)
     const b = center(c.b)
@@ -632,6 +634,14 @@ function drawGraphMinimap(ctx: CanvasRenderingContext2D, delve: DelveState): voi
   ctx.textAlign = 'center'
   ctx.textBaseline = 'middle'
   ctx.font = `${Math.round(sz * 0.8)}px system-ui, sans-serif`
+  // A room is "done" (✓) when its CONTENT is dealt with — a fight/boss is cleared, a
+  // loot/buff room is collected — NOT merely entered. (The entrance has no challenge, so
+  // arriving is enough.) So a fight room you're standing in mid-battle shows no ✓ yet.
+  const isDone = (room: RoomNode): boolean => {
+    if (room.type === 'fight' || room.type === 'boss') return delve.cleared.includes(room.id)
+    if (room.type === 'loot' || room.type === 'buff') return delve.resolved.includes(room.id)
+    return delve.explored.includes(room.id)
+  }
   for (const r of g.rooms) {
     const c = center(r.id)
     if (!known(r.id)) {
@@ -644,7 +654,7 @@ function drawGraphMinimap(ctx: CanvasRenderingContext2D, delve: DelveState): voi
     ctx.fillStyle = ROOM_COLOR[r.type]
     ctx.fillRect(c.x - sz / 2, c.y - sz / 2, sz, sz)
     ctx.globalAlpha = 1
-    if (explored) {
+    if (isDone(r)) {
       ctx.fillStyle = '#0a0a12'
       ctx.fillText('✓', c.x, c.y + 0.5)
     }
