@@ -3,6 +3,9 @@ import { startDelve, stepDelve, DEFAULT_EXPLORATION, type ExProcedure, type Delv
 import { makeWarrior, makeHealer, type Combatant, type Procedure } from './sim'
 import { SUBJECTS } from './content/subjects'
 import { PREDICATES } from './content/predicates'
+import unexploredSubject from './content/exploration/subjects/unexplored'
+import alwaysExPredicate from './content/exploration/predicates/always'
+import headExMove from './content/exploration/moves/head'
 
 const attack: Procedure = [
   {
@@ -73,7 +76,7 @@ describe('delve — the party crawls and hunts the objective', () => {
     // default, which beelines as soon as the objective is seen — and strictly
     // more on at least one seed. That proves the target rule changes navigation.
     const exploreOnly: ExProcedure = [
-      { subject: { what: 'unexplored' }, predicate: { p: 'always' }, move: 'headToward', label: 'Unexplored · Always → head toward' },
+      { subject: unexploredSubject, predicate: alwaysExPredicate, move: headExMove, label: 'Unexplored · Always → head toward' },
     ]
     let strictlyFasterSomewhere = false
     for (const s of [1, 2, 3, 7, 11, 42, 99, 123, 256]) {

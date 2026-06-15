@@ -13,39 +13,60 @@
 //   whole state is JSON-serialisable (save/offline-replay safe).
 // - The log records the exploration DECISION (which rule fired), not just moves.
 
-import {
-  generateDungeon,
-  roomCenter,
-  roomAt,
-  cellIndex,
-  floorNeighbours,
-  dirBetween,
-  type Dungeon,
-  type Dir,
-} from './dungeon'
+import { generateDungeon, roomAt, floorNeighbours, dirBetween, type Dungeon, type Dir } from './dungeon'
 import { makeBattle, step, restToConvergence, type Combatant, type GameState } from './sim'
 import { LEVELS, type LevelConfig } from './levels'
+import { entranceCell } from './content/exploration/navigation'
+import targetSubject from './content/exploration/subjects/target'
+import unexploredSubject from './content/exploration/subjects/unexplored'
+import knownPredicate from './content/exploration/predicates/known'
+import alwaysPredicate from './content/exploration/predicates/always'
+import headMove from './content/exploration/moves/head'
 
 // --- Exploration Protocol: WHEN <Subject + Predicate> → Move ----------------
+//
+// The exploration twin of the combat rule language. Like combat, the ENGINE knows no
+// variants — each vocabulary piece carries its own behaviour (content/exploration/),
+// and decideExploration only orchestrates. A Subject is a dungeon destination that
+// knows how to step toward itself and whether it's reachable; a Predicate tests the
+// state (the `known` predicate asks its Subject); a Move turns the Subject + state
+// into the next cell. Adding a destination / move / condition is a new content file.
 
-export type ExSubject =
-  | { what: 'target' } // the objective room
-  | { what: 'unexplored' } // the exploration frontier
-  | { what: 'exit' } // the entrance (for retreat)
+export interface ExSubjectDef {
+  id: string
+  label: string
+  order: number
+  unlock?: string
+  /** Next cell to step toward this subject from the party's position (-1 if none). */
+  stepToward: (s: DelveState) => number
+  /** Is this subject currently discovered & pathable? (gates the `known` predicate.) */
+  reachable: (s: DelveState) => boolean
+}
 
-export type ExPredicate =
-  | { p: 'always' }
-  | { p: 'known' } // a subject of this kind is currently discovered & reachable
-  | { p: 'partyHpPctBelow'; value: number }
+export interface ExPredicateDef {
+  id: string
+  label: string
+  order: number
+  unlock?: string
+  /** Holds for the current delve state. `known` consults its Subject's `reachable`. */
+  holds: (s: DelveState, subject: ExSubjectDef) => boolean
+}
 
-export type ExMove = 'headToward' | 'retreat' | 'rest'
+export interface ExMoveDef {
+  id: string
+  label: string
+  order: number
+  unlock?: string
+  /** The cell the party moves to: its OWN `pos` = rest in place, -1 = no move. */
+  resolve: (s: DelveState, subject: ExSubjectDef) => number
+}
 
-// One exploration rule: WHEN <State> → DO <Move>. A single Protocol, mirroring a
-// combat Protocol in sim.ts (Procedure = Protocol[] there too).
+// One exploration rule: WHEN <Subject + Predicate> → DO <Move>. A single Protocol,
+// mirroring a combat Protocol in sim.ts (Procedure = Protocol[] there too).
 export interface ExProtocol {
-  subject: ExSubject
-  predicate: ExPredicate
-  move: ExMove
+  subject: ExSubjectDef
+  predicate: ExPredicateDef
+  move: ExMoveDef
   label: string
 }
 
@@ -53,11 +74,12 @@ export interface ExProtocol {
 // order). The exploration twin of sim.ts's Procedure.
 export type ExProcedure = ExProtocol[]
 
-/** Default (hardcoded) exploration Procedure: beeline to the objective once seen,
- *  else explore. */
+/** Default exploration Procedure: beeline to the objective once seen, else explore.
+ *  Built from the catalog defs by DIRECT import (same singleton instances the editor
+ *  compiler resolves by id) — so protocol.test's anti-drift check stays meaningful. */
 export const DEFAULT_EXPLORATION: ExProcedure = [
-  { subject: { what: 'target' }, predicate: { p: 'known' }, move: 'headToward', label: 'Target · known → head toward' },
-  { subject: { what: 'unexplored' }, predicate: { p: 'always' }, move: 'headToward', label: 'Unexplored · Always → head toward' },
+  { subject: targetSubject, predicate: knownPredicate, move: headMove, label: 'Target · known → head toward' },
+  { subject: unexploredSubject, predicate: alwaysPredicate, move: headMove, label: 'Unexplored · Always → head toward' },
 ]
 
 // --- Delve state ------------------------------------------------------------
@@ -106,126 +128,21 @@ function reveal(d: Dungeon, cell: number, explored: boolean[]): void {
   /* eslint-enable no-param-reassign */
 }
 
-/** First step on the shortest path from `from` to `goal` through `passable`
- *  cells (the goal itself is always allowed). -1 if unreachable. */
-function stepTowardKnown(d: Dungeon, from: number, goal: number, passable: (c: number) => boolean): number {
-  if (from === goal) return from
-  const prev = new Map<number, number>()
-  const seen = new Set<number>([from])
-  const queue = [from]
-  // for-of over a growing array: the array iterator re-reads length, so pushed
-  // cells are visited — a standard BFS queue walk.
-  for (const cur of queue) {
-    for (const nb of floorNeighbours(d, cur)) {
-      if (seen.has(nb) || (nb !== goal && !passable(nb))) continue
-      seen.add(nb)
-      prev.set(nb, cur)
-      if (nb === goal) return firstStep(prev, from, goal)
-      queue.push(nb)
-    }
-  }
-  return -1
-}
-
-/** Step toward (and finally into) the nearest exploration frontier. -1 if none. */
-function stepTowardFrontier(d: Dungeon, from: number, explored: boolean[]): number {
-  // already at the edge of the known? step straight into the unknown
-  for (const nb of floorNeighbours(d, from)) if (!explored[nb]) return nb
-  const prev = new Map<number, number>()
-  const seen = new Set<number>([from])
-  const queue = [from]
-  for (const cur of queue) {
-    for (const nb of floorNeighbours(d, cur)) {
-      if (!explored[nb] || seen.has(nb)) continue // only travel through the known
-      seen.add(nb)
-      prev.set(nb, cur)
-      if (floorNeighbours(d, nb).some((n2) => !explored[n2])) return firstStep(prev, from, nb) // nb is a frontier
-      queue.push(nb)
-    }
-  }
-  return -1
-}
-
-/** Reconstruct the first step of a BFS path (walk parents back to `from`). */
-function firstStep(prev: Map<number, number>, from: number, goal: number): number {
-  let cur = goal
-  let parent = prev.get(cur)
-  while (parent !== undefined && parent !== from) {
-    cur = parent
-    parent = prev.get(cur)
-  }
-  return parent === from ? cur : -1
-}
-
-// --- Exploration decision ---------------------------------------------------
-
-function entranceCell(d: Dungeon): number {
-  const c = roomCenter(d.rooms[d.entranceRoomId])
-  return cellIndex(d, c.x, c.y)
-}
-
-/** The nearest explored cell of the objective room, or -1 if undiscovered. */
-function knownObjectiveCell(s: DelveState): number {
-  const obj = s.dungeon.rooms[s.dungeon.objectiveRoomId]
-  let best = -1
-  let bestDist = Infinity
-  for (let {y} = obj; y < obj.y + obj.h; y += 1) {
-    for (let {x} = obj; x < obj.x + obj.w; x += 1) {
-      const c = y * s.dungeon.width + x
-      if (!s.explored[c]) continue
-      const dist = Math.abs(x - (s.pos % s.dungeon.width)) + Math.abs(y - ((s.pos / s.dungeon.width) | 0))
-      if (dist < bestDist) {
-        bestDist = dist
-        best = c
-      }
-    }
-  }
-  return best
-}
-
-function partyHpPct(party: Combatant[]): number {
-  const living = party.filter((u) => u.hp > 0)
-  if (living.length === 0) return 0
-  return (living.reduce((a, u) => a + u.hp / u.maxHp, 0) / living.length) * 100
-}
+// --- Exploration decision: the engine only orchestrates ---------------------
+// The navigation primitives (BFS to a goal / to the frontier, objective + entrance
+// cells, party HP) live in content/exploration/navigation.ts; the Subject/Predicate/
+// Move behaviour lives in their content files. This layer just runs filter-then-move.
 
 interface ExDecision {
   reason: string
-  step: number // next cell to move to, or -1 if the rule yields no move
+  step: number // next cell to move to (party's own pos = rest), or -1 = no move
 }
 
-/** The move for one Protocol, or null if its State doesn't hold / yields no step. */
-/** The fixed goal cell a Protocol's subject points at (-1 for 'unexplored', whose
- *  goal is the moving frontier, not a fixed cell). */
-function subjectGoal(s: DelveState, subject: ExProtocol['subject']): number {
-  if (subject.what === 'exit') return entranceCell(s.dungeon)
-  if (subject.what === 'target') return knownObjectiveCell(s)
-  return -1
-}
-
-/** The cell a Protocol's Move resolves to, or -1 if there is no step available. */
-function moveStepCell(s: DelveState, protocol: ExProtocol, goal: number, known: (c: number) => boolean): number {
-  const d = s.dungeon
-  if (protocol.move === 'rest') return s.pos // rest in place (no move)
-  if (protocol.move === 'retreat') return stepTowardKnown(d, s.pos, entranceCell(d), known)
-  if (protocol.subject.what === 'unexplored') return stepTowardFrontier(d, s.pos, s.explored)
-  if (goal !== -1) return stepTowardKnown(d, s.pos, goal, known)
-  return -1
-}
-
+/** One Protocol's decision: if its Predicate holds, ask its Move for the next cell.
+ *  -1 (no move) means the rule doesn't apply — scan continues. */
 function protocolStep(s: DelveState, protocol: ExProtocol): ExDecision | null {
-  const known = (c: number): boolean => s.explored[c]
-  const goal = subjectGoal(s, protocol.subject)
-  const isKnown =
-    protocol.subject.what === 'unexplored'
-      ? stepTowardFrontier(s.dungeon, s.pos, s.explored) !== -1
-      : goal !== -1
-
-  // predicate
-  if (protocol.predicate.p === 'known' && !isKnown) return null
-  if (protocol.predicate.p === 'partyHpPctBelow' && partyHpPct(s.party) >= protocol.predicate.value) return null
-
-  const step = moveStepCell(s, protocol, goal, known)
+  if (!protocol.predicate.holds(s, protocol.subject)) return null
+  const step = protocol.move.resolve(s, protocol.subject)
   return step === -1 ? null : { reason: protocol.label, step }
 }
 

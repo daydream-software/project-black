@@ -59,15 +59,16 @@ export const DEFAULT_EX_ROWS: ExProtocolRow[] = [
   { subjectId: 'unexplored', predId: 'always', moveId: 'head', enabled: true },
 ]
 
-/** Compile one editor row into an ExProtocol (its label is what the journal shows). */
+/** Compile one editor row into an ExProtocol (its label is what the journal shows).
+ *  The catalog entries ARE the behaviour-bearing defs now (no `make` tag). */
 export function exRowToProtocol(row: ExProtocolRow): ExProtocol {
   const subject = byId(EX_SUBJECTS, row.subjectId)
   const pred = byId(EX_PREDICATES, row.predId)
   const mv = byId(EX_MOVES, row.moveId)
   return {
-    subject: subject.make(),
-    predicate: pred.make(),
-    move: mv.make(),
+    subject,
+    predicate: pred,
+    move: mv,
     label: `${subject.label} · ${pred.label} → ${mv.label}`,
   }
 }

@@ -1,9 +1,9 @@
-import type { Option } from '../../registry'
-import type { ExPredicate } from '../../../delve'
+import type { ExPredicateDef } from '../../../delve'
+import { partyHpPct } from '../navigation'
 
 export default {
   id: 'php_lt_50',
   label: 'party HP < 50%',
   order: 30,
-  make: () => ({ p: 'partyHpPctBelow', value: 50 }),
-} satisfies Option<ExPredicate>
+  holds: (s) => partyHpPct(s.party) < 50,
+} satisfies ExPredicateDef

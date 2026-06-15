@@ -1,9 +1,10 @@
-import type { Option } from '../../registry'
-import type { ExMove } from '../../../delve'
+import type { ExMoveDef } from '../../../delve'
+import exitSubject from '../subjects/exit'
 
+// Fall back to the entrance, regardless of the rule's Subject — heads toward the exit.
 export default {
   id: 'retreat',
   label: 'retreat',
   order: 20,
-  make: () => 'retreat',
-} satisfies Option<ExMove>
+  resolve: (s) => exitSubject.stepToward(s),
+} satisfies ExMoveDef

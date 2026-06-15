@@ -47,11 +47,11 @@ describe('protocol — exploration rule compiler', () => {
     expect(buildExploration(rows)).toEqual([])
   })
 
-  it('maps each dropdown id to the right model value', () => {
+  it('maps each dropdown id to the right catalog def', () => {
     const rule = exRowToProtocol({ subjectId: 'exit', predId: 'php_lt_50', moveId: 'rest', enabled: true })
-    expect(rule.subject).toEqual({ what: 'exit' })
-    expect(rule.predicate).toEqual({ p: 'partyHpPctBelow', value: 50 })
-    expect(rule.move).toBe('rest')
+    expect(rule.subject.id).toBe('exit')
+    expect(rule.predicate.id).toBe('php_lt_50')
+    expect(rule.move.id).toBe('rest')
   })
 
   it('every catalog option has a unique id (ids are the persisted, round-tripped key)', () => {

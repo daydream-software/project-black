@@ -1,9 +1,9 @@
-import type { Option } from '../../registry'
-import type { ExMove } from '../../../delve'
+import type { ExMoveDef } from '../../../delve'
 
+// Approach the rule's Subject — delegate to how that Subject steps toward itself.
 export default {
   id: 'head',
   label: 'head toward',
   order: 10,
-  make: () => 'headToward',
-} satisfies Option<ExMove>
+  resolve: (s, subject) => subject.stepToward(s),
+} satisfies ExMoveDef

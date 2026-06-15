@@ -115,8 +115,17 @@ cloned (a scoped `no-param-reassign` exception, like `render.ts`'s ctx); damage
 modifiers are pure (they return a number). `attackDamage` in `combat-core` is the BASE
 (Might − Ward, floored); status logic is folded on top from content.
 
-(Exploration's vocabulary — `delve.ts`'s `ExSubject/ExPredicate/ExMove` — is still
-interpreted by central conditionals; the same externalisation is its own later slice.)
+**Exploration is externalised the same way.** `delve.ts`'s `decideExploration` only
+orchestrates (filter-then-move); the behaviour lives in `content/exploration/`: a
+**Subject** (`target`/`unexplored`/`exit`) carries `stepToward(s)` + `reachable(s)`;
+a **Predicate** carries `holds(s, subject)` (the `known` predicate asks its Subject);
+a **Move** (`head`/`retreat`/`rest`) carries `resolve(s, subject)` (the cell to move
+to — the party's own pos = rest, -1 = no move). The dungeon-navigation primitives
+(BFS to a goal / to the frontier, objective + entrance cells, party HP) are the delve
+twin of `combat-core` — `content/exploration/navigation.ts`, a leaf the content
+composes without importing `delve.ts` at runtime (types only). Exploration has **no
+event/reaction system yet** (no traps): a `DelveEvent` twin would need a different
+ownership model — exploration reactions belong to dungeon cells/rooms, not units.
 
 `main.ts` owns the only mutable loop and the town ↔ delve UI. A launched delve is
 autonomous: in town the player authors two **Procedures** (ordered lists of
