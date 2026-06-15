@@ -7,6 +7,15 @@ index.html            Entry point + page layout (full-bleed canvas + floating UI
 src/
   sim.ts              PURE encounter sim: types, decide(), step() — one fight
   sim.test.ts         Vitest unit tests for the encounter sim (colocated)
+  combat-core.ts      PURE stat→number primitives (attackDamage/healAmount/overdraw/
+                      recovery/poolFor + constants); a leaf so content can use them
+                      without a sim↔content cycle. sim.ts re-exports them.
+  content/            EXTENSIBLE game content — one file per item, glob-assembled
+    registry.ts       Option<T> + collect()/indexById()/mapById() (the assemblers)
+    subjects/ predicates/         combat State vocabulary (one Option per file)
+    exploration/{subjects,predicates,moves}/   delve vocabulary
+    skills/           mend.ts/defend.ts: a SkillDef per file (editor face + effect)
+    monsters/         slime.ts/hex-warden.ts: a MonsterDef (stat block) per file
   delve.ts            PURE delve state machine: navigate + fight + clear a dungeon
   delve.test.ts       Vitest tests for the delve loop
   dungeon.ts          PURE seeded procedural dungeon generation (rooms + corridors)
@@ -16,6 +25,8 @@ src/
   levels.ts           Level configs + first-clear / Insight tracking (meta)
   levels.test.ts      Vitest tests for level clearing
   protocol.ts         PURE rule compiler: editor rows → the model the sim consumes
+                      (the vocabulary catalogs now live in content/; this re-exports
+                      them and holds only the row→Protocol compiler + helpers)
   protocol.test.ts    Vitest tests for the compiler (defaults can't drift)
   shop.ts             Unlockable vocabulary (the Insight economy / Trainer)
   shop.test.ts        Vitest tests for buy/own/afford
@@ -54,6 +65,34 @@ randomness — same inputs always give the same outputs):
 - `dungeon.ts` — **generation**: `generateDungeon(seed, level)` lays out rooms and
   corridors deterministically from a seed.
 - `rng.ts` — the **seeded PRNG** (mulberry32) every other pure module draws from.
+
+### Modular content (`src/content/`)
+
+Extensible content — rule-editor vocabulary, skills, monsters — is **one file per
+item**, auto-assembled per category with Vite's `import.meta.glob`, so adding content
+is dropping a file in a folder (design pillar #4), never editing a central import
+wall. Three load-bearing rules:
+
+- **The glob lives only in each category's `index.ts`** (`['./*.ts','!./index.ts']`,
+  `eager`, `import:'default'`). Consumers import the assembled catalog, never
+  `import.meta.*`. Each item is `export default {…} satisfies <Def>` — types at the
+  definition, no `as`, clean under eslint-config-love's `no-unsafe-*`.
+- **`id` is the save contract; `order` is explicit.** Persisted rows reference items
+  by `id`, so a file's *name* is cosmetic but its `id` must never change. Glob keys
+  sort by filename, not intent — so every vocabulary item carries an `order` and
+  `collect()` sorts on it. (Monster runtime ids aren't persisted, so the bestiary is
+  keyed by a free-form `id`.)
+- **Assemblers (`registry.ts`):** `collect` → ordered list (dropdowns); `indexById`
+  → by-id record for keys you control (the bestiary, `MONSTERS.slime`); `mapById` →
+  by-id **Map** for keys that may be stale (skills), so `.get()` returns
+  `T | undefined` and a dropped item reads as inert, never a crash.
+
+Content that carries *behaviour* (a skill's `effect`) imports its numeric primitives
+from `combat-core.ts`, never from `sim.ts` — that keeps the dependency a DAG
+(`sim → content → combat-core`) with no runtime cycle. Effect functions mutate the
+combatants the sim already cloned (a scoped `no-param-reassign` exception, like
+`render.ts`'s ctx). Enemy *trait values* (`counterHeal`) are data on the monster def;
+the trait *logic* stays in `sim.ts` — content moved definitions, not the effect system.
 
 `main.ts` owns the only mutable loop and the town ↔ delve UI. A launched delve is
 autonomous: in town the player authors two **Procedures** (ordered lists of
