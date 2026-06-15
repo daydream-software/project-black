@@ -1,6 +1,8 @@
 import { describe, it, expect } from 'vitest'
 import { startDelve, stepDelve, DEFAULT_EXPLORATION, type ExProcedure, type DelveState } from './delve'
 import { makeWarrior, makeHealer, type Combatant, type Procedure } from './sim'
+import type { LevelSkeleton } from './mapgraph'
+import lootRoom from './content/exploration/subjects/loot-room'
 
 // States reference vocab by id (the serialisable shape the sim resolves at runtime).
 const attack: Procedure = [
@@ -72,5 +74,37 @@ describe('delve — the party crawls and hunts the objective', () => {
       expect(advance(startDelve(strongParty(), s, targetOnly)).status).not.toBe('cleared')
       expect(runToEnd(s).status).toBe('cleared')
     }
+  })
+})
+
+// Slice 3 — the 1-hop type peek made programmable: a Subject can target a connected
+// room of a given TYPE (loot/buff), so a Procedure can route by room type.
+describe('routing by room type (the peek made actionable)', () => {
+  const withLoot: LevelSkeleton = {
+    id: 't-loot', name: 'T', monsterPool: ['slime'], boss: 'hex-warden',
+    topology: {
+      slots: [{ id: 'in', type: 'entrance' }, { id: 'loot', type: 'loot' }, { id: 'boss', type: 'boss' }],
+      edges: [['in', 'loot'], ['in', 'boss']],
+    },
+  }
+  const noLoot: LevelSkeleton = {
+    id: 't-noloot', name: 'T', monsterPool: ['slime'], boss: 'hex-warden',
+    topology: {
+      slots: [{ id: 'in', type: 'entrance' }, { id: 'f', type: 'fight' }, { id: 'boss', type: 'boss' }],
+      edges: [['in', 'f'], ['f', 'boss']],
+    },
+  }
+
+  it('the Loot-room subject targets a peeked, unentered loot room and routes into it', () => {
+    const s = startDelve(strongParty(), 1, DEFAULT_EXPLORATION, withLoot)
+    // at the entrance, the adjacent loot room is peeked (type known) but not entered
+    expect(lootRoom.reachable(s)).toBe(true)
+    expect(lootRoom.stepToward(s)).toBe('loot') // one hop in → loot
+  })
+
+  it('is inert when no loot room is in sight', () => {
+    const s = startDelve(strongParty(), 1, DEFAULT_EXPLORATION, noLoot)
+    expect(lootRoom.reachable(s)).toBe(false)
+    expect(lootRoom.stepToward(s)).toBe('')
   })
 })

@@ -7,7 +7,7 @@
 // Movement is room-to-room over corridors. Pathing travels only through EXPLORED rooms
 // (where the party has been); the final step may enter an adjacent unexplored room.
 
-import type { DungeonGraph } from '../../mapgraph'
+import type { DungeonGraph, RoomType } from '../../mapgraph'
 import type { DelveState } from '../../delve'
 import type { Combatant } from '../../sim'
 
@@ -85,6 +85,17 @@ export function stepTowardFrontier(s: DelveState): string {
       if (neighbours(s.graph, nb).some((n2) => !isExplored(s, n2))) return stepBack(prev, s.pos, nb)
       queue.push(nb)
     }
+  }
+  return ''
+}
+
+/** A room of the given type that the party can route to RIGHT NOW: known (peeked or
+ *  explored) via the 1-hop type peek, not yet entered (so it's a fresh objective), and
+ *  reachable through explored rooms. '' if none — lets a rule say "head for a loot room
+ *  if one is in sight". First reachable candidate in graph order (deterministic). */
+export function knownRoomOfType(s: DelveState, type: RoomType): string {
+  for (const r of s.graph.rooms) {
+    if (r.type === type && !isExplored(s, r.id) && isKnown(s, r.id) && stepTowardRoom(s, r.id) !== '') return r.id
   }
   return ''
 }
