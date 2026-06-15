@@ -605,19 +605,30 @@ function drawGraphMinimap(ctx: CanvasRenderingContext2D, delve: DelveState): voi
   // disagree about what the party can see.
   const known = (id: string): boolean => isKnown(delve, id)
   const cell = 26
-  const cols = Math.max(...[...pos.values()].map((p) => p.col)) + 1
-  const rows = Math.max(...[...pos.values()].map((p) => p.row)) + 1
   const pad = 10
-  const mw = cols * cell + pad * 2
-  const mh = rows * cell + pad * 2
+  // A FIXED-size panel (odd cell count → an exact centre cell). The current room is
+  // pinned dead-centre and the graph scrolls under this window as the party moves, so the
+  // panel never grows with the dungeon and never hints at its full extent.
+  const view = 5
+  const mw = view * cell + pad * 2
+  const mh = view * cell + pad * 2
   const x0 = width - mw - 14
   const y0 = HUD_SAFE
+  const cx = x0 + mw / 2
+  const cy = y0 + mh / 2
+  const here = pos.get(delve.pos) ?? { col: 0, row: 0 }
   const center = (id: string): { x: number; y: number } => {
-    const p = pos.get(id) ?? { col: 0, row: 0 }
-    return { x: x0 + pad + p.col * cell + cell / 2, y: y0 + pad + p.row * cell + cell / 2 }
+    const p = pos.get(id) ?? here
+    return { x: cx + (p.col - here.col) * cell, y: cy + (p.row - here.row) * cell }
   }
   ctx.fillStyle = 'rgba(0,0,0,0.6)'
   ctx.fillRect(x0, y0, mw, mh)
+  // clip everything to the panel so rooms/corridors that scroll past the edge are cut off
+  // cleanly instead of spilling across the scene.
+  ctx.save()
+  ctx.beginPath()
+  ctx.rect(x0, y0, mw, mh)
+  ctx.clip()
   // corridors: a brighter, 2px line so the graph's connections actually read on the
   // dark overlay (a 1px near-black line was invisible at this scale).
   ctx.strokeStyle = '#8a8ab0'
@@ -665,6 +676,7 @@ function drawGraphMinimap(ctx: CanvasRenderingContext2D, delve: DelveState): voi
       ctx.strokeRect(c.x - sz / 2 - 2, c.y - sz / 2 - 2, sz + 4, sz + 4)
     }
   }
+  ctx.restore() // end panel clip
   ctx.textAlign = 'left'
   ctx.textBaseline = 'alphabetic'
 }
