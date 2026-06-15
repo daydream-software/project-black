@@ -623,6 +623,9 @@ function drawGraphMinimap(ctx: CanvasRenderingContext2D, delve: DelveState): voi
   ctx.strokeStyle = '#8a8ab0'
   ctx.lineWidth = 2
   for (const c of g.corridors) {
+    // fog: only a corridor between two KNOWN rooms is drawn, so the map fills in as the
+    // party explores — the full structure is never revealed from the entrance.
+    if (!known(c.a) || !known(c.b)) continue
     const a = center(c.a)
     const b = center(c.b)
     ctx.beginPath()
@@ -643,12 +646,10 @@ function drawGraphMinimap(ctx: CanvasRenderingContext2D, delve: DelveState): voi
     return delve.explored.includes(room.id)
   }
   for (const r of g.rooms) {
+    // fog: an unknown room isn't drawn at all (no placeholder) — its very existence stays
+    // hidden until the party explores to it or a vision buff reveals it.
+    if (!known(r.id)) continue
     const c = center(r.id)
-    if (!known(r.id)) {
-      ctx.fillStyle = '#15151f'
-      ctx.fillRect(c.x - sz / 2, c.y - sz / 2, sz, sz)
-      continue
-    }
     const explored = delve.explored.includes(r.id)
     ctx.globalAlpha = explored ? 1 : 0.4
     ctx.fillStyle = ROOM_COLOR[r.type]
