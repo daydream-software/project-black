@@ -10,6 +10,7 @@ export default {
   label: 'Mend',
   order: 10,
   kind: 'heal',
+  sfx: 'heal',
   effect: (actor, target) => {
     if (target !== null && target.side === actor.side && target.hp > 0) {
       const before = target.hp

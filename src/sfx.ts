@@ -28,6 +28,13 @@ const URLS: Record<SfxId, string> = {
   hit: hitUrl,
 }
 
+/** Narrow an opaque sound key (as content declares it — a plain string, so the pure
+ *  sim/content never imports this audio module's type) to a real SfxId. The view uses
+ *  this when assembling its kind→sound map, throwing on an unknown id at load. */
+export function isSfxId(s: string): s is SfxId {
+  return s in URLS
+}
+
 const VOLUME = 0.42
 
 let enabled = false

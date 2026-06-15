@@ -7,6 +7,7 @@ export default {
   label: 'Defend',
   order: 20,
   kind: 'defend',
+  sfx: 'defend',
   effect: (actor) => {
     actor.defending = true
     return `DEFEND — incoming damage halved until next turn`

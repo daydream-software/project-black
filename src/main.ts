@@ -5,7 +5,7 @@ import { BUILD_BUDGET, CHASSIS_COST, STAT_CAP, GOLEM_MAX, buildCost } from './pa
 import { LEVELS, applyClear, levelById, hasCleared } from './levels'
 import { UNLOCKABLES, buy, isOwned, canAfford } from './shop'
 import { toggleMusic, setMusicState, type TrackId } from './music'
-import { setSfxEnabled, playSfx, type SfxId } from './sfx'
+import { setSfxEnabled, playSfx, isSfxId, type SfxId } from './sfx'
 import { log } from './log'
 import {
   saveSlot,
@@ -1311,24 +1311,34 @@ renderScreens()
 let sfxLogLen = 0
 let sfxPrimed = false
 
-// Pick the clip for a log entry. An attack is logged the same way whoever throws
-// it, so we read the actor's side: your golems' blows play `attack`, an enemy's
-// blow (your golem taking the hit) plays `hit`. `flee` is silent.
-function sfxFor(e: GameState['log'][number], battle: GameState): SfxId | null {
-  switch (e.kind) {
-    case 'heal':
-      return 'heal'
-    case 'defend':
-      return 'defend'
-    case 'counter':
-      return 'hit'
-    case 'flee':
-      return null
-    case 'attack': {
-      const actor = battle.units.find((u) => u.id === e.actorId)
-      return actor?.side === 'hero' ? 'attack' : 'hit'
-    }
+// The log-kind → sound map, ASSEMBLED FROM CONTENT (not a hardcoded switch): each
+// Skill and Command declares its own `sfx` (an opaque key), and we collect them here,
+// validating each against the audio module's SfxId set. A skill's log-kind is its
+// `kind` (heal/defend); a command's is its id (attack). So adding a skill with a sound
+// is a field in its content file — this map picks it up, no edit here.
+const KIND_SFX = ((): Map<string, SfxId> => {
+  const m = new Map<string, SfxId>()
+  const put = (logKind: string, key: string | undefined): void => {
+    if (key === undefined) return
+    if (!isSfxId(key)) throw new Error(`Unknown sfx id "${key}" for "${logKind}"`)
+    m.set(logKind, key)
   }
+  for (const s of SKILLS) put(s.kind, s.sfx) // heal → heal, defend → defend
+  for (const c of COMMANDS) put(c.id, c.sfx) // attack → attack (useSkill/flee declare none)
+  return m
+})()
+
+// Pick the clip for a log entry. The acting maneuver's own sound comes from the
+// content map; the perspective sounds stay view rules: an enemy's blow (your golem
+// TAKING a hit) and a counter both play `hit` — "damage to a hero", not a content
+// sound. `flee` is silent.
+function sfxFor(e: GameState['log'][number], battle: GameState): SfxId | null {
+  if (e.kind === 'counter') return 'hit'
+  if (e.kind === 'attack') {
+    const actor = battle.units.find((u) => u.id === e.actorId)
+    if (actor?.side !== 'hero') return 'hit' // your golem is taking the hit
+  }
+  return KIND_SFX.get(e.kind) ?? null
 }
 
 function pumpSfx(battle: GameState | null): void {

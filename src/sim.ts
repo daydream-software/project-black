@@ -229,6 +229,11 @@ export interface SkillDef {
   order: number
   kind: 'heal' | 'defend'
   unlock?: string
+  /** The sound this skill plays, as an OPAQUE key (a plain string, so the pure sim
+   *  never imports the audio module). The view validates it against its SfxId set and
+   *  assembles the kind→sound map from the content — adding a skill's sound is a field
+   *  here, not an edit to a central switch. */
+  sfx?: string
   effect: (actor: Combatant, target: Combatant | null) => string
 }
 

@@ -98,15 +98,19 @@ export function buildExploration(rows: ExProtocolRow[]): ExProcedure {
 // the compiler, not extensible content). The compiler below turns rows into Protocols.
 
 /** A combat command. "useSkill" carries an Object (a skill); the others do not.
- *  "useItem" exists in the model but waits on an item system, so it's omitted. */
+ *  "useItem" exists in the model but waits on an item system, so it's omitted.
+ *  `sfx` (opaque sound key) is the command's own sound — Attack swings; Use Skill has
+ *  none (the skill provides its own); Flee is silent. The view assembles the kind→
+ *  sound map from these + SKILLS, so no central switch names each sound. */
 export interface Command {
   id: 'attack' | 'useSkill' | 'flee'
   label: string
   hasObject: boolean
+  sfx?: string
 }
 
 export const COMMANDS: Command[] = [
-  { id: 'attack', label: 'Attack', hasObject: false },
+  { id: 'attack', label: 'Attack', hasObject: false, sfx: 'attack' },
   { id: 'useSkill', label: 'Use Skill', hasObject: true },
   { id: 'flee', label: 'Flee', hasObject: false },
 ]
