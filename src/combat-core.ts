@@ -13,7 +13,7 @@ import type { Combatant } from './sim'
 
 /** HP a single Fortitude point grants. The fortitude→pool factor (a free tuning
  *  knob, kept small so each point is a visible ~1–2 hits on the compact scale). */
-export const HP_PER_FORTITUDE = 4
+export const HP_PER_FORTITUDE = 5
 
 /** maxHp for a given Fortitude on the compact scale. */
 export function poolFor(fortitude: number): number {

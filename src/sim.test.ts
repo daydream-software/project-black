@@ -149,22 +149,22 @@ describe('restToConvergence — a rest IS off-combat Mend, bounded by Strain', (
   ]
 
   it('the party runs its own Mend rules to convergence (heals the hurt ally above threshold)', () => {
-    const sentinel = { ...makeWarrior([]), hp: 4 } // 4/40 — well below 50%
+    const sentinel = { ...makeWarrior([]), hp: 4 } // 4/50 — well below 50%
     const mender = makeHealer(mendAllyLow) // Attunement 5, Poise 6
     const { units, mends } = restToConvergence([sentinel, mender])
     expect(mends).toBeGreaterThan(0)
-    // Sentinel is pulled to/above the 50% threshold the Mend rule targets (20/40).
-    expect(units[0].hp).toBeGreaterThanOrEqual(20)
+    // Sentinel is pulled to/above the 50% threshold the Mend rule targets (25/50).
+    expect(units[0].hp).toBeGreaterThanOrEqual(25)
     // and it converges — it does NOT heal to full (the rule stops at the threshold).
-    expect(units[0].hp).toBeLessThan(40)
+    expect(units[0].hp).toBeLessThan(50)
   })
 
   it('Strain accrues at rest and overdraws past Poise — resting is not free', () => {
     const sentinel = { ...makeWarrior([]), hp: 4 }
     const mender = makeHealer(mendAllyLow)
     const { units } = restToConvergence([sentinel, mender])
-    // 4→20 needs 4 mends (+5 each), so Strain = 4 × MEND_STRAIN = 8, past Poise 6.
-    expect(units[1].strain).toBe(4 * MEND_STRAIN)
+    // 4→≥25 needs 5 mends (+5 each), so Strain = 5 × MEND_STRAIN = 10, past Poise 6.
+    expect(units[1].strain).toBe(5 * MEND_STRAIN)
     expect(units[1].strain).toBeGreaterThan(units[1].poise) // overdrew
     expect(units[1].hp).toBeLessThan(units[1].maxHp) // the overdraw bit its own Fortitude
   })
@@ -356,8 +356,8 @@ describe('step — one unit-action of the simulation', () => {
     const s = step(freshBattle())
     expect(s.turn).toBe(1)
     const slime1 = s.units.find((u) => u.id === 'enemy-1')
-    // No ally is hurt, so the Mender attacks Slime #1: pool 12, Mender Might 3 vs Ward 0.
-    expect(slime1?.hp).toBe(12 - 3)
+    // No ally is hurt, so the Mender attacks Slime #1: pool 15, Mender Might 3 vs Ward 0.
+    expect(slime1?.hp).toBe(15 - 3)
     expect(s.log.at(-1)?.actorName).toBe('Mender') // Celerity 6 beats the Sentinel's 5
     expect(s.log.at(-1)?.targetName).toBe('Slime #1')
   })
@@ -389,7 +389,7 @@ describe('step — one unit-action of the simulation', () => {
   })
 
   it('Defend halves the damage the unit takes before its next turn', () => {
-    // The Sentinel (pool 40, Ward 2) defends; a Might-8 attacker then hits for half.
+    // The Sentinel (pool 50, Ward 2) defends; a Might-8 attacker then hits for half.
     const warrior: Procedure = [{ state: { subject: subj('self'), predicate: pred('always') }, maneuver: DEFEND, label: 'defend' }]
     const w = makeWarrior(warrior)
     const foe = { ...makeWarrior([]), side: 'enemy' as const, id: 'enemy-1', name: 'Slime', might: 8 }
@@ -397,7 +397,7 @@ describe('step — one unit-action of the simulation', () => {
     s = step(s) // warrior defends
     expect(s.units[0].defending).toBe(true)
     s = step(s) // foe hits the defending warrior: (Might 8 − Ward 2) = 6, halved = 3
-    expect(s.units[0].hp).toBe(40 - Math.ceil((8 - 2) / 2))
+    expect(s.units[0].hp).toBe(50 - Math.ceil((8 - 2) / 2))
   })
 
   it('reaches victory when the party kills every enemy', () => {
