@@ -12,6 +12,7 @@
 
 import type { DelveState, DelveStatus } from './delve'
 import type { SkillId, Stats } from './sim'
+import { levelById } from './levels'
 
 // --- Persisted shapes (also the editor's row types) ------------------------
 
@@ -214,15 +215,36 @@ export function salvageMeta(index: number, store: KVStore = localStorage): Salva
  *  so we drop the stale delve back to town (roster + meta are untouched, and the
  *  town party is always rebuilt fresh with stats). Non-destructive, in the spirit
  *  of the defensive load: a format change never bricks a profile. */
+/** Backfill the slice-4 reward fields (resolved/revealed/buffs) on an in-progress delve
+ *  saved before they existed — they're purely ADDITIVE, so a missing one defaults to []
+ *  rather than dropping an otherwise-valid delve. Operates on the raw object (pre-narrow)
+ *  so the defaulting reads honestly as "missing → []". */
+function backfillDelve(delve: unknown): unknown {
+  if (isObj(delve)) {
+    // `level` predates slice 4 (rolls used a global lookup before). Backfill it from the
+    // registry by id so an in-progress delve becomes self-contained on resume.
+    const levelId = typeof delve.levelId === 'string' ? delve.levelId : ''
+    return {
+      ...delve,
+      level: isObj(delve.level) ? delve.level : levelById(levelId),
+      resolved: Array.isArray(delve.resolved) ? delve.resolved : [],
+      revealed: Array.isArray(delve.revealed) ? delve.revealed : [],
+      buffs: Array.isArray(delve.buffs) ? delve.buffs : [],
+    }
+  }
+  return delve
+}
+
 function dropStaleDelve(data: SaveData): SaveData {
   if (data.delve === null) return data
   // Resumable only if it's a valid graph-shape delve whose party carries the six stats.
   // An old cell-grid delve, or a pre-six-stat one, is dropped back to town (roster +
   // meta untouched; the town party is always rebuilt fresh). A format change never bricks.
+  const delve = backfillDelve(data.delve)
   const resumable =
-    isDelveState(data.delve) &&
-    data.delve.party.every((u) => isObj(u) && typeof u.might === 'number' && typeof u.ward === 'number')
-  return resumable ? data : { ...data, delve: null, mode: 'camp' }
+    isDelveState(delve) &&
+    delve.party.every((u) => isObj(u) && typeof u.might === 'number' && typeof u.ward === 'number')
+  return resumable ? { ...data, delve } : { ...data, delve: null, mode: 'camp' }
 }
 
 /** Read a key, returning null if storage is unavailable/blocked (never throws). */

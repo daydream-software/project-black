@@ -169,6 +169,30 @@ describe('save — slots', () => {
     expect(loadSlot(0, store2)?.mode).toBe('delve')
   })
 
+  it('backfills the slice-4 reward fields on an older in-progress delve (resumes, not dropped)', () => {
+    // A valid graph delve saved BEFORE slice 4: it has no resolved/revealed/buffs/level.
+    // These are purely ADDITIVE, so the loader defaults the arrays to [] and restores
+    // `level` from the registry by id — the delve resumes instead of being reset to town
+    // (a missing additive field must never brick an in-progress run).
+    const party = [{ id: 'hero-1', name: 'S', side: 'hero', hp: 12, maxHp: 12, defending: false, might: 5, ward: 2, fortitude: 3, attunement: 0, poise: 0, celerity: 5 }]
+    const blob = {
+      version: 3, savedAt: 1,
+      roster: [{ simId: 'hero-1', name: 'S', rows: [] }], activeHero: 0, mode: 'delve',
+      delve: {
+        status: 'delving', pos: 'in', turn: 2, levelId: 'lvl-1',
+        graph: { rooms: [{ id: 'in', type: 'entrance' }], corridors: [], entranceId: 'in', bossId: 'in', rngState: 1 },
+        party, explored: ['in'], cleared: [], exploration: [],
+      },
+    }
+    const store = fakeStore({ 'project-black/save/slot/0': JSON.stringify(blob) })
+    const resumed = loadSlot(0, store)?.delve
+    expect(resumed).not.toBeNull()
+    expect(resumed?.resolved).toEqual([])
+    expect(resumed?.revealed).toEqual([])
+    expect(resumed?.buffs).toEqual([])
+    expect(resumed?.level.id).toBe('lvl-1') // restored from the registry by levelId
+  })
+
   it('importLegacy moves an old single-save blob into slot 0, preserving savedAt', () => {
     const legacy: SaveData = { version: 3, savedAt: 12345, ...snap(2) }
     const store = fakeStore({ 'project-black/save': JSON.stringify(legacy) })

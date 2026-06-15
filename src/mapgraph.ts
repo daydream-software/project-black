@@ -45,6 +45,9 @@ export interface LevelSkeleton {
   monsterPool: string[]
   /** Monster id the `boss` room spawns. Per-level (no more hardcoded Warden-everywhere). */
   boss: string
+  /** Buff ids a `buff` room may grant (the delve rolls one on entry). Absent/empty = a
+   *  buff room grants nothing (still a safe rest stop). Authored per level. */
+  buffPool?: string[]
   /** Trap ids that may be placed (seeded) on this level's corridors. Absent/empty = no
    *  traps. A corridor that gets one carries it as a serialisable ReactionRef. */
   traps?: string[]

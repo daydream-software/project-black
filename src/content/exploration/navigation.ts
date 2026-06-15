@@ -56,9 +56,10 @@ export function isExplored(s: DelveState, room: string): boolean {
   return s.explored.includes(room)
 }
 
-/** Known = explored, OR adjacent to an explored room (the 1-hop TYPE peek). */
+/** Known = explored, OR adjacent to an explored room (the 1-hop TYPE peek), OR revealed
+ *  by a vision buff (Cartographer's Eye / Treasure Sense fill `revealed`). */
 export function isKnown(s: DelveState, room: string): boolean {
-  if (isExplored(s, room)) return true
+  if (isExplored(s, room) || s.revealed.includes(room)) return true
   return neighbours(s.graph, room).some((nb) => isExplored(s, nb))
 }
 

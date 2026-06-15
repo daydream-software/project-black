@@ -596,7 +596,9 @@ function drawGraphMinimap(ctx: CanvasRenderingContext2D, delve: DelveState): voi
   const { width } = cssSize(ctx)
   const pos = layoutGraph(delve)
   const known = (id: string): boolean =>
-    delve.explored.includes(id) || neighbours(g, id).some((nb) => delve.explored.includes(nb))
+    delve.explored.includes(id) ||
+    delve.revealed.includes(id) ||
+    neighbours(g, id).some((nb) => delve.explored.includes(nb))
   const cell = 26
   const cols = Math.max(...[...pos.values()].map((p) => p.col)) + 1
   const rows = Math.max(...[...pos.values()].map((p) => p.row)) + 1

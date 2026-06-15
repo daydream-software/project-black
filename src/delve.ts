@@ -15,12 +15,13 @@
 
 import { generateGraph, type DungeonGraph, type RoomType, type LevelSkeleton, type Corridor } from './mapgraph'
 import { makeBattleFrom, step, restToConvergence, type Combatant, type GameState, type ReactionRef } from './sim'
-import { LEVELS, levelById } from './levels'
+import { LEVELS } from './levels'
 import { makeRng, range, pick } from './rng'
 import { EX_SUBJECTS_BY_ID } from './content/exploration/subjects'
 import { EX_PREDICATES_BY_ID } from './content/exploration/predicates'
 import { EX_MOVES_BY_ID } from './content/exploration/moves'
 import { TRAPS_BY_ID } from './content/exploration/traps'
+import { BUFFS_BY_ID } from './content/exploration/buffs'
 
 // --- Exploration Protocol: WHEN <Subject + Predicate> → Move ----------------
 //
@@ -89,7 +90,7 @@ export type DelveStatus = 'delving' | 'cleared' | 'dead' | 'stuck'
 
 export interface DelveLogEntry {
   turn: number
-  kind: 'explore' | 'enter' | 'combat' | 'clear' | 'end' | 'trap'
+  kind: 'explore' | 'enter' | 'combat' | 'clear' | 'end' | 'trap' | 'boon'
   reason: string
   detail: string
 }
@@ -102,15 +103,36 @@ export interface TrapDef {
   trigger: (party: Combatant[], ref: ReactionRef) => { party: Combatant[]; detail: string }
 }
 
+/** A run-scoped BOON a buff room grants (content/exploration/buffs/), dispatched by id.
+ *  A buff is one standalone file carrying its whole behaviour:
+ *  - `apply` is the one-shot transform when it's COLLECTED (double a party stat, full
+ *    heal, reveal the map) — pure, returns the new delve state.
+ *  - `onSpawn` is an optional LASTING hook: it rewrites each enemy built for the rest of
+ *    the run (e.g. halving Fortitude) — the foes don't exist at pickup, so this can't be
+ *    an `apply`. Only the collected buff IDS persist (serialisable); both hooks are
+ *    resolved from the registry at runtime — the delve twin of a combat reaction. */
+export interface BuffDef {
+  id: string
+  label: string
+  order: number
+  apply?: (s: DelveState) => DelveState
+  onSpawn?: (enemy: Combatant) => Combatant
+}
+
 export interface DelveState {
   seed: number
   levelId: string // which level this delve is a run of (first-clear tracking, 10a)
+  level: LevelSkeleton // the level's roll-time content (monster/buff pools, boss), carried
+  // WHOLE so the delve is self-contained — rolls read this, never a global registry lookup.
   rng: number // live rng state (starts where generation left off; advances on pack rolls)
   graph: DungeonGraph // the room graph, stored whole; never regenerated
   party: Combatant[] // hero units; HP/deaths persist across the delve
   pos: string // current room id
   explored: string[] // room ids the party has ENTERED (fog of war; serialisable)
   cleared: string[] // fight/boss room ids already cleared
+  resolved: string[] // reward rooms (buff/loot) already collected — never re-grants
+  revealed: string[] // room ids whose TYPE is known beyond the 1-hop peek (vision buffs)
+  buffs: string[] // ids of run-scoped boons collected (apply ran; onSpawn folds on spawn)
   exploration: ExProcedure
   battle: GameState | null // active combat, or null when exploring
   status: DelveStatus
@@ -164,12 +186,16 @@ export function startDelve(
   return {
     seed,
     levelId: level.id,
+    level,
     rng: graph.rngState,
     graph,
     party,
     pos: graph.entranceId, // start in the entrance room (already explored)
     explored: [graph.entranceId],
     cleared: [],
+    resolved: [],
+    revealed: [],
+    buffs: [],
     exploration,
     battle: null,
     status: 'delving',
@@ -190,12 +216,32 @@ function roomType(s: DelveState, id: string): RoomType | undefined {
 /** Roll the encounter a fight/boss room spawns from the level's content, advancing the
  *  delve rng (so the pack is fixed for the run, varied between descents). */
 function rollEncounter(s: DelveState, type: RoomType): { ids: string[]; rng: number } {
-  const level = levelById(s.levelId)
+  const { level } = s
   const rng = makeRng(s.rng)
   if (type === 'boss') return { ids: [level.boss], rng: rng.s }
   const n = level.monsterPool.length === 0 ? 0 : range(rng, 2, 3)
   const ids = Array.from({ length: n }, () => pick(rng, level.monsterPool))
   return { ids, rng: rng.s }
+}
+
+/** Roll which buff a buff room grants from the level's authored pool, advancing the
+ *  delve rng (fixed for the run, varied between descents — like a pack roll). '' when
+ *  the level authors no buff pool. */
+function rollBuff(s: DelveState): { id: string; rng: number } {
+  const { buffPool = [] } = s.level
+  if (buffPool.length === 0) return { id: '', rng: s.rng }
+  const rng = makeRng(s.rng)
+  return { id: pick(rng, buffPool), rng: rng.s }
+}
+
+/** Fold every collected buff's `onSpawn` over a freshly built battle's ENEMY units (the
+ *  boss is an enemy too, so this covers it). Heroes are untouched — their buffs already
+ *  landed via `apply` on pickup. A buff without `onSpawn` is inert here. */
+function applyEnemyBuffs(battle: GameState, buffIds: string[]): GameState {
+  const hooks = buffIds.map((id) => BUFFS_BY_ID.get(id)?.onSpawn).filter((h) => h !== undefined)
+  if (hooks.length === 0) return battle
+  const units = battle.units.map((u) => (u.side === 'enemy' ? hooks.reduce((e, hook) => hook(e), u) : u))
+  return { ...battle, units }
 }
 
 /** Mid-fight: advance the battle one action; on a finish, resolve the room — a wipe
@@ -241,7 +287,7 @@ function enterRoom(s: DelveState, room: string): RoomEntry {
   if ((type === 'fight' || type === 'boss') && !s.cleared.includes(room)) {
     const rolled = rollEncounter(s, type)
     return {
-      battle: makeBattleFrom(s.party, rolled.ids),
+      battle: applyEnemyBuffs(makeBattleFrom(s.party, rolled.ids), s.buffs),
       rng: rolled.rng,
       kind: 'enter',
       detail: type === 'boss' ? 'reached the objective — the boss awaits!' : 'entered a monster room — fight!',
@@ -294,9 +340,43 @@ function advanceMove(s: DelveState, turn: number): DelveState {
     const wiped: DelveLogEntry = { turn, kind: 'end', reason: 'wiped out', detail: 'the party fell to a trap' }
     return { ...s, party: trapped.party, pos: next, explored, turn, status: 'dead', log: [...baseLog, wiped].slice(-60) }
   }
-  const e = enterRoom({ ...s, party: trapped.party }, next)
+  const moved: DelveState = { ...s, party: trapped.party, pos: next, explored, turn }
+  const reward = grantReward(moved, baseLog, decision.reason, turn)
+  if (reward !== null) return reward
+
+  const e = enterRoom(moved, next)
   const entry: DelveLogEntry = { turn, kind: e.kind, reason: decision.reason, detail: e.detail }
-  return { ...s, party: trapped.party, pos: next, explored, battle: e.battle, rng: e.rng, turn, log: [...baseLog, entry].slice(-60) }
+  return { ...moved, battle: e.battle, rng: e.rng, log: [...baseLog, entry].slice(-60) }
+}
+
+/** Collecting a BUFF/LOOT room — a multi-field state delta (party + revealed + buffs +
+ *  rng + resolved + log) that doesn't fit `enterRoom`'s RoomEntry, so it's its own
+ *  branch (the twin of the `rest` branch). Returns null when `room` isn't an uncollected
+ *  reward room → the caller falls through to the normal `enterRoom`. Gated on `resolved`
+ *  so re-entering a reward room never re-grants. */
+function grantReward(moved: DelveState, baseLog: DelveLogEntry[], reason: string, turn: number): DelveState | null {
+  const type = roomType(moved, moved.pos)
+  if ((type !== 'buff' && type !== 'loot') || moved.resolved.includes(moved.pos)) return null
+  const resolved = [...moved.resolved, moved.pos]
+
+  if (type === 'loot') {
+    // Loot = the non-Insight haul (currency/gear) — slice-10 territory, symbolic for now:
+    // mark the room looted + journal it; the reward economy lands later.
+    const entry: DelveLogEntry = { turn, kind: 'clear', reason, detail: 'found loot — a glint in the rubble' }
+    return { ...moved, resolved, log: [...baseLog, entry].slice(-60) }
+  }
+
+  // a buff room: roll a boon from the level's pool and COLLECT it — apply lands now,
+  // onSpawn folds on every future enemy. An empty pool / stale id → a safe rest stop.
+  const { id, rng } = rollBuff(moved)
+  const buff = BUFFS_BY_ID.get(id)
+  if (buff === undefined) {
+    const entry: DelveLogEntry = { turn, kind: 'explore', reason, detail: 'a still shrine — nothing answers' }
+    return { ...moved, resolved, rng, log: [...baseLog, entry].slice(-60) }
+  }
+  const granted = buff.apply?.({ ...moved, rng }) ?? { ...moved, rng }
+  const entry: DelveLogEntry = { turn, kind: 'boon', reason, detail: `boon gained — ${buff.label}` }
+  return { ...granted, resolved, buffs: [...granted.buffs, id], log: [...baseLog, entry].slice(-60) }
 }
 
 /** Advance the delve by one tick: a combat action if mid-fight, else one move. */

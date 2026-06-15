@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest'
 import { LEVELS, levelById, hasCleared, recordClear, applyClear } from './levels'
 import { generateGraph } from './mapgraph'
+import { BUFFS_BY_ID } from './content/exploration/buffs'
 
 describe('levels — well-formed skeletons', () => {
   it('every level has a unique id and exactly one entrance + boss slot', () => {
@@ -12,6 +13,12 @@ describe('levels — well-formed skeletons', () => {
       expect(types.filter((t) => t === 'boss')).toHaveLength(1)
       expect(l.boss.length).toBeGreaterThan(0)
       expect(l.monsterPool.length).toBeGreaterThan(0)
+    }
+  })
+
+  it('every authored buffPool id resolves in the buff registry (no typos)', () => {
+    for (const l of LEVELS) {
+      for (const id of l.buffPool ?? []) expect(BUFFS_BY_ID.has(id)).toBe(true)
     }
   })
 

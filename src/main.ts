@@ -1153,7 +1153,7 @@ function renderExEditor(): void {
 }
 
 // Map a delve-log kind to one of the existing log-entry colour classes.
-const LOG_CLASS: Record<string, string> = { explore: 'defend', enter: 'flee', combat: 'attack', clear: 'heal', end: 'counter' }
+const LOG_CLASS: Record<string, string> = { explore: 'defend', enter: 'flee', combat: 'attack', clear: 'heal', end: 'counter', boon: 'heal' }
 
 function renderLog(): void {
   const entries = (delve?.log ?? lastDelveLog).slice(-14).reverse()

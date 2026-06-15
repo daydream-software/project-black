@@ -152,8 +152,25 @@ Each slice proven in-browser, not just by tests.
    peek; room fights from the pool; flee. (Combat sim unchanged.)
 3. **Routing exploration vocabulary** — the new Subjects/Predicates/Moves (content),
    making avoidance + type-routing programmable; the editor offers them.
-4. **Room-type content** — `loot`/`buff`/`???` behaviours; buffs as content (incl.
-   the vision buff that extends the peek).
+4. **Room-type content** *(DONE)* — `buff` rooms grant a run-scoped boon on entry
+   (rolled from the level's `buffPool`, seeded); buffs are standalone content
+   (`content/exploration/buffs/`, glob → `BUFFS`/`BUFFS_BY_ID`, the trap/reaction twin).
+   A `BuffDef` carries its whole behaviour: `apply(s)` is the one-shot pickup transform
+   (double a party stat, full heal, reveal rooms into `revealed`), `onSpawn(enemy)` an
+   optional lasting hook folded onto every future foe (e.g. Enfeeble halves Fortitude).
+   Only collected buff IDS persist (serialisable); a separate `resolved` set gates
+   re-grant. The delve now carries its own `LevelSkeleton` (rolls read it, not a global
+   lookup), so it's self-contained. `loot` rooms are marked + journaled but symbolic
+   (the reward economy is slice 10).
+   - **Vision is knowledge, not traversal — "revealed ≠ explored" (DECIDED).**
+     Cartographer/Treasure-Sense fill `revealed`: `isKnown` returns true for a revealed
+     room (its type is shown on the minimap, it's a legitimate routing TARGET), but
+     `explored` stays false, so routing still won't path THROUGH it — the party must
+     physically reach it. A revealed room you can't yet reach is shown, not walked. This
+     preserves the distinction by design; making a revealed room actionable as a one-step
+     target is folded into the hidden-rooms slice (same nav machinery).
+   - **Deferred: hidden rooms** — the "reveal hidden rooms" buff needs a generation-level
+     `hidden` slot flag + a pathing gate first (its own slice).
 5. **Corridor traps (`DelveEvent`)** — corridor-owned trap reactions, the delve event
    bus (the combat-reaction twin).
 6. **Rendering adaptation** — first-person scrying + room-graph minimap over the new

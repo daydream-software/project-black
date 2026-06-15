@@ -110,6 +110,38 @@ describe('routing by room type (the peek made actionable)', () => {
   })
 })
 
+// Slice 4 — buff rooms grant a run-scoped boon on entry: the buff is rolled from the
+// level's pool, applied once, and recorded (idempotent — re-entry never re-grants).
+describe('buff rooms grant a run-scoped boon', () => {
+  // in → buff → boss line; the only pool buff doubles Might, so we can read it off the
+  // party. The party must pass THROUGH the buff room to reach the boss.
+  const surgeLine: LevelSkeleton = {
+    id: 't-buff', name: 'T', monsterPool: ['slime'], boss: 'hex-warden', buffPool: ['might-surge'],
+    topology: {
+      slots: [{ id: 'in', type: 'entrance' }, { id: 'buff', type: 'buff' }, { id: 'boss', type: 'boss' }],
+      edges: [['in', 'buff'], ['buff', 'boss']],
+    },
+  }
+
+  it('collects the boon once: Might doubled (100→200, not 400), buff + room recorded', () => {
+    const end = advance(startDelve(strongParty(), 1, DEFAULT_EXPLORATION, surgeLine))
+    expect(end.status).toBe('cleared')
+    expect(end.buffs).toContain('might-surge')
+    expect(end.resolved).toContain('buff') // the room is spent → can't re-grant
+    // exactly-once: a second application would read 400. The resolved gate holds even as
+    // the party crosses back through on its way to the boss.
+    expect(end.party.every((u) => u.might === 200)).toBe(true)
+    expect(end.log.some((e) => e.kind === 'boon')).toBe(true)
+  })
+
+  it('an enemy-spawn boon (Enfeeble) folds onto future foes without breaking the delve', () => {
+    const enfeebleLine: LevelSkeleton = { ...surgeLine, id: 't-enf', buffPool: ['enfeeble'] }
+    const end = advance(startDelve(strongParty(), 1, DEFAULT_EXPLORATION, enfeebleLine))
+    expect(end.status).toBe('cleared') // onSpawn fold ran on the boss; the delve still resolves
+    expect(end.buffs).toContain('enfeeble')
+  })
+})
+
 // Slice 5 — corridor traps: a trap is OWNED by a corridor and springs on the party as
 // it traverses (the delve twin of a combat reaction, dispatched by id).
 describe('corridor traps', () => {
