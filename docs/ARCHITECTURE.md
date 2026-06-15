@@ -15,7 +15,9 @@ src/
     subjects/ predicates/         combat State vocabulary (one Option per file)
     exploration/{subjects,predicates,moves}/   delve vocabulary
     skills/           mend.ts/defend.ts: a SkillDef per file (editor face + effect)
-    monsters/         slime.ts/hex-warden.ts: a MonsterDef (stat block) per file
+    monsters/         slime.ts/hex-warden.ts: a MonsterDef per file (stats+procedure+reaction refs)
+    combat/           modifiers/ reactions/ targeting.ts procedures.ts (cross-cutting + AI helpers)
+    sfx/              one sound per file, each importing its own .ogg; sfx.ts just plays them
   delve.ts            PURE delve state machine: navigate + fight + clear a dungeon
   delve.test.ts       Vitest tests for the delve loop
   dungeon.ts          PURE seeded procedural dungeon generation (rooms + corridors)

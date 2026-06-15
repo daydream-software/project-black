@@ -10,44 +10,40 @@
 // until the player flips the same toggle that starts the music (`setSfxEnabled`,
 // called from its click handler — a valid gesture that resumes the context).
 
-import attackUrl from './audio/golem-attack.ogg?url'
-import healUrl from './audio/golem-heal.ogg?url'
-import defendUrl from './audio/golem-defend.ogg?url'
-import hitUrl from './audio/golem-hit.ogg?url'
 import { audioContext } from './music'
+import { SFX } from './content/sfx'
 
-/** A combat sound. The caller (main.ts) decides which from the log entry —
- *  e.g. an enemy's attack on a hero plays `hit`, the hero's own attack plays
- *  `attack`. */
-export type SfxId = 'attack' | 'heal' | 'defend' | 'hit'
-
-const URLS: Record<SfxId, string> = {
-  attack: attackUrl,
-  heal: healUrl,
-  defend: defendUrl,
-  hit: hitUrl,
+/** A sound DEFINITION — a stable `id` and the URL of its audio asset. One file per
+ *  sound under content/sfx/ (each importing its own .ogg); this engine just plays
+ *  them. Adding a sound is dropping a content file, never editing this module. */
+export interface SfxDef {
+  id: string
+  url: string
 }
 
-/** Narrow an opaque sound key (as content declares it — a plain string, so the pure
- *  sim/content never imports this audio module's type) to a real SfxId. The view uses
- *  this when assembling its kind→sound map, throwing on an unknown id at load. */
-export function isSfxId(s: string): s is SfxId {
-  return s in URLS
+/** A sound id — whatever a content/sfx/ file declares. (Was a hardcoded union; the
+ *  set of sounds is content now.) */
+export type SfxId = string
+
+/** Is this an id of a real sound in the registry? The view uses it to validate the
+ *  sounds content declares (a skill's `sfx`), failing loudly at load on a typo. */
+export function isSfxId(s: string): boolean {
+  return SFX.has(s)
 }
 
 const VOLUME = 0.42
 
 let enabled = false
-const buffers = new Map<SfxId, AudioBuffer>()
-// One live voice per kind: combat acts every ~450ms, so without this the clips
+const buffers = new Map<string, AudioBuffer>()
+// One live voice per sound: combat acts every ~450ms, so without this the clips
 // pile up into an overlapping drone. A new hit cuts its predecessor short (the
 // clips already fade out, so the cut lands on near-silence — no click).
-const voices = new Map<SfxId, AudioBufferSourceNode>()
+const voices = new Map<string, AudioBufferSourceNode>()
 
-async function preload(ctx: AudioContext, id: SfxId): Promise<void> {
-  if (buffers.has(id)) return
-  const res = await fetch(URLS[id])
-  buffers.set(id, await ctx.decodeAudioData(await res.arrayBuffer()))
+async function preload(ctx: AudioContext, def: SfxDef): Promise<void> {
+  if (buffers.has(def.id)) return
+  const res = await fetch(def.url)
+  buffers.set(def.id, await ctx.decodeAudioData(await res.arrayBuffer()))
 }
 
 /**
@@ -62,10 +58,7 @@ export async function setSfxEnabled(on: boolean): Promise<void> {
   try {
     const ctx = audioContext()
     await ctx.resume()
-    // Object.keys widens to string[]; the keys of a Record<SfxId, …> are SfxId by construction.
-    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion -- safe by Record key type
-    const ids = Object.keys(URLS) as SfxId[]
-    await Promise.all(ids.map(async (id) => { await preload(ctx, id); }))
+    await Promise.all([...SFX.values()].map(async (def) => { await preload(ctx, def); }))
   } catch {
     /* leave enabled true; playSfx no-ops until buffers exist */
   }
