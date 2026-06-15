@@ -36,13 +36,28 @@ export function collect<T extends { id: string; order: number }>(mods: Record<st
   return [...items].sort((a, b) => a.order - b.order)
 }
 
-/** Assemble a glob record into a by-id map (for content looked up by id rather than
- *  listed in order — e.g. the monster bestiary). De-dupes ids like `collect`. */
+/** Assemble a glob record into a by-id object (for content looked up by a key the
+ *  caller controls — e.g. the monster bestiary, where `MONSTERS.slime` is known to
+ *  exist). De-dupes ids like `collect`. Use `mapById` instead when the lookup key
+ *  may be stale (then a miss must read as `undefined`, not a lying non-null). */
 export function indexById<T extends { id: string }>(mods: Record<string, T>): Record<string, T> {
   const out: Record<string, T> = {}
   for (const item of Object.values(mods)) {
     if (item.id in out) throw new Error(`Duplicate content id: ${item.id}`)
     out[item.id] = item
+  }
+  return out
+}
+
+/** Assemble a glob record into a by-id Map — for content looked up by a key that may
+ *  not resolve (e.g. a skill id read from a persisted row that predates a rename).
+ *  `.get()` honestly returns `T | undefined`, so callers must handle the miss (and
+ *  the type-checker makes them). De-dupes ids like `collect`. */
+export function mapById<T extends { id: string }>(mods: Record<string, T>): Map<string, T> {
+  const out = new Map<string, T>()
+  for (const item of Object.values(mods)) {
+    if (out.has(item.id)) throw new Error(`Duplicate content id: ${item.id}`)
+    out.set(item.id, item)
   }
   return out
 }

@@ -12,12 +12,13 @@ import { PREDICATES } from './content/predicates'
 import { EX_SUBJECTS } from './content/exploration/subjects'
 import { EX_PREDICATES } from './content/exploration/predicates'
 import { EX_MOVES } from './content/exploration/moves'
+import { SKILLS } from './content/skills'
 
 // `Option<T>` + the content catalogs now live under src/content/ (one file per item,
 // glob-assembled). Re-exported here so the editors and tests keep importing the
 // vocabulary from a single `./protocol` facade alongside the compiler below.
 export type { Option }
-export { SUBJECTS, PREDICATES, EX_SUBJECTS, EX_PREDICATES, EX_MOVES }
+export { SUBJECTS, PREDICATES, EX_SUBJECTS, EX_PREDICATES, EX_MOVES, SKILLS }
 
 /** The options the editor may offer right now: always-available ones, plus any
  *  whose `unlock` id the profile has purchased. Pure, so it's unit-testable. */
@@ -102,11 +103,6 @@ export const COMMANDS: Command[] = [
   { id: 'attack', label: 'Attack', hasObject: false },
   { id: 'useSkill', label: 'Use Skill', hasObject: true },
   { id: 'flee', label: 'Flee', hasObject: false },
-]
-
-export const SKILLS: Array<{ id: SkillId; label: string }> = [
-  { id: 'mend', label: 'Mend' },
-  { id: 'defend', label: 'Defend' },
 ]
 
 /** Look up a command by id, throwing on an unknown one (editor wiring uses this on

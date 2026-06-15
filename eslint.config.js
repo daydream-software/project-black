@@ -43,6 +43,14 @@ export default [
     rules: { 'no-param-reassign': ['error', { props: false }] },
   },
   {
+    // A skill's `effect(actor, target)` mutates the combatants in place BY DESIGN:
+    // the sim clones the roster before dispatching, so these params are the working
+    // copy an effect is meant to write (HP, Strain, defending) — the same contract
+    // sim.ts applies to its own act() helpers. Rebinding a param is still forbidden.
+    files: ['src/content/skills/*.ts'],
+    rules: { 'no-param-reassign': ['error', { props: false }] },
+  },
+  {
     // Tests may use non-null assertions and looser typing for fixtures.
     files: ['src/**/*.test.ts'],
     rules: {
