@@ -27,7 +27,7 @@ import { SUBJECTS_BY_ID } from './content/subjects'
 import { PREDICATES_BY_ID } from './content/predicates'
 import { DAMAGE_MODIFIERS } from './content/combat/modifiers'
 import { REACTIONS_BY_ID } from './content/combat/reactions'
-import { attackDamage, poolFor, recovery } from './combat-core'
+import { attackDamage, poolFor, golemPoolFor, golemCelerity, recovery } from './combat-core'
 
 export type Side = 'hero' | 'enemy'
 
@@ -119,6 +119,10 @@ export interface Combatant extends Stats {
 export {
   HP_PER_FORTITUDE,
   poolFor,
+  BASE_GOLEM_HP,
+  golemPoolFor,
+  BASE_GOLEM_CELERITY,
+  golemCelerity,
   MIN_DAMAGE,
   attackDamage,
   healAmount,
@@ -482,7 +486,12 @@ export function makeWarden(): Combatant {
  *  player-facing builder the point-buy editor feeds. (makeWarrior/makeHealer below
  *  are the fixed reference blocks used as test fixtures and the starting party.) */
 export function makeGolem(spec: { id: string; name: string; stats: Stats; procedure: Procedure; program?: string }): Combatant {
-  return makeUnit({ id: spec.id, name: spec.name, side: 'hero', ...spec.stats, procedure: spec.procedure, program: spec.program })
+  const u = makeUnit({ id: spec.id, name: spec.name, side: 'hero', ...spec.stats, procedure: spec.procedure, program: spec.program })
+  // Golems get flat floors on top of their authored stats (monsters don't — they keep
+  // the raw formulas): +BASE_GOLEM_HP on the Fortitude pool, and +BASE_GOLEM_CELERITY
+  // on cadence (eff Celerity = 3 + authored, monotonic — every point still counts).
+  const maxHp = golemPoolFor(spec.stats.fortitude)
+  return { ...u, hp: maxHp, maxHp, celerity: golemCelerity(spec.stats.celerity) }
 }
 
 /** The two reference stat blocks (compact 0–12 scale): a Sentinel (Bulwark — Ward +

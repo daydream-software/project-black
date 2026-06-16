@@ -79,13 +79,13 @@ describe('attackDamage — Might minus flat Ward, floored at 1', () => {
   })
 
   it('Defending halves the post-Ward damage (rounded up) — via the content modifier', () => {
-    const warden = makeWarden() // Might 4
+    const warden = makeWarden() // Might 6
     const mender: Combatant = { ...makeHealer([]), defending: true } // Ward 0
-    const base = attackDamage(warden, mender) // 4 − 0 = 4 (base only, no status logic)
-    expect(base).toBe(4)
+    const base = attackDamage(warden, mender) // 6 − 0 = 6 (base only, no status logic)
+    expect(base).toBe(6)
     // The halving now lives in content/combat/modifiers/defending.ts, not attackDamage.
-    expect(defendingModifier.apply(base, warden, mender)).toBe(Math.ceil(4 / 2)) // → 2
-    expect(defendingModifier.apply(base, warden, { ...mender, defending: false })).toBe(4) // not defending → unchanged
+    expect(defendingModifier.apply(base, warden, mender)).toBe(Math.ceil(6 / 2)) // → 3
+    expect(defendingModifier.apply(base, warden, { ...mender, defending: false })).toBe(6) // not defending → unchanged
   })
 })
 
@@ -163,8 +163,9 @@ describe('restToConvergence — a rest IS off-combat Mend, bounded by Strain', (
     const sentinel = { ...makeWarrior([]), hp: 4 }
     const mender = makeHealer(mendAllyLow)
     const { units } = restToConvergence([sentinel, mender])
-    // 4→≥25 needs 5 mends (+5 each), so Strain = 5 × MEND_STRAIN = 10, past Poise 6.
-    expect(units[1].strain).toBe(5 * MEND_STRAIN)
+    // Sentinel maxHp 60 (10 fort ×5 + 10 base) → 50% threshold 30. 4→≥30 needs 6
+    // mends (+5 each → 34), so Strain = 6 × MEND_STRAIN = 12, past Poise 6.
+    expect(units[1].strain).toBe(6 * MEND_STRAIN)
     expect(units[1].strain).toBeGreaterThan(units[1].poise) // overdrew
     expect(units[1].hp).toBeLessThan(units[1].maxHp) // the overdraw bit its own Fortitude
   })
@@ -212,8 +213,10 @@ describe('CTB scheduler — turn frequency scales with Celerity', () => {
   })
 
   it('upcomingTurns previews the schedule without mutating, agreeing with step', () => {
-    const warrior: Procedure = [{ state: enemyNearest, maneuver: ATTACK, label: 'attack' }]
-    const battle = initialState(warrior, [{ state: allyLowestHurt, maneuver: MEND, label: 'm' }, { state: enemyNearest, maneuver: ATTACK, label: 'a' }])
+    // Death-free (both golems Defend) so the 5-turn preview can't be invalidated by a
+    // unit dying mid-window — this checks the preview tracks the live schedule, nothing else.
+    const defend: Procedure = [{ state: { subject: subj('self'), predicate: pred('always') }, maneuver: DEFEND, label: 'defend' }]
+    const battle = initialState(defend, defend)
     const preview = upcomingTurns(battle.units, 5)
     // Replaying step() must produce the SAME first-5 actor ids (preview = real schedule).
     let s = battle
@@ -363,16 +366,24 @@ describe('step — one unit-action of the simulation', () => {
   })
 
   it('turn order follows Celerity (CTB), not a fixed round-robin cycle', () => {
-    let s = freshBattle()
-    const actors: string[] = []
-    for (let i = 0; i < 6; i += 1) {
+    // A death-free battle (both golems just Defend) so this tests pure CADENCE, not
+    // who gets focus-fired first. Effective Celerity: Mender 7 (6 + 1 golem base),
+    // Sentinel 6 (5 + 1), slimes 2 (raw — monsters skip the golem base). Over 14
+    // turns the FREQUENCY tracks Celerity: Mender > Sentinel >> each slow slime, and
+    // the fast golems take MANY turns before a slime repeats — impossible for a fixed
+    // round-robin (which would give every unit an equal share).
+    const defend: Procedure = [{ state: { subject: subj('self'), predicate: pred('always') }, maneuver: DEFEND, label: 'defend' }]
+    let s = initialState(defend, defend)
+    const count: Record<string, number> = {}
+    for (let i = 0; i < 14; i += 1) {
       s = step(s)
-      actors.push(s.log.at(-1)?.actorName ?? '?')
+      const n = s.log.at(-1)?.actorName ?? '?'
+      count[n] = (count[n] ?? 0) + 1
     }
-    // The fast Mender (cel 6) opens; the Sentinel (cel 5) follows; the slow slimes
-    // (cel 4) cluster — and the Mender comes ROUND AGAIN before any slime repeats.
-    expect(actors.slice(0, 5)).toEqual(['Mender', 'Sentinel', 'Slime #1', 'Slime #2', 'Slime #3'])
-    expect(actors[5]).toBe('Mender') // round-robin would put the Sentinel here
+    expect(count['Mender']).toBeGreaterThan(count['Sentinel'] ?? 0) // Celerity 7 > 6
+    expect(count['Sentinel']).toBeGreaterThan(count['Slime #1'] ?? 0) // golems >> slimes
+    // not round-robin: the fastest unit laps a slow slime several times over
+    expect(count['Mender']).toBeGreaterThanOrEqual(4 * (count['Slime #1'] ?? 1))
   })
 
   it('Mend on an enemy is a dead rule: turn is consumed, nothing changes', () => {
@@ -389,7 +400,7 @@ describe('step — one unit-action of the simulation', () => {
   })
 
   it('Defend halves the damage the unit takes before its next turn', () => {
-    // The Sentinel (pool 50, Ward 2) defends; a Might-8 attacker then hits for half.
+    // The Sentinel (pool 60 = 10 fort + 10 base, Ward 2) defends; a Might-8 attacker hits for half.
     const warrior: Procedure = [{ state: { subject: subj('self'), predicate: pred('always') }, maneuver: DEFEND, label: 'defend' }]
     const w = makeWarrior(warrior)
     const foe = { ...makeWarrior([]), side: 'enemy' as const, id: 'enemy-1', name: 'Slime', might: 8 }
@@ -397,7 +408,7 @@ describe('step — one unit-action of the simulation', () => {
     s = step(s) // warrior defends
     expect(s.units[0].defending).toBe(true)
     s = step(s) // foe hits the defending warrior: (Might 8 − Ward 2) = 6, halved = 3
-    expect(s.units[0].hp).toBe(50 - Math.ceil((8 - 2) / 2))
+    expect(s.units[0].hp).toBe(w.maxHp - Math.ceil((8 - 2) / 2))
   })
 
   it('reaches victory when the party kills every enemy', () => {

@@ -6,14 +6,16 @@ import { attackNearest } from '../combat/procedures'
 // whenever a hero is healed it strikes the healed unit for 4, more than a Mend
 // restores, so the naive "Mend when an ally is low" Procedure is a trap. Off-balance
 // and unbounded (monsters ignore the player's caps): a big Fortitude pool so it
-// survives the fast Mender's front-load. Tuned against the slice-4 discriminating
-// tests under the CTB schedule.
+// survives the front-load. Re-tuned UP (Might 4→6, Fortitude 10→12) when golems
+// gained a base-HP/Celerity floor — the buff had let the naive mend-spam survive, so
+// the wall needed to hit harder to keep "naive mend loses / attack wins" crisp
+// (grid-searched). Tuned against the slice-4 discriminating tests under the CTB schedule.
 export default {
   id: 'hex-warden',
   name: 'Hex Warden',
-  might: 4,
+  might: 6,
   ward: 0,
-  fortitude: 10,
+  fortitude: 12,
   attunement: 0,
   poise: 0,
   celerity: 4,

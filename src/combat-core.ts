@@ -20,6 +20,17 @@ export function poolFor(fortitude: number): number {
   return fortitude * HP_PER_FORTITUDE
 }
 
+/** Flat HP every player golem starts with, on top of `poolFor(fortitude)` — a
+ *  survivability floor so a build that skimps on Fortitude isn't paper-thin (and a
+ *  Fortitude-0 golem isn't literally 0 HP / dead on spawn). Golems only: monsters
+ *  keep the raw `poolFor` so the bestiary balance is unchanged. */
+export const BASE_GOLEM_HP = 10
+
+/** maxHp for a player golem: the base survivability floor + its Fortitude pool. */
+export function golemPoolFor(fortitude: number): number {
+  return BASE_GOLEM_HP + poolFor(fortitude)
+}
+
 /** Minimum damage of any landed hit — the Ward floor, so high Ward shaves chip
  *  damage to a trickle but can never make a unit literally unkillable. */
 export const MIN_DAMAGE = 1
@@ -60,9 +71,23 @@ export function overdraw(strain: number, poise: number, cost: number): number {
  *  so the schedule never drifts and the journal stays trustworthy. */
 export const SCHED_BASE = 120
 
+/** Flat Celerity every player golem gets on top of its authored Celerity — the
+ *  cadence analogue of BASE_GOLEM_HP. A golem built with little/no Celerity used to
+ *  act ~1× per 10 enemy turns and be ground to death (lvl-1 was unclearable below
+ *  Celerity 3) — a silent point-buy softlock. A flat OFFSET (not a `max()` clamp)
+ *  fixes the floor while keeping every authored point meaningful — eff = base + stat,
+ *  monotonic, no dead bottom range. Golems only (via `makeGolem`): monsters keep
+ *  their raw Celerity, so bestiary cadence and the CTB tests are untouched. */
+export const BASE_GOLEM_CELERITY = 1
+
+/** A player golem's effective Celerity: the base cadence floor + its authored point. */
+export function golemCelerity(celerity: number): number {
+  return BASE_GOLEM_CELERITY + celerity
+}
+
 /**
  * Time until a unit of this Celerity gets its next turn (smaller = sooner, so
- * higher Celerity acts more often). Floored at Celerity 1 — a Celerity-0 golem is
+ * higher Celerity acts more often). Floored at Celerity 1 — a Celerity-0 unit is
  * merely the slowest, never frozen. `recovery(12):recovery(10):recovery(8)` =
  * `10:12:15`, i.e. a `6:5:4` share of turns over time.
  */
