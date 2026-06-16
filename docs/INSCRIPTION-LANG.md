@@ -7,7 +7,17 @@
 > works (shared library); the Workshop has combat / exploration / library code editors
 > The slot Procedure **editor was retired** (authoring is code-only); existing saves
 > migrate slots→code on load, new golems seed a default program. The slot ENGINE stays
-> for monsters + as the empty-program fallback. The rest of this doc is the spec.
+> for monsters + as the empty-program fallback.
+>
+> **Update (2026-06-16): engrams + progression shipped.** The entry point is now a
+> declarative **`Engram.combat_turn:` / `Engram.exploration_turn:`** block (NOT `def` —
+> `senses`/`me`/`Memory` ambient), so `def` is a gated feature. **Engrams** = named,
+> reusable programs authored in the **Library**, copied onto golems in the Workshop
+> (copy-on-assign). **Progression**: the language starts MINIMAL — `if`/loops/`def`/
+> `import`/comprehensions + `Skills.Mend` are LOCKED; spend Insight at the Library to
+> unlock (gate in `src/lang/gate.ts`). Program failures are LOUD → delve `stuck` (no
+> silent fallback). Save VERSION 4. The body of this doc predates the `Engram.X:`
+> rename — read entries as `Engram.X:` blocks, not `def`.
 >
 > Goal: replace the
 > slot-based Procedure editor with a small **code language** that golems run, at
