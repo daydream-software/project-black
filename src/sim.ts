@@ -46,6 +46,17 @@ export type Side = 'hero' | 'enemy'
  *   Celerity   action frequency / turn order. STORED but not yet wired — turn
  *              order is still fixed round-robin; CTB is a later slice.
  */
+/** Thrown when a golem's authored program genuinely fails (compile / runtime / fuel /
+ *  a locked construct) — distinct from "no program" or "no action this turn". Lives here,
+ *  the shared dep both the language layer and delve.ts import, so neither cycles. The delve
+ *  loop catches it and ends the delve LOUD (status `stuck`) instead of papering it over. */
+export class ProgramError extends Error {
+  constructor(message: string) {
+    super(message)
+    this.name = 'ProgramError'
+  }
+}
+
 export interface Stats {
   might: number
   ward: number

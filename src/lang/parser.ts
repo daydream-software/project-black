@@ -36,19 +36,21 @@ export type Expr =
   | { k: 'dict'; pairs: Array<[Expr, Expr]> }
   | { k: 'comp'; kind: 'list' | 'set'; element: Expr; var: string; iter: Expr; cond: Expr | null }
 
+// Gated statements (if/for/while/func/import) carry a line/col so the feature gate can
+// point the linter at the locked construct.
 export type Stmt =
-  | { k: 'func'; name: string; params: string[]; body: Stmt[] }
+  | { k: 'func'; name: string; params: string[]; body: Stmt[]; line: number; col: number }
   | { k: 'return'; value: Expr | null }
-  | { k: 'if'; test: Expr; body: Stmt[]; orelse: Stmt[] }
-  | { k: 'for'; var: string; iter: Expr; body: Stmt[] }
-  | { k: 'while'; test: Expr; body: Stmt[] }
+  | { k: 'if'; test: Expr; body: Stmt[]; orelse: Stmt[]; line: number; col: number }
+  | { k: 'for'; var: string; iter: Expr; body: Stmt[]; line: number; col: number }
+  | { k: 'while'; test: Expr; body: Stmt[]; line: number; col: number }
   | { k: 'assign'; target: Expr; value: Expr }
   | { k: 'expr'; value: Expr }
   | { k: 'break' }
   | { k: 'continue' }
   | { k: 'pass' }
   | { k: 'global'; names: string[] }
-  | { k: 'import'; name: string }
+  | { k: 'import'; name: string; line: number; col: number }
   | { k: 'entry'; entry: string; body: Stmt[] } // `Engram.combat_turn:` declarative entry block
 
 export interface Module {
@@ -133,10 +135,11 @@ class Parser {
       this.endSimple()
       return { k: 'global', names }
     }
-    if (this.accept('KEYWORD', 'import')) {
+    if (this.is('KEYWORD', 'import')) {
+      const kw = this.next()
       const name = this.expect('NAME').value
       this.endSimple()
-      return { k: 'import', name }
+      return { k: 'import', name, line: kw.line, col: kw.col }
     }
     // assignment or expression statement
     const expr = this.expression()
@@ -169,7 +172,7 @@ class Parser {
   }
 
   private funcDef(): Stmt {
-    this.expect('KEYWORD', 'def')
+    const kw = this.expect('KEYWORD', 'def')
     const name = this.expect('NAME').value
     this.expect('OP', '(')
     const params: string[] = []
@@ -178,11 +181,11 @@ class Parser {
       while (this.accept('OP', ',')) params.push(this.expect('NAME').value)
     }
     this.expect('OP', ')')
-    return { k: 'func', name, params, body: this.block() }
+    return { k: 'func', name, params, body: this.block(), line: kw.line, col: kw.col }
   }
 
   private ifStmt(): Stmt {
-    this.expect('KEYWORD', 'if')
+    const kw = this.expect('KEYWORD', 'if')
     const test = this.expression()
     const body = this.block()
     let orelse: Stmt[] = []
@@ -193,21 +196,21 @@ class Parser {
     } else if (this.accept('KEYWORD', 'else')) {
       orelse = this.block()
     }
-    return { k: 'if', test, body, orelse }
+    return { k: 'if', test, body, orelse, line: kw.line, col: kw.col }
   }
 
   private forStmt(): Stmt {
-    this.expect('KEYWORD', 'for')
+    const kw = this.expect('KEYWORD', 'for')
     const v = this.expect('NAME').value
     this.expect('KEYWORD', 'in')
     const iter = this.expression()
-    return { k: 'for', var: v, iter, body: this.block() }
+    return { k: 'for', var: v, iter, body: this.block(), line: kw.line, col: kw.col }
   }
 
   private whileStmt(): Stmt {
-    this.expect('KEYWORD', 'while')
+    const kw = this.expect('KEYWORD', 'while')
     const test = this.expression()
-    return { k: 'while', test, body: this.block() }
+    return { k: 'while', test, body: this.block(), line: kw.line, col: kw.col }
   }
 
   // --- expressions (precedence climbing) ---

@@ -101,7 +101,8 @@ export interface SaveData {
 // The slot keys derive from this; KEY itself is now only the *legacy* single-save
 // blob that importLegacy migrates into slot 0 (slice 9). Kept as the legacy key.
 const KEY = 'project-black/save'
-const VERSION = 3 // bumped: run (gauntlet) replaced by delve (slice 8b); older blobs ignored
+const VERSION = 4 // bumped: progression gating — a v3 build resets to the minimal-language start
+//                  (roster reset; meta — Insight / unlocked / cleared levels — salvaged on load)
 
 function isObj(x: unknown): x is Record<string, unknown> {
   return typeof x === 'object' && x !== null

@@ -13,13 +13,14 @@ import { linter, type Diagnostic } from '@codemirror/lint'
 import { tags } from '@lezer/highlight'
 import { SKILLS_BY_ID } from '../content/skills'
 import { checkProgram } from './check'
+import { unlocked } from './gate'
 import type { CodeEditorHandle } from './editor'
 
 const KEYWORDS = new Set([
   'def', 'return', 'if', 'elif', 'else', 'for', 'while', 'in', 'and', 'or', 'not',
-  'None', 'True', 'False', 'break', 'continue', 'pass', 'global', 'import',
+  'None', 'True', 'False', 'break', 'continue', 'pass', 'global', 'import', 'Engram',
 ])
-const BUILTINS = new Set(['len', 'set', 'print', 'attack', 'use', 'flee', 'wait', 'move', 'rest', 'retreat', 'leave'])
+const BUILTINS = new Set(['len', 'set', 'print', 'attack', 'use', 'flee', 'wait', 'move', 'rest', 'retreat', 'leave', 'explore'])
 
 // --- Highlighting: a tiny stream tokenizer (mirrors the lexer's categories) ---
 const inscription = StreamLanguage.define({
@@ -59,13 +60,22 @@ const MEMBERS = {
   memory: ['setdefault', 'get', 'pop', 'update', 'keys'],
   roomType: ['Entrance', 'Fight', 'Loot', 'Buff', 'Boss'],
 }
-const skillMembers = (): string[] => [...SKILLS_BY_ID.keys()].map((id) => id.charAt(0).toUpperCase() + id.slice(1))
+// Only OFFER skills the player has unlocked (the linter is the real gate; this is polish).
+const skillMembers = (): string[] =>
+  [...SKILLS_BY_ID].filter(([, def]) => def.unlock === undefined || unlocked().has(def.unlock))
+    .map(([id]) => id.charAt(0).toUpperCase() + id.slice(1))
+
+// Gated keywords → their feature-unlock id (omitted from autocomplete until unlocked).
+const KEYWORD_GATE: Record<string, string> = {
+  if: 'lang-if', elif: 'lang-if', else: 'lang-if', for: 'lang-loops', while: 'lang-loops',
+  def: 'lang-def', import: 'lang-import',
+}
 
 function globalsFor(kind: 'combat' | 'exploration'): string[] {
   const shared = ['len', 'set', 'print', 'wait', 'Memory', 'True', 'False', 'None']
   return kind === 'combat'
     ? ['me', 'senses', 'attack', 'use', 'flee', 'Skills', ...shared]
-    : ['senses', 'party', 'move', 'rest', 'retreat', 'leave', 'RoomType', ...shared]
+    : ['senses', 'party', 'explore', 'move', 'rest', 'retreat', 'leave', 'RoomType', ...shared]
 }
 
 /** Resolve a dotted chain (already-typed roots) to the member list to offer. */
@@ -90,8 +100,12 @@ function membersFor(chain: string[], kind: 'combat' | 'exploration'): string[] |
 }
 
 function makeCompletions(kind: 'combat' | 'exploration') {
-  const keywordOpts = [...KEYWORDS].map((label) => ({ label, type: 'keyword' }))
   return (ctx: CompletionContext): CompletionResult | null => {
+    // Computed per-call so newly-bought unlocks appear without a re-mount.
+    const u = unlocked()
+    const keywordOpts = [...KEYWORDS]
+      .filter((k) => !(k in KEYWORD_GATE) || u.has(KEYWORD_GATE[k]))
+      .map((label) => ({ label, type: 'keyword' }))
     const token = ctx.matchBefore(/[\w.]+/)
     const text = token?.text ?? ''
     if (text.includes('.')) {

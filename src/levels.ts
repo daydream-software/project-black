@@ -12,19 +12,18 @@ export const LEVELS: LevelSkeleton[] = [
     id: 'lvl-1',
     name: 'The Ruin',
     monsterPool: ['slime'],
-    boss: 'hex-warden',
-    traps: ['spike-trap'],
+    boss: 'ruin-keeper', // basic boss — beatable attack-only (the Hex Warden moves to lvl-2)
+    // The TUTORIAL level: no traps, a single fight before the boss — so a fresh player's
+    // attack-only single golem (minimal language) reliably clears it. Difficulty ramps in lvl-2.
     buffPool: ['mending-tide', 'might-surge'],
-    // A short spine in → f1 → f2 → boss, with an optional loot room branching off f1.
     topology: {
       slots: [
         { id: 'in', type: 'entrance' },
         { id: 'f1', type: 'fight' },
         { id: 'loot', type: 'loot', optional: true },
-        { id: 'f2', type: 'fight' },
         { id: 'boss', type: 'boss' },
       ],
-      edges: [['in', 'f1'], ['f1', 'loot'], ['f1', 'f2'], ['f2', 'boss']],
+      edges: [['in', 'f1'], ['f1', 'loot'], ['f1', 'boss']],
     },
   },
   {

@@ -11,12 +11,44 @@ export interface Unlockable {
   cost: number
 }
 
+// The progression tree. The language starts minimal — these unlock features + vocabulary.
+// `id` matches a content `unlock` field (skills) or a `lang-*` feature gate (gate.ts).
 export const UNLOCKABLES: Unlockable[] = [
   {
-    id: 'enemy-most-hp',
-    name: 'Focus: biggest threat',
-    desc: 'Learn to target the enemy with the most HP — a new combat Subject, “Enemy · most HP”.',
+    id: 'lang-if',
+    name: 'Branching · if',
+    desc: 'Make decisions: “if … : …”. Without it, an engram can only do one fixed thing.',
     cost: 1,
+  },
+  {
+    id: 'skill-mend',
+    name: 'Skill · Mend',
+    desc: 'Heal an ally with “use(Skills.Mend, target)”. Locked until learned.',
+    cost: 1,
+  },
+  {
+    id: 'lang-loops',
+    name: 'Loops · for / while',
+    desc: 'Repeat: iterate over senses.enemies / senses.exits, scan and search.',
+    cost: 2,
+  },
+  {
+    id: 'lang-comprehensions',
+    name: 'Comprehensions',
+    desc: 'Build lists/sets inline: “[x for x in senses.enemies if …]”.',
+    cost: 2,
+  },
+  {
+    id: 'lang-def',
+    name: 'Helper functions · def',
+    desc: 'Define your own functions to reuse logic across an engram.',
+    cost: 2,
+  },
+  {
+    id: 'lang-import',
+    name: 'Libraries · import',
+    desc: 'Reuse shared library engrams across golems with “import <name>”.',
+    cost: 2,
   },
 ]
 

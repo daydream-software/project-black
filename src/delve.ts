@@ -14,7 +14,7 @@
 // - The log records the exploration DECISION (which rule fired), not just moves.
 
 import { generateGraph, type DungeonGraph, type RoomType, type LevelSkeleton, type Corridor } from './mapgraph'
-import { makeBattleFrom, step, restToConvergence, type Combatant, type GameState, type ReactionRef } from './sim'
+import { makeBattleFrom, step, restToConvergence, ProgramError, type Combatant, type GameState, type ReactionRef } from './sim'
 import { LEVELS } from './levels'
 import { makeRng, range, pick } from './rng'
 import { EX_SUBJECTS_BY_ID } from './content/exploration/subjects'
@@ -431,6 +431,16 @@ export function stepDelve(s: DelveState): DelveState {
   if (turn > MAX_DELVE_STEPS) {
     return { ...s, turn, status: 'stuck', log: logged(s, turn, { kind: 'end', reason: 'safety cap', detail: 'delve exceeded the step cap' }) }
   }
-  if (s.battle !== null) return advanceCombat(s, turn, s.battle)
-  return advanceMove(s, turn)
+  // A golem's authored program failing (compile / runtime / fuel / a locked construct)
+  // throws ProgramError; end the delve LOUD (stuck) instead of papering over it. stepDelve
+  // rebuilds from the pre-step `s`, so a throw mid-step discards partial state cleanly.
+  try {
+    if (s.battle !== null) return advanceCombat(s, turn, s.battle)
+    return advanceMove(s, turn)
+  } catch (e) {
+    if (e instanceof ProgramError) {
+      return { ...s, turn, battle: null, status: 'stuck', log: logged(s, turn, { kind: 'end', reason: 'program error', detail: e.message }) }
+    }
+    throw e
+  }
 }

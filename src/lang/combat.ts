@@ -4,7 +4,8 @@
 // shipped targeting primitives (content/combat/targeting.ts) so `senses` picks match
 // the slot system exactly. lang → sim (types) only; sim never imports lang (DI hook).
 
-import type { Combatant, Decision, Maneuver, SkillId } from '../sim'
+import { ProgramError, type Combatant, type Decision, type Maneuver, type SkillId } from '../sim'
+import { checkGates, unlocked } from './gate'
 import { livingAllies, livingEnemies, pickLowestHp, pickHighestHp, pickFirst } from '../content/combat/targeting'
 import { SKILLS_BY_ID } from '../content/skills'
 import {
@@ -66,10 +67,12 @@ function collectionHost(list: Combatant[]): HostObject {
 }
 
 /** The `Skills` enum: PascalCase member (`Skills.Mend`) → the SkillId string (`'mend'`),
- *  built from the content registry so a new skill file just appears. */
+ *  built from the content registry. A skill carrying an `unlock` id is GATED — absent from
+ *  the enum until that id is in `unlocked()` (so `Skills.Mend` is locked until bought). */
 function skillsEnum(): HostObject {
   const byMember = new Map<string, SkillId>()
-  for (const id of SKILLS_BY_ID.keys()) {
+  for (const [id, def] of SKILLS_BY_ID) {
+    if (def.unlock !== undefined && !unlocked().has(def.unlock)) continue
     const member = id.charAt(0).toUpperCase() + id.slice(1)
     byMember.set(member, id as SkillId)
   }
@@ -77,7 +80,7 @@ function skillsEnum(): HostObject {
     host: true,
     get(name: string): LangValue {
       const id = byMember.get(name)
-      if (id === undefined) throw new Error(`unknown skill 'Skills.${name}'`)
+      if (id === undefined) throw new Error(`'Skills.${name}' is locked or unknown — study it at the Library`)
       return id
     },
   }
@@ -131,18 +134,24 @@ function fallback(self: Combatant, units: Combatant[], reason: string): Decision
 export function decideCombatFromProgram(self: Combatant, units: Combatant[]): Decision {
   const src = self.program
   if (src === undefined) return fallback(self, units, 'no program — attack')
+  // Genuine failures throw ProgramError (caught by the delve loop → stuck). A program that
+  // returns no action (None / wait()) is NOT an error — it falls back to attacking.
+  let result: ReturnType<Interp['run']>
   try {
     const program = compile(src)
+    const gate = checkGates(program.module, unlocked()) // runtime enforcement (e.g. via import)
+    if (!gate.ok) throw new ProgramError(`${self.name}: ${gate.message ?? 'locked construct'}`)
     const interp = new Interp()
     // `senses` is ambient (for `Engram.combat_turn:` 0-param entries) AND passed as the arg
     // (for a legacy 1-param `def combat_turn(senses):` — run() picks based on arity).
     const senses = sensesHost(self, units)
-    const result = interp.run(program, 'combat_turn', [senses], { ...combatGlobals(self, interp), senses }, libraries())
-    if (result instanceof CombatAction) {
-      return { protocolIndex: -1, maneuver: result.maneuver, targetId: result.targetId, reason: 'inscription' }
-    }
-    return fallback(self, units, 'inscription: no action — attack')
+    result = interp.run(program, 'combat_turn', [senses], { ...combatGlobals(self, interp), senses }, libraries())
   } catch (e) {
-    return fallback(self, units, `inscription error: ${(e as Error).message}`)
+    if (e instanceof ProgramError) throw e
+    throw new ProgramError(`${self.name}: ${(e as Error).message}`)
   }
+  if (result instanceof CombatAction) {
+    return { protocolIndex: -1, maneuver: result.maneuver, targetId: result.targetId, reason: 'inscription' }
+  }
+  return fallback(self, units, 'inscription: no action — attack')
 }

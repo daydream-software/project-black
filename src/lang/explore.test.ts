@@ -5,13 +5,15 @@ import {
 } from '../delve'
 import { decideExplorationFromProgram } from './explore'
 import { decideCombatFromProgram } from './combat'
-import { makeWarrior, makeHealer, makeGolem, setProgramDecider } from '../sim'
+import { makeWarrior, makeHealer, makeGolem, setProgramDecider, ProgramError } from '../sim'
+import { setUnlocked } from './gate'
 import { LEVELS } from '../levels'
 import { neighbours } from '../content/exploration/navigation'
 
 beforeAll(() => {
   setExplorationProgramDecider(decideExplorationFromProgram)
   setProgramDecider(decideCombatFromProgram)
+  setUnlocked(['lang-if', 'lang-loops', 'lang-comprehensions', 'lang-def', 'lang-import', 'skill-mend'])
 })
 
 const TIER1 =
@@ -58,11 +60,14 @@ describe('exploration program navigator', () => {
     expect(s.explored.length).toBeGreaterThan(1) // it actually crawled
   })
 
-  it('a broken navigator degrades to engine frontier nav, never throws', () => {
-    const s = fresh('def wrong(senses):\n    return None\n')
-    expect(() => decideExploration(s)).not.toThrow()
-    const d = decideExploration(s)
-    expect(d.reason).toMatch(/error|frontier|no program|inscription/)
+  it('a broken navigator throws ProgramError (caught at stepDelve → stuck, loud)', () => {
+    const s = fresh('def wrong(senses):\n    return None\n') // no exploration_turn entry
+    expect(() => decideExploration(s)).toThrow(ProgramError)
+    // and a full delve with a broken navigator ends STUCK, not silently
+    let d = startDelve([makeWarrior([]), makeHealer([])], 7, undefined, LEVELS[0], 'def wrong(senses):\n    return None\n')
+    d = stepDelve(d)
+    expect(d.status).toBe('stuck')
+    expect(d.log.at(-1)?.reason).toBe('program error')
   })
 
   it('retreat() at the entrance WITHDRAWS (status left) instead of resting', () => {
@@ -72,6 +77,22 @@ describe('exploration program navigator', () => {
     s = stepDelve(s)
     expect(s.status).toBe('left')
     expect(s.log.at(-1)?.detail).toMatch(/withdrew/)
+  })
+
+  it('a single decent golem clears lvl-1 attack-only with the MINIMAL language', () => {
+    // the progression's load-bearing claim: a fresh player (no `if`, no Mend) can clear
+    // lvl-1 with `return attack(...)` + `return explore()` and earn their first Insight.
+    const stats = { might: 7, ward: 1, fortitude: 10, attunement: 0, poise: 0, celerity: 3 }
+    const COMBAT = 'Engram.combat_turn:\n    return attack(senses.enemies.lowest_hp)\n'
+    const EXPLORE = 'Engram.exploration_turn:\n    return explore()\n'
+    const tally: Record<string, number> = {}
+    for (let seed = 1; seed <= 20; seed += 1) {
+      const g = makeGolem({ id: 'hero-1', name: 'Solo', stats, procedure: [], program: COMBAT })
+      let s = startDelve([g], seed, undefined, LEVELS[0], EXPLORE)
+      for (let i = 0; i < 4000 && s.status === 'delving'; i += 1) s = stepDelve(s)
+      tally[s.status] = (tally[s.status] ?? 0) + 1
+    }
+    expect(tally.cleared ?? 0).toBeGreaterThanOrEqual(18) // reliably clears lvl-1 attack-only
   })
 
   it('an explicit leave() ends the delve as left', () => {

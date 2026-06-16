@@ -3,6 +3,7 @@ import { makeGolem, setProgramDecider, type Combatant, type GameState, type Stat
 import { decideCombatFromProgram } from './lang/combat'
 import { decideExplorationFromProgram } from './lang/explore'
 import { setLibraries } from './lang/interp'
+import { setUnlocked } from './lang/gate'
 import { combatRowsToSource, explorationTemplate, toEntryForm } from './lang/migrate'
 import { mountTextarea, type CodeEditorHandle } from './lang/editor'
 import { checkProgram, type CheckResult } from './lang/check'
@@ -90,13 +91,10 @@ function migrateLibrary(): void {
 
 // The real default brains a fresh golem / profile runs (the code editors show these,
 // not a placeholder). Authoring is now code-only — the slot Procedure was retired.
+// Minimal — runs under the starting (no-`if`, no-Mend) language. Unlock `if`/Mend at the
+// Library to write smarter brains.
 const DEFAULT_COMBAT_PROGRAM = [
   'Engram.combat_turn:',
-  '    ally = senses.allies.lowest_hp',
-  '    if ally and ally.hp_pct < 50:',
-  '        return use(Skills.Mend, ally)',
-  '    if me.hp_pct < 30:',
-  '        return use(Skills.Defend, me)',
   '    return attack(senses.enemies.lowest_hp)',
   '',
 ].join('\n')
@@ -221,7 +219,7 @@ function onExCodeChange(src: string): void {
   persist()
 }
 
-const EX_PLACEHOLDER = 'Engram.exploration_turn:\n    nxt = senses.unexplored_exit\n    if nxt:\n        return move(nxt)\n    return retreat()'
+const EX_PLACEHOLDER = 'Engram.exploration_turn:\n    return explore()'
 let exCodeEditor: CodeEditorHandle = mountTextarea(exCodeMountEl, exCodeErrorEl, onExCodeChange, EX_PLACEHOLDER)
 
 function renderExCodeBrain(): void {
@@ -566,6 +564,7 @@ function newGame(index: number, carried: SalvagedMeta | undefined = salvageMeta(
   clearedLevels = carried?.clearedLevels ?? []
   insight = carried?.insight ?? 0
   unlocked = carried?.unlocked ?? []
+  setUnlocked(unlocked)
   activeHero = 0
   delve = null
   mode = 'camp'
@@ -603,6 +602,7 @@ function enterSlot(index: number): void {
   clearedLevels = saved.clearedLevels ?? []
   insight = saved.insight ?? 0
   unlocked = saved.unlocked ?? []
+  setUnlocked(unlocked)
   if (saved.delve === null) {
     delve = null
     mode = 'camp'
@@ -929,10 +929,12 @@ function buyUnlock(id: string): void {
   if (!r.bought) return
   insight = r.insight
   unlocked = r.unlocked
+  setUnlocked(unlocked) // the gate (and editor linter) now allows the newly-learned feature
   renderInsight()
   renderTrainer()
   renderEditor()
   renderExEditor()
+  renderEngramManager() // re-validate engrams against the new unlock set
   saveNow()
 }
 

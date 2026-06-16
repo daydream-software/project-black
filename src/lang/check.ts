@@ -3,6 +3,7 @@
 // linter. Pure; never runs the program — purely syntactic + an entry-point presence test.
 
 import { compile } from './interp'
+import { checkGates, unlocked } from './gate'
 
 export interface CheckResult {
   ok: boolean
@@ -23,6 +24,8 @@ export function checkProgram(src: string, entry: string | null = 'combat_turn'):
       )
       if (!hasEntry) return { ok: false, message: `expected an 'Engram.${entry}:' block` }
     }
+    const gate = checkGates(program.module, unlocked())
+    if (!gate.ok) return gate
     return { ok: true }
   } catch (e) {
     const err = e as { message: string; line?: number; col?: number }

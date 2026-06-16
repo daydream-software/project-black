@@ -7,6 +7,8 @@
 
 import type { DelveState, ExDecision } from '../delve'
 import type { RoomType } from '../mapgraph'
+import { ProgramError } from '../sim'
+import { checkGates, unlocked } from './gate'
 import {
   neighbours, isHidden, isKnown, isExplored, stepTowardFrontier, stepTowardRoom, partyHpPct,
 } from '../content/exploration/navigation'
@@ -129,6 +131,13 @@ function exploreGlobals(s: DelveState, interp: Interp, memory: LangValue): Recor
     RoomType: roomTypeEnum(),
     party: { host: true, get: (n: string): LangValue => { if (n === 'hp_pct') return partyHpPct(s.party); throw new Error(`party has no attribute '${n}'`) } } as HostObject,
     move: new Builtin((a) => new ExploreAction(exitRoom(a[0])), 'move'),
+    // `explore()` — the no-branch navigator: step toward the nearest unexplored room, or
+    // WITHDRAW when everything reachable is explored. Lets the minimal language (no `if`)
+    // still run a whole delve: `Engram.exploration_turn:\n    return explore()`.
+    explore: new Builtin(() => {
+      const step = stepTowardFrontier(s)
+      return step === '' ? new ExploreAction(s.pos, true) : new ExploreAction(step)
+    }, 'explore'),
     rest: new Builtin(() => new ExploreAction(s.pos), 'rest'),
     retreat: new Builtin(() => {
       // step toward the entrance; if already there (nowhere left to fall back), WITHDRAW
@@ -165,13 +174,17 @@ export function decideExplorationFromProgram(s: DelveState): ExDecision {
     return { reason: 'no program', step: stepTowardFrontier(s), memory: persist() }
   }
   try {
+    const program = compile(src)
+    const gate = checkGates(program.module, unlocked()) // runtime enforcement (e.g. via import)
+    if (!gate.ok) throw new ProgramError(`exploration: ${gate.message ?? 'locked construct'}`)
     const interp = new Interp()
     // `senses` ambient (for `Engram.exploration_turn:`) AND passed as the legacy arg.
     const senses = sensesHost(s)
-    const result = interp.run(compile(src), 'exploration_turn', [senses], { ...exploreGlobals(s, interp, memory), senses }, libraries())
+    const result = interp.run(program, 'exploration_turn', [senses], { ...exploreGlobals(s, interp, memory), senses }, libraries())
     const a = actionOf(result)
     return { reason: 'inscription', step: a.step, leave: a.leave, memory: persist() }
   } catch (e) {
-    return { reason: `inscription error: ${(e as Error).message}`, step: stepTowardFrontier(s), memory: persist() }
+    if (e instanceof ProgramError) throw e
+    throw new ProgramError(`exploration: ${(e as Error).message}`)
   }
 }

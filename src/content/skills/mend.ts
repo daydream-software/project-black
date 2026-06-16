@@ -9,6 +9,7 @@ export default {
   id: 'mend',
   label: 'Mend',
   order: 10,
+  unlock: 'skill-mend', // gated: `Skills.Mend` is locked until learned at the Library
   kind: 'heal',
   sfx: 'heal',
   effect: (actor, target) => {

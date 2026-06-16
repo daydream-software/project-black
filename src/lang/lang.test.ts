@@ -5,9 +5,14 @@ import { compile, Interp, baseBuiltins, type LangValue } from './interp'
 import { decideCombatFromProgram } from './combat'
 import { combatRowsToSource, toEntryForm } from './migrate'
 import {
-  makeGolem, makeWarden, makeBattle, step, setProgramDecider,
+  makeGolem, makeWarden, makeBattle, step, setProgramDecider, ProgramError,
   SENTINEL_STATS, type Combatant, type GameState, type Stats,
 } from '../sim'
+import { setUnlocked } from './gate'
+
+// Most tests author `if`/Mend/loops, so unlock everything (the gate is exercised in its
+// own block + explore.test). The combat describe block also registers the decider.
+beforeAll(() => setUnlocked(['lang-if', 'lang-loops', 'lang-comprehensions', 'lang-def', 'lang-import', 'skill-mend']))
 
 /** Run a single top-level `def main(...)` for the interpreter tests. */
 function run(src: string, args: LangValue[]): LangValue {
@@ -92,11 +97,9 @@ describe('combat program decider', () => {
     expect(d.maneuver).toEqual({ command: 'attack' })
     expect(d.targetId).toBe('enemy-1')
   })
-  it('rejects an unknown `Engram.X:` entry name at parse time', () => {
+  it('throws ProgramError on an unknown `Engram.X:` entry name', () => {
     const h = hero('Engram.wat:\n    return attack(senses.enemies.first)\n')
-    const d = decideCombatFromProgram(h, [h, makeWarden()])
-    expect(d.maneuver).toEqual({ command: 'attack' }) // degrades to fallback (Slice 0)
-    expect(d.reason).toMatch(/error|attack/)
+    expect(() => decideCombatFromProgram(h, [h, makeWarden()])).toThrow(ProgramError)
   })
   it('branches on its own HP (mend when low, else attack)', () => {
     const low = hero(MEND_THEN_ATTACK, 1)
@@ -108,18 +111,19 @@ describe('combat program decider', () => {
     const fullD = decideCombatFromProgram(full, [full, makeWarden()])
     expect(fullD.maneuver).toEqual({ command: 'attack' })
   })
-  it('degrades to the engine fallback on a broken program', () => {
-    const h = hero('def wrong_name(senses):\n    return None\n')
-    const d = decideCombatFromProgram(h, [h, makeWarden()])
-    expect(d.maneuver).toEqual({ command: 'attack' })
-    expect(d.targetId).toBe('enemy-1')
-    expect(d.reason).toMatch(/error|attack/)
+  it('throws ProgramError on a broken program (loud → delve stuck)', () => {
+    const h = hero('def wrong_name(senses):\n    return None\n') // no combat_turn entry
+    expect(() => decideCombatFromProgram(h, [h, makeWarden()])).toThrow(ProgramError)
   })
-  it('fuel overrun degrades to fallback, never throws', () => {
-    const h = hero('def combat_turn(senses):\n    while True:\n        x = 1\n    return attack(me)\n')
-    expect(() => decideCombatFromProgram(h, [h, makeWarden()])).not.toThrow()
-    const d = decideCombatFromProgram(h, [h, makeWarden()])
-    expect(d.maneuver).toEqual({ command: 'attack' })
+  it('fuel overrun throws ProgramError', () => {
+    const h = hero('Engram.combat_turn:\n    while True:\n        x = 1\n    return attack(me)\n')
+    expect(() => decideCombatFromProgram(h, [h, makeWarden()])).toThrow(ProgramError)
+  })
+  it('a locked construct (if, when not unlocked) throws ProgramError', () => {
+    setUnlocked([]) // lock everything for this case
+    const h = hero('Engram.combat_turn:\n    if me.hp_pct < 30:\n        return flee()\n    return attack(senses.enemies.first)\n')
+    expect(() => decideCombatFromProgram(h, [h, makeWarden()])).toThrow(/locked/)
+    setUnlocked(['lang-if', 'lang-loops', 'lang-comprehensions', 'lang-def', 'lang-import', 'skill-mend']) // restore
   })
 })
 

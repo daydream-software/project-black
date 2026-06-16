@@ -68,14 +68,7 @@ export function toEntryForm(src: string): string {
 /** The tier-1 exploration navigator template (engine-driven frontier nav) — the
  *  starting point when moving the party's delve navigation to code. */
 export function explorationTemplate(): string {
-  return [
-    'Engram.exploration_turn:',
-    '    if party.hp_pct < 30:',
-    '        return retreat()',
-    '    nxt = senses.unexplored_exit',
-    '    if nxt:',
-    '        return move(nxt)',
-    '    return retreat()',
-    '',
-  ].join('\n')
+  // No-branch default so it runs under the minimal (no-`if`) language: explore the frontier,
+  // withdraw when done. `if`/`Memory` unlock smarter navigation later.
+  return ['Engram.exploration_turn:', '    return explore()', ''].join('\n')
 }

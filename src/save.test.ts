@@ -34,7 +34,7 @@ describe('save — slots', () => {
     saveSlot(1, snap(2), store)
     const loaded = loadSlot(1, store)
     expect(loaded?.roster).toHaveLength(2)
-    expect(loaded?.version).toBe(3)
+    expect(loaded?.version).toBe(4)
     expect(typeof loaded?.savedAt).toBe('number')
   })
 
@@ -117,9 +117,9 @@ describe('save — slots', () => {
     // party() maps the roster and reads each .rows — an empty or shapeless roster
     // must not load and crash on the first frame; it loads as null instead. A
     // 1-golem "titan" roster IS legal under point-buy (the >=1 floor), so it loads.
-    const empty = { version: 3, savedAt: 1, roster: [], activeHero: 0, mode: 'camp', delve: null }
-    const noRows = { version: 3, savedAt: 1, roster: [{ simId: 'a' }, { simId: 'b' }], activeHero: 0, mode: 'camp', delve: null }
-    const titan = { version: 3, savedAt: 1, roster: [{ simId: 'h', name: 'Titan', rows: [] }], activeHero: 0, mode: 'camp', delve: null }
+    const empty = { version: 4, savedAt: 1, roster: [], activeHero: 0, mode: 'camp', delve: null }
+    const noRows = { version: 4, savedAt: 1, roster: [{ simId: 'a' }, { simId: 'b' }], activeHero: 0, mode: 'camp', delve: null }
+    const titan = { version: 4, savedAt: 1, roster: [{ simId: 'h', name: 'Titan', rows: [] }], activeHero: 0, mode: 'camp', delve: null }
     const store = fakeStore({
       'project-black/save/slot/0': JSON.stringify(empty),
       'project-black/save/slot/1': JSON.stringify(noRows),
@@ -136,7 +136,7 @@ describe('save — slots', () => {
     // "a delve saved before this refactor — just reset it"), profile preserved.
     const staleParty = [{ id: 'hero-1', name: 'Sentinel', side: 'hero', hp: 90, maxHp: 120, atk: 11, defending: false, procedure: [] }]
     const blob = {
-      version: 3,
+      version: 4,
       savedAt: 1,
       roster: [{ simId: 'hero-1', name: 'Sentinel', rows: [] }, { simId: 'hero-2', name: 'Mender', rows: [] }],
       activeHero: 0,
@@ -176,7 +176,7 @@ describe('save — slots', () => {
     // (a missing additive field must never brick an in-progress run).
     const party = [{ id: 'hero-1', name: 'S', side: 'hero', hp: 12, maxHp: 12, defending: false, might: 5, ward: 2, fortitude: 3, attunement: 0, poise: 0, celerity: 5 }]
     const blob = {
-      version: 3, savedAt: 1,
+      version: 4, savedAt: 1,
       roster: [{ simId: 'hero-1', name: 'S', rows: [] }], activeHero: 0, mode: 'delve',
       delve: {
         status: 'delving', pos: 'in', turn: 2, levelId: 'lvl-1',
@@ -194,7 +194,7 @@ describe('save — slots', () => {
   })
 
   it('importLegacy moves an old single-save blob into slot 0, preserving savedAt', () => {
-    const legacy: SaveData = { version: 3, savedAt: 12345, ...snap(2) }
+    const legacy: SaveData = { version: 4, savedAt: 12345, ...snap(2) }
     const store = fakeStore({ 'project-black/save': JSON.stringify(legacy) })
     importLegacy(store)
     expect(loadSlot(0, store)?.savedAt).toBe(12345) // verbatim — not re-stamped
@@ -202,7 +202,7 @@ describe('save — slots', () => {
   })
 
   it('importLegacy does not clobber an occupied slot 0', () => {
-    const legacy: SaveData = { version: 3, savedAt: 12345, ...snap(2) }
+    const legacy: SaveData = { version: 4, savedAt: 12345, ...snap(2) }
     const store = fakeStore({ 'project-black/save': JSON.stringify(legacy) })
     saveSlot(0, snap(5), store) // slot 0 already has a profile
     importLegacy(store)
