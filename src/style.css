@@ -1181,3 +1181,23 @@ canvas {
   border-color: #3f7d8c;
   outline: none;
 }
+
+/* --- Engram manager + Workshop loaders ----------------------------------- */
+.engram-bar, .engram-load {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  margin: 4px 0;
+  flex-wrap: wrap;
+}
+.engram-select {
+  flex: 1 1 160px;
+  min-width: 120px;
+  padding: 5px 8px;
+  font-size: 12px;
+  color: #e6eef2;
+  background: #0c1116;
+  border: 1px solid #2a3640;
+  border-radius: 6px;
+}
+.engram-select:disabled { opacity: 0.5; }

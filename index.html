@@ -67,15 +67,20 @@
               <h3>Core <span class="sub">point-buy · this golem's six stats</span></h3>
               <div id="core-budget" class="core-budget"></div>
               <div id="stat-editor" class="stat-editor"></div>
-              <h3>Combat brain <span class="sub">this golem · the code it fights by</span></h3>
+              <h3>Combat engram <span class="sub">this golem · load one from the Library, or tweak here</span></h3>
+              <div class="engram-load">
+                <select id="load-combat-engram" class="engram-select" title="Load a combat engram from the Library (copies it onto this golem)"></select>
+                <button id="save-combat-engram" class="link-btn" title="Save this golem's code as a named engram in the Library">⤒ Save as engram</button>
+              </div>
               <div id="code-mount" class="code-mount"></div>
               <div id="code-error" class="code-error" hidden></div>
-              <h3>Exploration brain <span class="sub">all golems · the code they delve by</span></h3>
+              <h3>Exploration engram <span class="sub">all golems · load one from the Library, or tweak here</span></h3>
+              <div class="engram-load">
+                <select id="load-ex-engram" class="engram-select" title="Load an exploration engram from the Library"></select>
+                <button id="save-ex-engram" class="link-btn" title="Save the party's exploration code as a named engram">⤒ Save as engram</button>
+              </div>
               <div id="ex-code-mount" class="code-mount"></div>
               <div id="ex-code-error" class="code-error" hidden></div>
-              <h3>Shared library <span class="sub">reusable helpers · <code>import lib</code> then <code>lib.fn()</code></span></h3>
-              <div id="lib-code-mount" class="code-mount"></div>
-              <div id="lib-code-error" class="code-error" hidden></div>
             </div>
           </div>
         </div>
@@ -88,6 +93,17 @@
               <button class="modal-close" data-close-modal title="Back to the world">✕</button>
             </header>
             <div class="modal-body">
+              <h3>Engrams <span class="sub">name &amp; author reusable code — load it onto golems in the Workshop</span></h3>
+              <div id="engram-tabs" class="tabs"></div>
+              <div class="engram-bar">
+                <select id="engram-select" class="engram-select"></select>
+                <button id="engram-new" class="link-btn">+ New</button>
+                <button id="engram-rename" class="link-btn">Rename</button>
+                <button id="engram-delete" class="link-btn">Delete</button>
+              </div>
+              <div id="engram-mount" class="code-mount"></div>
+              <div id="engram-error" class="code-error" hidden></div>
+              <h3>Study <span class="sub">spend Insight to unlock language &amp; vocabulary</span></h3>
               <div id="trainer-list"></div>
             </div>
           </div>

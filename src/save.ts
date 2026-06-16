@@ -53,6 +53,18 @@ export interface ExProtocolRow {
 
 export type Mode = 'camp' | 'delve'
 
+/** A named, reusable engram (program source) authored in the Library, copied onto golems. */
+export interface NamedEngram {
+  name: string
+  src: string
+}
+/** The per-profile store of named engrams, by kind. */
+export interface EngramStore {
+  combat: NamedEngram[]
+  exploration: NamedEngram[]
+  libs: NamedEngram[]
+}
+
 export interface SaveData {
   version: number
   savedAt: number // ms epoch when this snapshot was taken
@@ -67,8 +79,12 @@ export interface SaveData {
   // per-golem `program` but for the party's delve navigation.
   explorationProgram?: string
   // The shared library source — reusable helper functions any program can `import lib`.
-  // Optional/additive; party-wide (one per profile).
+  // Optional/additive; party-wide (one per profile). Superseded by `engrams.libs` (migrated
+  // on load) but kept for back-compat reads.
   library?: string
+  // Named, reusable ENGRAMS authored in the Library and copied onto golems in the Workshop.
+  // Optional/additive; copy-on-assign (a golem keeps its own copy of `program`).
+  engrams?: EngramStore
   // Levels this profile has cleared at least once (slice 10a) — the meta that
   // survives a wipe and (slice 10b) gates Insight to first clears. Optional/additive:
   // pre-10a saves lack it and default to empty.
@@ -131,6 +147,7 @@ function isAuxFields(x: Record<string, unknown>): boolean {
     isOptArray(x.exploration) &&
     (x.explorationProgram === undefined || typeof x.explorationProgram === 'string') &&
     (x.library === undefined || typeof x.library === 'string') &&
+    (x.engrams === undefined || isObj(x.engrams)) &&
     isOptArray(x.clearedLevels) &&
     (x.insight === undefined || typeof x.insight === 'number') &&
     isOptArray(x.unlocked) &&

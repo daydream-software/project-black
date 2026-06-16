@@ -25,6 +25,8 @@ import {
   type ExProtocolRow,
   type SalvagedMeta,
   type SlotInfo,
+  type EngramStore,
+  type NamedEngram,
 } from './save'
 import { makeHero, makeHeroBack, makeSlime } from './sprites'
 import { render, renderDelve } from './render'
@@ -67,12 +69,23 @@ let activeHero = 0
 let exploration: ExProtocolRow[] = DEFAULT_EX_ROWS.map((r) => ({ ...r }))
 // The party-wide exploration code navigator (overrides `exploration` rows when filled).
 let explorationProgram = ''
-// The shared library source (`import lib` → `lib.fn()`), party-wide per profile.
+// The shared library source (`import lib` → `lib.fn()`), party-wide per profile. Legacy;
+// migrated into `engrams.libs` (as an entry named "lib") on load.
 let library = ''
+// Named, reusable engrams authored in the Library, copied onto golems in the Workshop.
+let engrams: EngramStore = { combat: [], exploration: [], libs: [] }
 
-/** Publish the current library to the interpreter so `import` resolves it. */
+/** Publish every named library engram to the interpreter so `import <name>` resolves it. */
 function syncLibraries(): void {
-  setLibraries(library.trim() === '' ? {} : { lib: library })
+  setLibraries(Object.fromEntries(engrams.libs.map((l) => [l.name, l.src])))
+}
+
+/** Fold the legacy single `library` field into `engrams.libs` (as "lib") once, on load. */
+function migrateLibrary(): void {
+  if (library.trim() !== '' && !engrams.libs.some((l) => l.name === 'lib')) {
+    engrams.libs = [...engrams.libs, { name: 'lib', src: library }]
+  }
+  library = ''
 }
 
 // The real default brains a fresh golem / profile runs (the code editors show these,
@@ -158,8 +171,18 @@ const codeMountEl = requireElement('code-mount', HTMLDivElement)
 const codeErrorEl = requireElement('code-error', HTMLDivElement)
 const exCodeMountEl = requireElement('ex-code-mount', HTMLDivElement)
 const exCodeErrorEl = requireElement('ex-code-error', HTMLDivElement)
-const libMountEl = requireElement('lib-code-mount', HTMLDivElement)
-const libErrorEl = requireElement('lib-code-error', HTMLDivElement)
+// Engram-manager (Library) + Workshop loader elements.
+const engramTabsEl = requireElement('engram-tabs', HTMLDivElement)
+const engramSelectEl = requireElement('engram-select', HTMLSelectElement)
+const engramNewBtn = requireElement('engram-new', HTMLButtonElement)
+const engramRenameBtn = requireElement('engram-rename', HTMLButtonElement)
+const engramDeleteBtn = requireElement('engram-delete', HTMLButtonElement)
+const engramMountEl = requireElement('engram-mount', HTMLDivElement)
+const engramErrorEl = requireElement('engram-error', HTMLDivElement)
+const loadCombatEl = requireElement('load-combat-engram', HTMLSelectElement)
+const saveCombatBtn = requireElement('save-combat-engram', HTMLButtonElement)
+const loadExEl = requireElement('load-ex-engram', HTMLSelectElement)
+const saveExBtn = requireElement('save-ex-engram', HTMLButtonElement)
 
 // Wire the Inscription interpreter into the pure sim (dependency injection — sim.ts
 // never imports the language module). A golem carrying a `program` runs it instead of
@@ -182,7 +205,7 @@ function onCodeChange(src: string): void {
 
 let codeEditor: CodeEditorHandle = mountTextarea(codeMountEl, codeErrorEl, onCodeChange)
 
-/** Sync the code editor to the active golem (value, locked state, error line). */
+/** Sync the combat editor to the active golem (value, locked state, error line). */
 function renderCodeBrain(): void {
   const hero = roster[activeHero] as Hero | undefined
   const src = hero?.program ?? ''
@@ -201,25 +224,168 @@ function onExCodeChange(src: string): void {
 const EX_PLACEHOLDER = 'Engram.exploration_turn:\n    nxt = senses.unexplored_exit\n    if nxt:\n        return move(nxt)\n    return retreat()'
 let exCodeEditor: CodeEditorHandle = mountTextarea(exCodeMountEl, exCodeErrorEl, onExCodeChange, EX_PLACEHOLDER)
 
-/** Persist + validate the shared library on every edit; republish it to the interpreter. */
-function onLibChange(src: string): void {
-  library = src
-  syncLibraries()
-  libEditor.setError(toEditorError(checkProgram(src, null)))
+function renderExCodeBrain(): void {
+  exCodeEditor.setValue(explorationProgram)
+  exCodeEditor.setReadOnly(editingLocked())
+  exCodeEditor.setError(toEditorError(checkProgram(explorationProgram, 'exploration_turn')))
+}
+
+// --- Engram manager (the Library: author named, reusable engrams) -----------
+type EngramKind = 'combat' | 'exploration' | 'libs'
+const ENGRAM_KINDS: Array<{ kind: EngramKind; label: string; entry: 'combat_turn' | 'exploration_turn' | null }> = [
+  { kind: 'combat', label: 'Combat', entry: 'combat_turn' },
+  { kind: 'exploration', label: 'Exploration', entry: 'exploration_turn' },
+  { kind: 'libs', label: 'Library', entry: null },
+]
+let activeEngramKind: EngramKind = 'combat'
+let activeEngramIndex = 0
+const activeEngramList = (): NamedEngram[] => engrams[activeEngramKind]
+const activeEngram = (): NamedEngram | undefined => activeEngramList()[activeEngramIndex]
+const activeEngramEntry = (): 'combat_turn' | 'exploration_turn' | null =>
+  ENGRAM_KINDS.find((k) => k.kind === activeEngramKind)?.entry ?? null
+
+function uniqueEngramName(kind: EngramKind): string {
+  const base = kind === 'libs' ? 'lib' : kind
+  let n = 1
+  while (engrams[kind].some((e) => e.name === `${base}${n}`)) n += 1
+  return `${base}${n}`
+}
+function starterFor(kind: EngramKind): string {
+  if (kind === 'combat') return DEFAULT_COMBAT_PROGRAM
+  if (kind === 'exploration') return DEFAULT_EXPLORATION_PROGRAM
+  return '# shared helpers — import this by name, then name.fn(...)\n# def weakest(senses):\n#     return senses.enemies.lowest_hp\n'
+}
+
+/** Persist + validate an engram edit; republish libs so `import` sees the change. */
+function onEngramChange(src: string): void {
+  const e = activeEngram()
+  if (e === undefined) return
+  e.src = src
+  engramEditor.setError(toEditorError(checkProgram(src, activeEngramEntry())))
+  if (activeEngramKind === 'libs') syncLibraries()
   persist()
 }
-const LIB_PLACEHOLDER = '# shared helpers — import lib, then lib.fn(...)\n# def weakest(senses):\n#     return senses.enemies.lowest_hp'
-let libEditor: CodeEditorHandle = mountTextarea(libMountEl, libErrorEl, onLibChange, LIB_PLACEHOLDER)
+let engramEditor: CodeEditorHandle = mountTextarea(engramMountEl, engramErrorEl, onEngramChange)
 
-function renderLibBrain(): void {
-  libEditor.setValue(library)
-  libEditor.setReadOnly(editingLocked())
-  libEditor.setError(toEditorError(checkProgram(library, null)))
+function renderEngramManager(): void {
+  const locked = editingLocked()
+  engramTabsEl.replaceChildren()
+  for (const k of ENGRAM_KINDS) {
+    const tab = document.createElement('button')
+    tab.className = k.kind === activeEngramKind ? 'tab active' : 'tab'
+    tab.textContent = `${k.label} (${engrams[k.kind].length})`
+    tab.addEventListener('click', () => { activeEngramKind = k.kind; activeEngramIndex = 0; renderEngramManager() })
+    engramTabsEl.appendChild(tab)
+  }
+  const list = activeEngramList()
+  if (activeEngramIndex >= list.length) activeEngramIndex = Math.max(0, list.length - 1)
+  engramSelectEl.replaceChildren()
+  list.forEach((e, i) => {
+    const opt = document.createElement('option')
+    opt.value = String(i)
+    opt.textContent = e.name
+    if (i === activeEngramIndex) opt.selected = true
+    engramSelectEl.appendChild(opt)
+  })
+  engramSelectEl.disabled = locked || list.length === 0
+  engramNewBtn.disabled = locked
+  engramRenameBtn.disabled = locked || list.length === 0
+  engramDeleteBtn.disabled = locked || list.length === 0
+  const e = activeEngram()
+  engramEditor.setValue(e?.src ?? '')
+  engramEditor.setReadOnly(locked || e === undefined)
+  engramEditor.setError(e === undefined ? null : toEditorError(checkProgram(e.src, activeEngramEntry())))
 }
 
-// Upgrade the code editors from the bare-<textarea> fallback to CodeMirror (lazy: the
-// CM chunk is dynamically imported, so it stays off the first-paint bundle — CLAUDE.md's
-// scoped dependency exception). On failure we simply keep the textareas.
+engramSelectEl.addEventListener('change', () => { activeEngramIndex = Number(engramSelectEl.value); renderEngramManager() })
+engramNewBtn.addEventListener('click', () => {
+  if (editingLocked()) return
+  engrams[activeEngramKind] = [...activeEngramList(), { name: uniqueEngramName(activeEngramKind), src: starterFor(activeEngramKind) }]
+  activeEngramIndex = activeEngramList().length - 1
+  if (activeEngramKind === 'libs') syncLibraries()
+  renderEngramManager(); renderEngramLoaders(); persist()
+})
+engramRenameBtn.addEventListener('click', () => {
+  const e = activeEngram()
+  if (e === undefined || editingLocked()) return
+  const name = window.prompt('Engram name', e.name)?.trim()
+  if (name === undefined || name === '') return
+  e.name = name
+  if (activeEngramKind === 'libs') syncLibraries()
+  renderEngramManager(); renderEngramLoaders(); persist()
+})
+engramDeleteBtn.addEventListener('click', () => {
+  if (editingLocked() || activeEngram() === undefined) return
+  engrams[activeEngramKind] = activeEngramList().filter((_, i) => i !== activeEngramIndex)
+  activeEngramIndex = 0
+  if (activeEngramKind === 'libs') syncLibraries()
+  renderEngramManager(); renderEngramLoaders(); persist()
+})
+
+// --- Workshop loaders (copy-on-assign onto golems) --------------------------
+function fillLoader(sel: HTMLSelectElement, list: NamedEngram[]): void {
+  sel.replaceChildren()
+  const ph = document.createElement('option')
+  ph.value = ''
+  ph.textContent = list.length > 0 ? 'Load engram…' : '(none yet)'
+  sel.appendChild(ph)
+  list.forEach((e, i) => {
+    const o = document.createElement('option')
+    o.value = String(i)
+    o.textContent = e.name
+    sel.appendChild(o)
+  })
+  sel.value = ''
+}
+function renderEngramLoaders(): void {
+  const locked = editingLocked()
+  const hasHero = roster[activeHero] !== undefined
+  fillLoader(loadCombatEl, engrams.combat)
+  fillLoader(loadExEl, engrams.exploration)
+  loadCombatEl.disabled = locked || !hasHero || engrams.combat.length === 0
+  saveCombatBtn.disabled = locked || !hasHero
+  loadExEl.disabled = locked || engrams.exploration.length === 0
+  saveExBtn.disabled = locked
+}
+function upsertEngram(list: NamedEngram[], name: string, src: string): NamedEngram[] {
+  const i = list.findIndex((e) => e.name === name)
+  if (i < 0) return [...list, { name, src }]
+  const copy = [...list]
+  copy[i] = { name, src }
+  return copy
+}
+loadCombatEl.addEventListener('change', () => {
+  const hero = roster[activeHero] as Hero | undefined
+  const e = engrams.combat[Number(loadCombatEl.value)]
+  if (hero === undefined || e === undefined || editingLocked()) return
+  hero.program = e.src // copy-on-assign
+  renderCodeBrain(); persist()
+})
+loadExEl.addEventListener('change', () => {
+  const e = engrams.exploration[Number(loadExEl.value)]
+  if (e === undefined || editingLocked()) return
+  explorationProgram = e.src // copy-on-assign
+  renderExCodeBrain(); persist()
+})
+saveCombatBtn.addEventListener('click', () => {
+  const hero = roster[activeHero] as Hero | undefined
+  if (hero === undefined || editingLocked()) return
+  const name = window.prompt('Save combat engram as', uniqueEngramName('combat'))?.trim()
+  if (name === undefined || name === '') return
+  engrams.combat = upsertEngram(engrams.combat, name, hero.program ?? '')
+  renderEngramLoaders(); persist()
+})
+saveExBtn.addEventListener('click', () => {
+  if (editingLocked()) return
+  const name = window.prompt('Save exploration engram as', uniqueEngramName('exploration'))?.trim()
+  if (name === undefined || name === '') return
+  engrams.exploration = upsertEngram(engrams.exploration, name, explorationProgram)
+  renderEngramLoaders(); persist()
+})
+
+// Upgrade the Workshop's combat + exploration editors to CodeMirror (lazy chunk; the
+// engram-manager editor stays a textarea since its kind/entry change per tab). On failure
+// we simply keep the textareas.
 async function upgradeEditorsToCodeMirror(): Promise<void> {
   try {
     const { mountCodeMirror } = await import('./lang/editor-cm')
@@ -230,24 +396,14 @@ async function upgradeEditorsToCodeMirror(): Promise<void> {
     exCodeEditor = mountCodeMirror(exCodeMountEl, exCodeErrorEl, onExCodeChange, {
       entry: 'exploration_turn', kind: 'exploration', placeholder: EX_PLACEHOLDER,
     })
-    libEditor = mountCodeMirror(libMountEl, libErrorEl, onLibChange, {
-      entry: null, kind: 'combat', placeholder: LIB_PLACEHOLDER,
-    })
     renderCodeBrain()
     renderExCodeBrain()
-    renderLibBrain()
   } catch (err) {
     log.error('[editor] CodeMirror failed to load; staying on the textarea', err)
   }
 }
 void upgradeEditorsToCodeMirror()
 
-/** Sync the exploration code editor to the party's navigator program. */
-function renderExCodeBrain(): void {
-  exCodeEditor.setValue(explorationProgram)
-  exCodeEditor.setReadOnly(editingLocked())
-  exCodeEditor.setError(toEditorError(checkProgram(explorationProgram, 'exploration_turn')))
-}
 const screenTitleEl = requireElement('screen-title', HTMLDivElement)
 const screenSlotsEl = requireElement('screen-slots', HTMLDivElement)
 const screenGameEl = requireElement('screen-game', HTMLElement)
@@ -366,7 +522,7 @@ function backToTown(): void {
  *  slot. */
 function saveNow(): void {
   if (activeSlot === null) return
-  saveSlot(activeSlot, { roster, activeHero, exploration, explorationProgram, library, clearedLevels, insight, unlocked, mode, delve })
+  saveSlot(activeSlot, { roster, activeHero, exploration, explorationProgram, library, engrams, clearedLevels, insight, unlocked, mode, delve })
 }
 
 // --- Screen shell: title → slots → game -------------------------------------
@@ -404,6 +560,7 @@ function newGame(index: number, carried: SalvagedMeta | undefined = salvageMeta(
   exploration = DEFAULT_EX_ROWS.map((r) => ({ ...r }))
   explorationProgram = ''
   library = ''
+  engrams = { combat: [], exploration: [], libs: [] }
   syncLibraries()
   migrateToCode()
   clearedLevels = carried?.clearedLevels ?? []
@@ -435,6 +592,12 @@ function enterSlot(index: number): void {
   exploration = saved.exploration ?? DEFAULT_EX_ROWS.map((r) => ({ ...r }))
   explorationProgram = saved.explorationProgram ?? ''
   library = saved.library ?? ''
+  engrams = {
+    combat: saved.engrams?.combat ?? [],
+    exploration: saved.engrams?.exploration ?? [],
+    libs: saved.engrams?.libs ?? [],
+  }
+  migrateLibrary() // fold legacy single `library` into engrams.libs as "lib"
   syncLibraries()
   migrateToCode()
   clearedLevels = saved.clearedLevels ?? []
@@ -669,7 +832,7 @@ function renderModals(): void {
   modalLibraryEl.hidden = openBuilding !== 'library'
   modalJournalEl.hidden = openBuilding !== 'journal'
 
-  if (openBuilding === 'library') renderTrainer()
+  if (openBuilding === 'library') { renderEngramManager(); renderTrainer() }
   if (openBuilding === 'journal') renderLog()
 }
 
@@ -966,11 +1129,12 @@ function renderCores(): void {
 function renderEditor(): void {
   enabledLis = [] // no slot rows to highlight anymore; keeps highlightFiringProtocol a no-op
   renderCodeBrain()
+  renderEngramLoaders()
 }
 
 function renderExEditor(): void {
   renderExCodeBrain()
-  renderLibBrain()
+  renderEngramLoaders()
 }
 
 // Map a delve-log kind to one of the existing log-entry colour classes.
