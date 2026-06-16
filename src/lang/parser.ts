@@ -49,6 +49,7 @@ export type Stmt =
   | { k: 'pass' }
   | { k: 'global'; names: string[] }
   | { k: 'import'; name: string }
+  | { k: 'entry'; entry: string; body: Stmt[] } // `Engram.combat_turn:` declarative entry block
 
 export interface Module {
   body: Stmt[]
@@ -112,6 +113,7 @@ class Parser {
   }
 
   private statement(): Stmt {
+    if (this.is('KEYWORD', 'Engram')) return this.entryBlock()
     if (this.is('KEYWORD', 'def')) return this.funcDef()
     if (this.is('KEYWORD', 'if')) return this.ifStmt()
     if (this.is('KEYWORD', 'for')) return this.forStmt()
@@ -152,6 +154,18 @@ class Parser {
 
   private endSimple(): void {
     if (!this.is('EOF') && !this.is('DEDENT')) this.expect('NEWLINE')
+  }
+
+  // `Engram.combat_turn:` / `Engram.exploration_turn:` — a declarative entry block (NOT a
+  // `def`, so `def` can stay a locked, advanced feature). The body uses ambient senses/me/Memory.
+  private entryBlock(): Stmt {
+    this.expect('KEYWORD', 'Engram')
+    this.expect('OP', '.')
+    const id = this.expect('NAME')
+    if (id.value !== 'combat_turn' && id.value !== 'exploration_turn') {
+      throw new ParseError(`unknown engram entry 'Engram.${id.value}' (expected combat_turn or exploration_turn)`, id.line, id.col)
+    }
+    return { k: 'entry', entry: id.value, body: this.block() }
   }
 
   private funcDef(): Stmt {

@@ -134,7 +134,10 @@ export function decideCombatFromProgram(self: Combatant, units: Combatant[]): De
   try {
     const program = compile(src)
     const interp = new Interp()
-    const result = interp.run(program, 'combat_turn', [sensesHost(self, units)], combatGlobals(self, interp), libraries())
+    // `senses` is ambient (for `Engram.combat_turn:` 0-param entries) AND passed as the arg
+    // (for a legacy 1-param `def combat_turn(senses):` — run() picks based on arity).
+    const senses = sensesHost(self, units)
+    const result = interp.run(program, 'combat_turn', [senses], { ...combatGlobals(self, interp), senses }, libraries())
     if (result instanceof CombatAction) {
       return { protocolIndex: -1, maneuver: result.maneuver, targetId: result.targetId, reason: 'inscription' }
     }

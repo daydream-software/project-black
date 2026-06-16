@@ -16,7 +16,7 @@ export function mountTextarea(
   parent: HTMLElement,
   errorEl: HTMLElement,
   onChange: (src: string) => void,
-  placeholder = 'def combat_turn(senses):\n    return attack(senses.enemies.lowest_hp)',
+  placeholder = 'Engram.combat_turn:\n    return attack(senses.enemies.lowest_hp)',
 ): CodeEditorHandle {
   parent.replaceChildren()
   const ta = document.createElement('textarea')

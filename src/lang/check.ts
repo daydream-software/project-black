@@ -18,8 +18,10 @@ export function checkProgram(src: string, entry: string | null = 'combat_turn'):
   try {
     const program = compile(src)
     if (entry !== null) {
-      const hasEntry = program.module.body.some((s) => s.k === 'func' && s.name === entry)
-      if (!hasEntry) return { ok: false, message: `expected a 'def ${entry}(senses):' function` }
+      const hasEntry = program.module.body.some(
+        (s) => (s.k === 'entry' && s.entry === entry) || (s.k === 'func' && s.name === entry),
+      )
+      if (!hasEntry) return { ok: false, message: `expected an 'Engram.${entry}:' block` }
     }
     return { ok: true }
   } catch (e) {

@@ -161,11 +161,15 @@ export class Interp {
     for (const [k, v] of Object.entries(globals)) genv.set(k, v)
     for (const stmt of program.module.body) {
       if (stmt.k === 'func') genv.set(stmt.name, new LangFunc(stmt.params, stmt.body, genv, stmt.name))
+      // `Engram.combat_turn:` registers a 0-param function named by its entry (senses ambient).
+      else if (stmt.k === 'entry') genv.set(stmt.entry, new LangFunc([], stmt.body, genv, stmt.entry))
       else this.exec(stmt, genv)
     }
     const fn = genv.has(entry) ? genv.get(entry) : null
     if (!(fn instanceof LangFunc)) throw new RuntimeError(`'${entry}' is not defined as a function`)
-    return this.call(fn, args)
+    // Arity tolerance: an `Engram.X:` entry is 0-param (senses is ambient); a legacy
+    // `def combat_turn(senses):` is 1-param — pass senses only if it expects it.
+    return this.call(fn, fn.params.length === 0 ? [] : args)
   }
 
   call(fn: LangValue, args: LangValue[]): LangValue {
@@ -194,6 +198,9 @@ export class Interp {
     switch (stmt.k) {
       case 'func':
         env.set(stmt.name, new LangFunc(stmt.params, stmt.body, env, stmt.name))
+        return
+      case 'entry': // entry blocks are registered at the top level (run); inert if nested
+        env.set(stmt.entry, new LangFunc([], stmt.body, env, stmt.entry))
         return
       case 'return':
         throw new ReturnSignal(stmt.value === null ? null : this.eval(stmt.value, env))

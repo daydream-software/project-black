@@ -3,7 +3,7 @@ import { lex } from './lexer'
 import { parse } from './parser'
 import { compile, Interp, baseBuiltins, type LangValue } from './interp'
 import { decideCombatFromProgram } from './combat'
-import { combatRowsToSource } from './migrate'
+import { combatRowsToSource, toEntryForm } from './migrate'
 import {
   makeGolem, makeWarden, makeBattle, step, setProgramDecider,
   SENTINEL_STATS, type Combatant, type GameState, type Stats,
@@ -86,6 +86,18 @@ describe('combat program decider', () => {
     expect(d.maneuver).toEqual({ command: 'attack' })
     expect(d.targetId).toBe('enemy-1')
   })
+  it('runs an `Engram.combat_turn:` entry block (ambient senses, no def)', () => {
+    const h = hero('Engram.combat_turn:\n    return attack(senses.enemies.lowest_hp)\n')
+    const d = decideCombatFromProgram(h, [h, makeWarden()])
+    expect(d.maneuver).toEqual({ command: 'attack' })
+    expect(d.targetId).toBe('enemy-1')
+  })
+  it('rejects an unknown `Engram.X:` entry name at parse time', () => {
+    const h = hero('Engram.wat:\n    return attack(senses.enemies.first)\n')
+    const d = decideCombatFromProgram(h, [h, makeWarden()])
+    expect(d.maneuver).toEqual({ command: 'attack' }) // degrades to fallback (Slice 0)
+    expect(d.reason).toMatch(/error|attack/)
+  })
   it('branches on its own HP (mend when low, else attack)', () => {
     const low = hero(MEND_THEN_ATTACK, 1)
     const lowD = decideCombatFromProgram(low, [low, makeWarden()])
@@ -154,5 +166,21 @@ describe('combatRowsToSource migration', () => {
   it('skips disabled rows', () => {
     const src = combatRowsToSource([{ ...rows[0], enabled: false }])
     expect(src).not.toContain('Mend')
+  })
+  it('generates the `Engram.combat_turn:` entry form', () => {
+    expect(combatRowsToSource(rows).startsWith('Engram.combat_turn:')).toBe(true)
+  })
+})
+
+describe('toEntryForm migration', () => {
+  it('rewrites a legacy def-entry to Engram form, idempotently', () => {
+    const legacy = 'def combat_turn(senses):\n    return attack(senses.enemies.first)\n'
+    const once = toEntryForm(legacy)
+    expect(once).toBe('Engram.combat_turn:\n    return attack(senses.enemies.first)\n')
+    expect(toEntryForm(once)).toBe(once) // idempotent
+  })
+  it('leaves helper defs and already-Engram programs untouched', () => {
+    const src = 'Engram.combat_turn:\n    return helper()\ndef helper():\n    return attack(senses.enemies.first)\n'
+    expect(toEntryForm(src)).toBe(src)
   })
 })

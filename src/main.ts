@@ -3,7 +3,7 @@ import { makeGolem, setProgramDecider, type Combatant, type GameState, type Stat
 import { decideCombatFromProgram } from './lang/combat'
 import { decideExplorationFromProgram } from './lang/explore'
 import { setLibraries } from './lang/interp'
-import { combatRowsToSource, explorationTemplate } from './lang/migrate'
+import { combatRowsToSource, explorationTemplate, toEntryForm } from './lang/migrate'
 import { mountTextarea, type CodeEditorHandle } from './lang/editor'
 import { checkProgram, type CheckResult } from './lang/check'
 import { startDelve, stepDelve, setExplorationProgramDecider, type DelveState, type ExProcedure } from './delve'
@@ -78,7 +78,7 @@ function syncLibraries(): void {
 // The real default brains a fresh golem / profile runs (the code editors show these,
 // not a placeholder). Authoring is now code-only — the slot Procedure was retired.
 const DEFAULT_COMBAT_PROGRAM = [
-  'def combat_turn(senses):',
+  'Engram.combat_turn:',
   '    ally = senses.allies.lowest_hp',
   '    if ally and ally.hp_pct < 50:',
   '        return use(Skills.Mend, ally)',
@@ -89,14 +89,15 @@ const DEFAULT_COMBAT_PROGRAM = [
 ].join('\n')
 const DEFAULT_EXPLORATION_PROGRAM = explorationTemplate()
 
-/** On load, carry a profile authored on the old slot system into code: any golem
- *  without a program gets one generated from its slot rows; the party navigator
- *  defaults to the tier-1 template. Idempotent (skips anything already coded). */
+/** On load, carry a profile into the current code form: a golem without a program gets one
+ *  from its slot rows; legacy `def`-entry programs are rewritten to `Engram.X:`; the party
+ *  navigator defaults to the tier-1 template. Idempotent. */
 function migrateToCode(): void {
   for (const hero of roster) {
-    if ((hero.program ?? '').trim() === '') hero.program = combatRowsToSource(hero.rows)
+    const src = hero.program ?? ''
+    hero.program = src.trim() === '' ? combatRowsToSource(hero.rows) : toEntryForm(src)
   }
-  if (explorationProgram.trim() === '') explorationProgram = DEFAULT_EXPLORATION_PROGRAM
+  explorationProgram = explorationProgram.trim() === '' ? DEFAULT_EXPLORATION_PROGRAM : toEntryForm(explorationProgram)
 }
 
 // Profile meta (persisted per slot, survives a wipe): levels first-cleared, and
@@ -197,7 +198,7 @@ function onExCodeChange(src: string): void {
   persist()
 }
 
-const EX_PLACEHOLDER = 'def exploration_turn(senses):\n    nxt = senses.unexplored_exit\n    if nxt:\n        return move(nxt)\n    return retreat()'
+const EX_PLACEHOLDER = 'Engram.exploration_turn:\n    nxt = senses.unexplored_exit\n    if nxt:\n        return move(nxt)\n    return retreat()'
 let exCodeEditor: CodeEditorHandle = mountTextarea(exCodeMountEl, exCodeErrorEl, onExCodeChange, EX_PLACEHOLDER)
 
 /** Persist + validate the shared library on every edit; republish it to the interpreter. */
@@ -224,7 +225,7 @@ async function upgradeEditorsToCodeMirror(): Promise<void> {
     const { mountCodeMirror } = await import('./lang/editor-cm')
     codeEditor = mountCodeMirror(codeMountEl, codeErrorEl, onCodeChange, {
       entry: 'combat_turn', kind: 'combat',
-      placeholder: 'def combat_turn(senses):\n    return attack(senses.enemies.lowest_hp)',
+      placeholder: 'Engram.combat_turn:\n    return attack(senses.enemies.lowest_hp)',
     })
     exCodeEditor = mountCodeMirror(exCodeMountEl, exCodeErrorEl, onExCodeChange, {
       entry: 'exploration_turn', kind: 'exploration', placeholder: EX_PLACEHOLDER,

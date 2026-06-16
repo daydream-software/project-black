@@ -166,7 +166,9 @@ export function decideExplorationFromProgram(s: DelveState): ExDecision {
   }
   try {
     const interp = new Interp()
-    const result = interp.run(compile(src), 'exploration_turn', [sensesHost(s)], exploreGlobals(s, interp, memory), libraries())
+    // `senses` ambient (for `Engram.exploration_turn:`) AND passed as the legacy arg.
+    const senses = sensesHost(s)
+    const result = interp.run(compile(src), 'exploration_turn', [senses], { ...exploreGlobals(s, interp, memory), senses }, libraries())
     const a = actionOf(result)
     return { reason: 'inscription', step: a.step, leave: a.leave, memory: persist() }
   } catch (e) {

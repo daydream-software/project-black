@@ -35,7 +35,7 @@ export class LexError extends Error {
 
 const KEYWORDS = new Set([
   'def', 'return', 'if', 'elif', 'else', 'for', 'while', 'in', 'and', 'or', 'not',
-  'None', 'True', 'False', 'break', 'continue', 'pass', 'global', 'import',
+  'None', 'True', 'False', 'break', 'continue', 'pass', 'global', 'import', 'Engram',
 ])
 
 // Multi-char operators first so the maximal-munch scan prefers them.

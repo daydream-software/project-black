@@ -41,7 +41,7 @@ function maneuverExpr(command: ProtocolRow['command'], skillId: SkillId): string
  *  point (the `first`/`any` subjects pick the first candidate then guard, vs the slot
  *  model's first-PASSING — equivalent for the lowest/highest picks; tweak as needed). */
 export function combatRowsToSource(rows: ProtocolRow[]): string {
-  const lines = ['def combat_turn(senses):']
+  const lines = ['Engram.combat_turn:']
   for (const row of rows) {
     if (!row.enabled) continue
     const subject = SUBJECT_EXPR[row.subjectId]
@@ -56,11 +56,20 @@ export function combatRowsToSource(rows: ProtocolRow[]): string {
   return `${lines.join('\n')}\n`
 }
 
+/** Rewrite a legacy `def combat_turn(senses):` / `def exploration_turn(senses):` program to
+ *  the `Engram.X:` entry-block form (senses is ambient now). Idempotent — an already-`Engram.`
+ *  program, or a helper `def`, is untouched. */
+export function toEntryForm(src: string): string {
+  return src
+    .replace(/^def combat_turn\(senses\):/m, 'Engram.combat_turn:')
+    .replace(/^def exploration_turn\(senses\):/m, 'Engram.exploration_turn:')
+}
+
 /** The tier-1 exploration navigator template (engine-driven frontier nav) — the
  *  starting point when moving the party's delve navigation to code. */
 export function explorationTemplate(): string {
   return [
-    'def exploration_turn(senses):',
+    'Engram.exploration_turn:',
     '    if party.hp_pct < 30:',
     '        return retreat()',
     '    nxt = senses.unexplored_exit',
