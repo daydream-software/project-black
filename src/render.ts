@@ -348,6 +348,7 @@ export function renderDelve(ctx: CanvasRenderingContext2D, delve: DelveState, sp
   if (delve.status === 'cleared') drawBanner(ctx, 'DELVE CLEARED', 'The objective is slain', '#9fe0a8')
   else if (delve.status === 'dead') drawBanner(ctx, 'GOLEMS WIPED', 'Read the journal, reprogram, delve again', '#ff6b6b')
   else if (delve.status === 'stuck') drawBanner(ctx, 'STUCK', 'Your golems found no way forward', '#ffb454')
+  else if (delve.status === 'left') drawBanner(ctx, 'WITHDREW', 'Your golems retreated to town', '#8fc7e6')
 }
 
 function poly(ctx: CanvasRenderingContext2D, pts: number[], fill: string): void {

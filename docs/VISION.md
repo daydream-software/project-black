@@ -12,7 +12,7 @@ own, by the rules you wrote. It returns victorious or it wipes. You read the
 
 ## Genre & pacing reference
 
-A **programmable, AFK, procedurally-generated dungeon-crawler roguelite.** The
+A **programmable, idle-but-watched, procedurally-generated dungeon-crawler roguelite.** The
 moment-to-moment pacing is **Nevergrind Online's** — brisk, continuous delving:
 navigate, hit a monster pack, fight, chain kills, push on, find the target. The
 twist that makes it ours: in Nevergrind a *human party leader navigates the
@@ -38,7 +38,7 @@ grammar — learn it once, apply it twice:
 
 The exploration Procedure **is** the party leader. At a branch it doesn't stop and
 ask — it consults your rules and picks. That is why the delve is autonomous, and
-why AFK is natural here (it was awkward before): you didn't remove the navigator,
+why idle-but-watched play is natural here (it was awkward before): you didn't remove the navigator,
 you **automated** it.
 
 ## The core loop
@@ -63,8 +63,8 @@ you **automated** it.
 - **Outcome.** Target killed → return with the haul. Party wiped → back to 0.
   Either way you read the **journal** (a replay/debugger) and reprogram.
 
-Build decisions live in **town** (active); the **delve** is pure autonomous (AFK).
-That split resolves the old "drafts need live input vs. AFK" tension — there are
+Build decisions live in **town** (active); the **delve** is pure autonomous (idle-but-watched).
+That split resolves the old "drafts need live input vs. hands-off" tension — there are
 no mid-delve pauses; you choose your build between delves, in town.
 
 ## Pacing & the chain lever (from Nevergrind)
@@ -105,8 +105,8 @@ or wipe → Town.** Save slots are independent roguelite profiles.
 2. **Intense ↔ relaxed** — calm authoring in town; tense delves you cannot rescue.
 3. **Automation you watch, not idle-farming.** Inscribe your Golems and set them
    delving — they explore, fight and hunt the target *on their own, successfully*,
-   because you programmed them well. Idle, watch, or go about your business while
-   they work; the draw is **watching your program work** (Gladiabots / factory-game
+   because you programmed them well. You stay **present and watching** — idle but not
+   away; the draw is **watching your program work** (Gladiabots / factory-game
    satisfaction), not waiting for a meter to fill. **No offline progress:** a delve
    runs in real time while the game is open and simply waits where it left off when
    you close it — time-away never advances a delve (and waiting never beats a wall,
@@ -117,7 +117,7 @@ or wipe → Town.** Save slots are independent roguelite profiles.
 
 ## Design rules
 
-> **#1 — Waiting never beats a wall.** Staying AFK gives loot and depth already
+> **#1 — Waiting never beats a wall.** Staying idle gives loot and depth already
 > within reach, never a breakthrough. A wall falls only to a better program/build
 > — never to time.
 

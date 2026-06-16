@@ -1131,3 +1131,53 @@ canvas {
   color: #9fe0a8;
   white-space: nowrap;
 }
+
+/* --- Code brain (Inscription editor) -------------------------------------- */
+.code-mount {
+  margin: 4px 0;
+}
+.code-editor {
+  width: 100%;
+  min-height: 160px;
+  box-sizing: border-box;
+  resize: vertical;
+  padding: 10px 12px;
+  font-family: ui-monospace, "SF Mono", "Cascadia Code", Menlo, Consolas, monospace;
+  font-size: 13px;
+  line-height: 1.5;
+  tab-size: 4;
+  color: #e6eef2;
+  background: #0c1116;
+  border: 1px solid #2a3640;
+  border-radius: 8px;
+  outline: none;
+}
+.code-editor:focus {
+  border-color: #3f7d8c;
+  box-shadow: 0 0 0 2px rgba(63, 125, 140, 0.25);
+}
+.code-editor.locked {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+.code-error {
+  margin: 4px 0 2px;
+  padding: 6px 10px;
+  font-family: ui-monospace, Menlo, Consolas, monospace;
+  font-size: 12px;
+  color: #ffb4a8;
+  background: rgba(120, 30, 24, 0.25);
+  border: 1px solid rgba(200, 80, 70, 0.4);
+  border-radius: 6px;
+}
+/* CodeMirror (piste A) inherits the panel chrome */
+.code-mount .cm-editor {
+  border: 1px solid #2a3640;
+  border-radius: 8px;
+  font-size: 13px;
+  background: #0c1116;
+}
+.code-mount .cm-editor.cm-focused {
+  border-color: #3f7d8c;
+  outline: none;
+}

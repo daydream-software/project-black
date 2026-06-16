@@ -37,6 +37,10 @@ export interface Hero {
   // and removable). Set by descend(); additive (legacy/pending golems lack it).
   committed?: Stats
   rows: ProtocolRow[]
+  // The code brain (Inscription program source). Optional/additive: when present and
+  // non-empty it OVERRIDES `rows` (the slot system) for this golem's combat. A string
+  // (serialisable; compiled at runtime). Absent/empty = the slot `rows` drive combat.
+  program?: string
 }
 
 /** One row of the party's exploration Protocol (Subject · Predicate → Move). */
@@ -58,6 +62,13 @@ export interface SaveData {
   // before slice 8c lack it, and load defaults them — so this stays additive (no
   // version bump, no wiping a live player's authored combat Procedure).
   exploration?: ExProtocolRow[]
+  // The party-wide exploration CODE navigator (Inscription source). Optional/additive;
+  // when present + non-empty it overrides the exploration `rows`. Mirrors a hero's
+  // per-golem `program` but for the party's delve navigation.
+  explorationProgram?: string
+  // The shared library source — reusable helper functions any program can `import lib`.
+  // Optional/additive; party-wide (one per profile).
+  library?: string
   // Levels this profile has cleared at least once (slice 10a) — the meta that
   // survives a wipe and (slice 10b) gates Insight to first clears. Optional/additive:
   // pre-10a saves lack it and default to empty.
@@ -87,7 +98,7 @@ function isHero(x: unknown): x is Hero {
 }
 
 function isDelveStatus(x: unknown): x is DelveStatus {
-  return x === 'delving' || x === 'cleared' || x === 'dead' || x === 'stuck'
+  return x === 'delving' || x === 'cleared' || x === 'dead' || x === 'stuck' || x === 'left'
 }
 
 /** A resumable in-progress delve in the ROOM-GRAPH shape (pos is a room id string, the
@@ -118,6 +129,8 @@ function isOptArray(v: unknown): boolean {
 function isAuxFields(x: Record<string, unknown>): boolean {
   return (
     isOptArray(x.exploration) &&
+    (x.explorationProgram === undefined || typeof x.explorationProgram === 'string') &&
+    (x.library === undefined || typeof x.library === 'string') &&
     isOptArray(x.clearedLevels) &&
     (x.insight === undefined || typeof x.insight === 'number') &&
     isOptArray(x.unlocked) &&

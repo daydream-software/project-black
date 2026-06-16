@@ -9,7 +9,7 @@ how they **fight** and how they **delve**, in one `WHEN <State> → DO <X>` gram
 Each is a **Procedure** — an ordered list of **Protocols** (one rule each); a
 combat Procedure per unit and one party-wide exploration Procedure. (Procedure =
 the list, Protocol = a single rule — a whole/part pair, *not* a combat/exploration
-split.) It's a **programmable, AFK,
+split.) It's a **programmable, idle-but-watched,
 procedural dungeon-crawler roguelite** (Nevergrind Online's pacing × Gladiabots'
 AI-authoring × FF12 gambits): from **town** you program + manage, then **descend**;
 the party **auto-delves** a seeded dungeon (navigate, fight packs, loot, hunt the
@@ -20,8 +20,9 @@ See **`docs/VISION.md`** (north star — what & why), then `docs/ROADMAP.md`
 
 ## Stack & commands
 
-TypeScript · Vite · Canvas 2D · Vitest. No runtime dependencies; sprites are
-generated in code.
+TypeScript · Vite · Canvas 2D · Vitest. No runtime dependencies **except the
+Workshop code editor (CodeMirror 6, lazy-loaded — authoring surface only, never
+touches the pure sim)**; sprites are generated in code.
 
 - `npm run dev` — dev server; open **http://127.0.0.1.nip.io:5173** (Vite binds `0.0.0.0` and allows `.nip.io` hosts, so it's reachable from the Windows browser over WSL — plain `localhost` forwarding is flaky)
 - `npm test` — Vitest (unit tests on the pure simulation)

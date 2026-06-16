@@ -86,7 +86,7 @@ export const DEFAULT_EXPLORATION: ExProcedure = [
 
 // --- Delve state ------------------------------------------------------------
 
-export type DelveStatus = 'delving' | 'cleared' | 'dead' | 'stuck'
+export type DelveStatus = 'delving' | 'cleared' | 'dead' | 'stuck' | 'left'
 
 export interface DelveLogEntry {
   turn: number
@@ -134,6 +134,15 @@ export interface DelveState {
   revealed: string[] // room ids whose TYPE is known beyond the 1-hop peek (vision buffs)
   buffs: string[] // ids of run-scoped boons collected (apply ran; onSpawn folds on spawn)
   exploration: ExProcedure
+  // The party's CODE navigator (Inscription source). When present + non-empty it
+  // OVERRIDES the `exploration` slot rows (via the DI program decider). Serialisable.
+  explorationProgram?: string
+  // Party-wide, delve-scoped Memory the navigator builds (serialisable JSON; the
+  // program owns its shape). Absent = empty. Resets each delve (a fresh dungeon).
+  memory?: unknown
+  // Consecutive no-op rests (a rest that mended nothing). Used to break an infinite
+  // rest loop — past IDLE_REST_CAP the delve flips to `stuck`. Absent = 0.
+  idleRests?: number
   battle: GameState | null // active combat, or null when exploring
   status: DelveStatus
   turn: number
@@ -141,15 +150,30 @@ export interface DelveState {
 }
 
 const MAX_DELVE_STEPS = 4000 // defensive cap — a healthy delve ends far sooner
+const IDLE_REST_CAP = 3 // consecutive no-op rests (mended nothing) before the delve is stuck
 
 // --- Exploration decision: the engine only orchestrates ---------------------
 // The navigation primitives (BFS to a goal / to the frontier, objective + entrance
 // cells, party HP) live in content/exploration/navigation.ts; the Subject/Predicate/
 // Move behaviour lives in their content files. This layer just runs filter-then-move.
 
-interface ExDecision {
+export interface ExDecision {
   reason: string
   step: string // room to move to (party's own pos = rest), or '' = no move
+  /** The party chooses to LEAVE the delve (withdraw to town). `retreat()` at the
+   *  entrance, or an explicit `leave()`. Takes priority over step/rest. */
+  leave?: boolean
+  /** Updated, serialisable party Memory when a code navigator decided this step
+   *  (opaque JSON owned by the language module). Absent on the slot path. */
+  memory?: unknown
+}
+
+/** A code navigator for the party (the Inscription exploration interpreter), injected
+ *  via `setExplorationProgramDecider` so delve.ts never imports the language module. */
+type ExProgramDecider = (s: DelveState) => ExDecision
+let exProgramDecider: ExProgramDecider | null = null
+export function setExplorationProgramDecider(fn: ExProgramDecider): void {
+  exProgramDecider = fn
 }
 
 /** One Protocol's decision: resolve its vocab from the registries by id (a stale id →
@@ -167,6 +191,9 @@ function protocolStep(s: DelveState, protocol: ExProtocol): ExDecision | null {
 
 /** Scan the Procedure top-to-bottom; the first Protocol that yields a move wins. */
 export function decideExploration(s: DelveState): ExDecision {
+  if (s.explorationProgram !== undefined && s.explorationProgram.trim() !== '' && exProgramDecider !== null) {
+    return exProgramDecider(s)
+  }
   for (const protocol of s.exploration) {
     const decided = protocolStep(s, protocol)
     if (decided !== null) return decided
@@ -181,6 +208,7 @@ export function startDelve(
   seed: number,
   exploration: ExProcedure = DEFAULT_EXPLORATION,
   level: LevelSkeleton = LEVELS[0],
+  explorationProgram?: string,
 ): DelveState {
   const graph = generateGraph(level, seed)
   return {
@@ -197,6 +225,7 @@ export function startDelve(
     revealed: [],
     buffs: [],
     exploration,
+    explorationProgram,
     battle: null,
     status: 'delving',
     turn: 0,
@@ -316,8 +345,16 @@ function springTraps(party: Combatant[], corridor: Corridor | undefined, turn: n
   return { party: current, entries }
 }
 
-function advanceMove(s: DelveState, turn: number): DelveState {
-  const decision = decideExploration(s)
+function advanceMove(s0: DelveState, turn: number): DelveState {
+  const decision = decideExploration(s0)
+  // A code navigator returns updated Memory; fold it in so it persists across turns (and
+  // into the save). The slot path leaves `memory` untouched.
+  const s: DelveState = decision.memory !== undefined ? { ...s0, memory: decision.memory } : s0
+  if (decision.leave === true) {
+    // the party chooses to withdraw (retreat at the entrance, or an explicit leave()) —
+    // end the delve and head back to town, distinct from being stuck or wiped.
+    return { ...s, turn, status: 'left', log: logged(s, turn, { kind: 'end', reason: decision.reason, detail: 'the party withdrew to town' }) }
+  }
   if (decision.step === '') {
     return { ...s, turn, status: 'stuck', log: logged(s, turn, { kind: 'end', reason: 'no path forward', detail: 'the party is stuck' }) }
   }
@@ -328,8 +365,16 @@ function advanceMove(s: DelveState, turn: number): DelveState {
     // own Mend rules to convergence (same Attunement/Poise/Strain budget as in combat).
     // ("si c'est un repos, ce n'est pas un pas.")
     const { units: party, mends } = restToConvergence(s.party)
+    // A rest that mends NOTHING changes nothing (same HP, pos, fog) — repeating it is an
+    // infinite no-op (e.g. a low-HP party that can't heal, or a fully-explored party at
+    // full HP that keeps retreating to the entrance). Count consecutive idle rests; past
+    // the cap, END the delve as STUCK so it returns to town instead of resting forever.
+    const idle = mends > 0 ? 0 : (s.idleRests ?? 0) + 1
+    if (idle >= IDLE_REST_CAP) {
+      return { ...s, party, turn, idleRests: idle, status: 'stuck', log: logged(s, turn, { kind: 'end', reason: decision.reason, detail: 'no progress — the party is stuck (cannot heal or reach more rooms)' }) }
+    }
     const detail = mends > 0 ? `rest — ${mends} mend${mends > 1 ? 's' : ''}` : 'rest — nothing to mend'
-    return { ...s, party, turn, log: logged(s, turn, { kind: 'explore', reason: decision.reason, detail }) }
+    return { ...s, party, turn, idleRests: idle, log: logged(s, turn, { kind: 'explore', reason: decision.reason, detail }) }
   }
 
   const explored = s.explored.includes(next) ? s.explored : [...s.explored, next]
@@ -340,7 +385,7 @@ function advanceMove(s: DelveState, turn: number): DelveState {
     const wiped: DelveLogEntry = { turn, kind: 'end', reason: 'wiped out', detail: 'the party fell to a trap' }
     return { ...s, party: trapped.party, pos: next, explored, turn, status: 'dead', log: [...baseLog, wiped].slice(-60) }
   }
-  const moved: DelveState = { ...s, party: trapped.party, pos: next, explored, turn }
+  const moved: DelveState = { ...s, party: trapped.party, pos: next, explored, turn, idleRests: 0 }
   const reward = grantReward(moved, baseLog, decision.reason, turn)
   if (reward !== null) return reward
 

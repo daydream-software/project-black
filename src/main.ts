@@ -1,6 +1,12 @@
 import './style.css'
-import { makeGolem, type Combatant, type GameState, type Stats } from './sim'
-import { startDelve, stepDelve, type DelveState, type ExProcedure } from './delve'
+import { makeGolem, setProgramDecider, type Combatant, type GameState, type Stats } from './sim'
+import { decideCombatFromProgram } from './lang/combat'
+import { decideExplorationFromProgram } from './lang/explore'
+import { setLibraries } from './lang/interp'
+import { combatRowsToSource, explorationTemplate } from './lang/migrate'
+import { mountTextarea, type CodeEditorHandle } from './lang/editor'
+import { checkProgram, type CheckResult } from './lang/check'
+import { startDelve, stepDelve, setExplorationProgramDecider, type DelveState, type ExProcedure } from './delve'
 import { BUILD_BUDGET, CHASSIS_COST, STAT_CAP, GOLEM_MAX, buildCost } from './party'
 import { LEVELS, applyClear, levelById, hasCleared } from './levels'
 import { UNLOCKABLES, buy, isOwned, canAfford } from './shop'
@@ -26,17 +32,10 @@ import { buildingAt, type BuildingId } from './buildings'
 import foyerUrl from './assets/town-foyer.png'
 import { requireElement, require2dContext } from './dom'
 import {
-  available,
   buildExploration,
   procedureFor,
-  commandById,
-  SUBJECTS,
-  PREDICATES,
   COMMANDS,
   SKILLS,
-  EX_SUBJECTS,
-  EX_PREDICATES,
-  EX_MOVES,
   DEFAULT_EX_ROWS,
 } from './protocol'
 
@@ -66,6 +65,39 @@ let activeHero = 0
 // order. `let` so a loaded save can replace it; the defaults (protocol.ts) compile
 // to DEFAULT_EXPLORATION.
 let exploration: ExProtocolRow[] = DEFAULT_EX_ROWS.map((r) => ({ ...r }))
+// The party-wide exploration code navigator (overrides `exploration` rows when filled).
+let explorationProgram = ''
+// The shared library source (`import lib` → `lib.fn()`), party-wide per profile.
+let library = ''
+
+/** Publish the current library to the interpreter so `import` resolves it. */
+function syncLibraries(): void {
+  setLibraries(library.trim() === '' ? {} : { lib: library })
+}
+
+// The real default brains a fresh golem / profile runs (the code editors show these,
+// not a placeholder). Authoring is now code-only — the slot Procedure was retired.
+const DEFAULT_COMBAT_PROGRAM = [
+  'def combat_turn(senses):',
+  '    ally = senses.allies.lowest_hp',
+  '    if ally and ally.hp_pct < 50:',
+  '        return use(Skills.Mend, ally)',
+  '    if me.hp_pct < 30:',
+  '        return use(Skills.Defend, me)',
+  '    return attack(senses.enemies.lowest_hp)',
+  '',
+].join('\n')
+const DEFAULT_EXPLORATION_PROGRAM = explorationTemplate()
+
+/** On load, carry a profile authored on the old slot system into code: any golem
+ *  without a program gets one generated from its slot rows; the party navigator
+ *  defaults to the tier-1 template. Idempotent (skips anything already coded). */
+function migrateToCode(): void {
+  for (const hero of roster) {
+    if ((hero.program ?? '').trim() === '') hero.program = combatRowsToSource(hero.rows)
+  }
+  if (explorationProgram.trim() === '') explorationProgram = DEFAULT_EXPLORATION_PROGRAM
+}
 
 // Profile meta (persisted per slot, survives a wipe): levels first-cleared, and
 // the Insight earned (+1 per first clear) — the currency the Trainer spends.
@@ -113,10 +145,6 @@ const levelSelectEl = requireElement('level-select', HTMLDivElement)
 const tabsEl = requireElement('hero-tabs', HTMLDivElement)
 const coreBudgetEl = requireElement('core-budget', HTMLDivElement)
 const statEditorEl = requireElement('stat-editor', HTMLDivElement)
-const editorEl = requireElement('editor', HTMLUListElement)
-const addBtn = requireElement('add-protocol', HTMLButtonElement)
-const exEditorEl = requireElement('ex-editor', HTMLUListElement)
-const exAddBtn = requireElement('ex-add', HTMLButtonElement)
 const logEl = requireElement('log', HTMLDivElement)
 const musicBtn = requireElement('music-toggle', HTMLButtonElement)
 const insightEl = requireElement('insight', HTMLSpanElement)
@@ -125,6 +153,100 @@ const modalWorkshopEl = requireElement('modal-workshop', HTMLDivElement)
 const modalLibraryEl = requireElement('modal-library', HTMLDivElement)
 const modalJournalEl = requireElement('modal-journal', HTMLDivElement)
 const trainerListEl = requireElement('trainer-list', HTMLDivElement)
+const codeMountEl = requireElement('code-mount', HTMLDivElement)
+const codeErrorEl = requireElement('code-error', HTMLDivElement)
+const exCodeMountEl = requireElement('ex-code-mount', HTMLDivElement)
+const exCodeErrorEl = requireElement('ex-code-error', HTMLDivElement)
+const libMountEl = requireElement('lib-code-mount', HTMLDivElement)
+const libErrorEl = requireElement('lib-code-error', HTMLDivElement)
+
+// Wire the Inscription interpreter into the pure sim (dependency injection — sim.ts
+// never imports the language module). A golem carrying a `program` runs it instead of
+// its slot `procedure`; everything else is unchanged.
+setProgramDecider(decideCombatFromProgram)
+setExplorationProgramDecider(decideExplorationFromProgram)
+
+function toEditorError(r: CheckResult): { message: string; line?: number; col?: number } | null {
+  return r.ok ? null : { message: r.message ?? 'error', line: r.line, col: r.col }
+}
+
+/** Persist + validate on every code edit (active golem's combat brain). */
+function onCodeChange(src: string): void {
+  const hero = roster[activeHero] as Hero | undefined
+  if (hero === undefined) return
+  hero.program = src
+  codeEditor.setError(toEditorError(checkProgram(src)))
+  persist()
+}
+
+let codeEditor: CodeEditorHandle = mountTextarea(codeMountEl, codeErrorEl, onCodeChange)
+
+/** Sync the code editor to the active golem (value, locked state, error line). */
+function renderCodeBrain(): void {
+  const hero = roster[activeHero] as Hero | undefined
+  const src = hero?.program ?? ''
+  codeEditor.setValue(src)
+  codeEditor.setReadOnly(editingLocked() || hero === undefined)
+  codeEditor.setError(toEditorError(checkProgram(src)))
+}
+
+/** Persist + validate the party's exploration navigator on every edit. */
+function onExCodeChange(src: string): void {
+  explorationProgram = src
+  exCodeEditor.setError(toEditorError(checkProgram(src, 'exploration_turn')))
+  persist()
+}
+
+const EX_PLACEHOLDER = 'def exploration_turn(senses):\n    nxt = senses.unexplored_exit\n    if nxt:\n        return move(nxt)\n    return retreat()'
+let exCodeEditor: CodeEditorHandle = mountTextarea(exCodeMountEl, exCodeErrorEl, onExCodeChange, EX_PLACEHOLDER)
+
+/** Persist + validate the shared library on every edit; republish it to the interpreter. */
+function onLibChange(src: string): void {
+  library = src
+  syncLibraries()
+  libEditor.setError(toEditorError(checkProgram(src, null)))
+  persist()
+}
+const LIB_PLACEHOLDER = '# shared helpers — import lib, then lib.fn(...)\n# def weakest(senses):\n#     return senses.enemies.lowest_hp'
+let libEditor: CodeEditorHandle = mountTextarea(libMountEl, libErrorEl, onLibChange, LIB_PLACEHOLDER)
+
+function renderLibBrain(): void {
+  libEditor.setValue(library)
+  libEditor.setReadOnly(editingLocked())
+  libEditor.setError(toEditorError(checkProgram(library, null)))
+}
+
+// Upgrade the code editors from the bare-<textarea> fallback to CodeMirror (lazy: the
+// CM chunk is dynamically imported, so it stays off the first-paint bundle — CLAUDE.md's
+// scoped dependency exception). On failure we simply keep the textareas.
+async function upgradeEditorsToCodeMirror(): Promise<void> {
+  try {
+    const { mountCodeMirror } = await import('./lang/editor-cm')
+    codeEditor = mountCodeMirror(codeMountEl, codeErrorEl, onCodeChange, {
+      entry: 'combat_turn', kind: 'combat',
+      placeholder: 'def combat_turn(senses):\n    return attack(senses.enemies.lowest_hp)',
+    })
+    exCodeEditor = mountCodeMirror(exCodeMountEl, exCodeErrorEl, onExCodeChange, {
+      entry: 'exploration_turn', kind: 'exploration', placeholder: EX_PLACEHOLDER,
+    })
+    libEditor = mountCodeMirror(libMountEl, libErrorEl, onLibChange, {
+      entry: null, kind: 'combat', placeholder: LIB_PLACEHOLDER,
+    })
+    renderCodeBrain()
+    renderExCodeBrain()
+    renderLibBrain()
+  } catch (err) {
+    log.error('[editor] CodeMirror failed to load; staying on the textarea', err)
+  }
+}
+void upgradeEditorsToCodeMirror()
+
+/** Sync the exploration code editor to the party's navigator program. */
+function renderExCodeBrain(): void {
+  exCodeEditor.setValue(explorationProgram)
+  exCodeEditor.setReadOnly(editingLocked())
+  exCodeEditor.setError(toEditorError(checkProgram(explorationProgram, 'exploration_turn')))
+}
 const screenTitleEl = requireElement('screen-title', HTMLDivElement)
 const screenSlotsEl = requireElement('screen-slots', HTMLDivElement)
 const screenGameEl = requireElement('screen-game', HTMLElement)
@@ -176,7 +298,15 @@ function party(): Combatant[] {
     name: hero.name,
     stats: hero.stats ?? ZERO_STATS,
     procedure: procedureFor(hero),
+    program: programOf(hero),
   }))
+}
+
+/** A golem's code brain if it has a non-empty one, else undefined (so the slot
+ *  `procedure` path runs). An all-whitespace program is treated as "no program". */
+function programOf(hero: Hero): string | undefined {
+  const src = hero.program
+  return src !== undefined && src.trim() !== '' ? src : undefined
 }
 
 /** The town screen is just the party with no enemies (render shows "Camp"). */
@@ -206,7 +336,7 @@ function descend(): void {
   if (roster.length === 0) return // need at least one golem to delve
   freezeBuild() // committing to a delve locks the point-buy: spent points become permanent
   lastDelveLog = [] // a fresh run — the previous journal no longer applies
-  delve = startDelve(party(), newSeed(), explorationProcedure(), levelById(selectedLevelId))
+  delve = startDelve(party(), newSeed(), explorationProcedure(), levelById(selectedLevelId), explorationProgram.trim() === '' ? undefined : explorationProgram)
   mode = 'delve'
   saveNow()
   renderRunBar()
@@ -235,7 +365,7 @@ function backToTown(): void {
  *  slot. */
 function saveNow(): void {
   if (activeSlot === null) return
-  saveSlot(activeSlot, { roster, activeHero, exploration, clearedLevels, insight, unlocked, mode, delve })
+  saveSlot(activeSlot, { roster, activeHero, exploration, explorationProgram, library, clearedLevels, insight, unlocked, mode, delve })
 }
 
 // --- Screen shell: title → slots → game -------------------------------------
@@ -271,6 +401,10 @@ function newGame(index: number, carried: SalvagedMeta | undefined = salvageMeta(
   activeSlot = index
   roster = freshRoster()
   exploration = DEFAULT_EX_ROWS.map((r) => ({ ...r }))
+  explorationProgram = ''
+  library = ''
+  syncLibraries()
+  migrateToCode()
   clearedLevels = carried?.clearedLevels ?? []
   insight = carried?.insight ?? 0
   unlocked = carried?.unlocked ?? []
@@ -298,6 +432,10 @@ function enterSlot(index: number): void {
   roster = saved.roster
   activeHero = Math.max(0, Math.min(saved.activeHero, roster.length - 1))
   exploration = saved.exploration ?? DEFAULT_EX_ROWS.map((r) => ({ ...r }))
+  explorationProgram = saved.explorationProgram ?? ''
+  library = saved.library ?? ''
+  syncLibraries()
+  migrateToCode()
   clearedLevels = saved.clearedLevels ?? []
   insight = saved.insight ?? 0
   unlocked = saved.unlocked ?? []
@@ -417,14 +555,6 @@ function renderSlots(): void {
   for (const info of listSlots()) addCard(info)
 }
 
-/** A structural edit (add / remove / reorder / enable-toggle) — rebuild the editor
- *  and persist. Town-only; a launched delve is locked so this never runs mid-delve. */
-function commit(): void {
-  renderEditor()
-  renderExEditor()
-  saveNow()
-}
-
 /**
  * A value-only edit — a dropdown pick that changes a rule's data but not the
  * editor's structure. We deliberately do NOT rebuild the editor here: replacing a
@@ -437,91 +567,6 @@ function persist(): void {
   saveNow()
 }
 
-function move(i: number, dir: number): void {
-  const {rows} = roster[activeHero]
-  const j = i + dir
-  if (j < 0 || j >= rows.length) return
-  ;[rows[i], rows[j]] = [rows[j], rows[i]]
-  commit()
-}
-
-// A custom dropdown (not a native <select>). We build our own so open/close is
-// fully under our control — native <select> popups misbehaved in some browsers
-// (a closed list spontaneously reopening). Only one is open at a time; any click
-// outside the open one closes it.
-let closeOpenDropdown: (() => void) | null = null
-document.addEventListener('click', () => closeOpenDropdown?.())
-
-function makeSelect(
-  options: Array<{ value: string; label: string }>,
-  selected: string,
-  onChange: (value: string) => void,
-  disabled = false,
-): HTMLElement {
-  let value = selected
-
-  const root = document.createElement('div')
-  root.className = disabled ? 'dropdown disabled' : 'dropdown'
-
-  const head = document.createElement('button')
-  head.type = 'button'
-  head.className = 'dropdown-head'
-  head.disabled = disabled
-  const label = document.createElement('span')
-  label.className = 'dropdown-label'
-  label.textContent = options.find((o) => o.value === value)?.label ?? value
-  const caret = document.createElement('span')
-  caret.className = 'dropdown-caret'
-  caret.textContent = '▾'
-  head.append(label, caret)
-
-  const list = document.createElement('div')
-  list.className = 'dropdown-list'
-  list.hidden = true
-
-  const close = (): void => {
-    list.hidden = true
-    root.classList.remove('open')
-    if (closeOpenDropdown === close) closeOpenDropdown = null
-  }
-  const open = (): void => {
-    closeOpenDropdown?.() // only one dropdown open at a time
-    list.hidden = false
-    root.classList.add('open')
-    closeOpenDropdown = close
-  }
-
-  // Declared outside the loop: the click handler closes over the mutable `value`.
-  const addItem = (opt: { value: string; label: string }): void => {
-    const item = document.createElement('button')
-    item.type = 'button'
-    item.className = opt.value === value ? 'dropdown-item selected' : 'dropdown-item'
-    item.textContent = opt.label
-    item.addEventListener('click', (e) => {
-      e.stopPropagation()
-      if (opt.value !== value) {
-        value = opt.value
-        label.textContent = opt.label
-        for (const child of list.children) child.classList.toggle('selected', child === item)
-        onChange(value)
-      }
-      close()
-    })
-    list.appendChild(item)
-  }
-  for (const opt of options) addItem(opt)
-
-  head.addEventListener('click', (e) => {
-    e.stopPropagation() // so the document handler doesn't close it on the opening click
-    if (disabled) return
-    if (list.hidden) open()
-    else close()
-  })
-
-  root.append(head, list)
-  return root
-}
-
 function makeButton(label: string, title: string, onClick: () => void): HTMLButtonElement {
   const btn = document.createElement('button')
   btn.textContent = label
@@ -530,155 +575,6 @@ function makeButton(label: string, title: string, onClick: () => void): HTMLButt
   return btn
 }
 
-/** A `·` / `→` separator span between rule dropdowns. */
-function sep(text: string, cls = 'dot'): HTMLSpanElement {
-  const s = document.createElement('span')
-  s.className = cls
-  s.textContent = text
-  return s
-}
-
-interface CardControls {
-  index: number
-  count: number
-  locked: boolean
-  enabled: boolean
-  onToggle: (on: boolean) => void
-  onUp: () => void
-  onDown: () => void
-  onDelete: () => void
-}
-
-/**
- * A two-line Protocol card: the rule reads as a sentence ([✓] Subject · Predicate
- * → …) on the top line, with the priority + reorder/delete controls on a subtle
- * strip below. Shared by both Procedure editors (combat and exploration), so the
- * rule never has to fight the controls for horizontal space.
- */
-function ruleCard(ruleEls: HTMLElement[], c: CardControls): HTMLLIElement {
-  const li = document.createElement('li')
-  li.className = c.enabled ? 'protocol' : 'protocol disabled'
-
-  const chk = document.createElement('input')
-  chk.type = 'checkbox'
-  chk.checked = c.enabled
-  chk.disabled = c.locked
-  chk.title = 'Enable / disable this rule'
-  chk.addEventListener('change', () => { c.onToggle(chk.checked); })
-
-  const ruleLine = document.createElement('div')
-  ruleLine.className = 'rule-line'
-  ruleLine.append(chk, ...ruleEls)
-
-  const prio = document.createElement('span')
-  prio.className = 'prio'
-  prio.textContent = `#${c.index + 1}`
-
-  const up = makeButton('▲', 'Higher priority', c.onUp)
-  up.disabled = c.locked || c.index === 0
-  const down = makeButton('▼', 'Lower priority', c.onDown)
-  down.disabled = c.locked || c.index === c.count - 1
-  const del = makeButton('✕', 'Remove this rule', c.onDelete)
-  del.className = 'del'
-  del.disabled = c.locked
-
-  const ctrlLine = document.createElement('div')
-  ctrlLine.className = 'ctrl-line'
-  ctrlLine.append(prio, up, down, del)
-
-  li.append(ruleLine, ctrlLine)
-  return li
-}
-
-// One row of the combat Procedure — a single Protocol: Subject · Predicate →
-// Command [· Object].
-function createRow(row: ProtocolRow, i: number): HTMLLIElement {
-  /* eslint-disable no-param-reassign -- the editor binds each dropdown to its roster
-     row, edited in place then persist()/commit(). The immutable rewrite belongs to
-     the editor restructure (see chat); for now the in-place binding is the design. */
-  const {rows} = roster[activeHero]
-  const locked = editingLocked()
-
-  const subjSel = makeSelect(
-    available(SUBJECTS, unlocked).map((s) => ({ value: s.id, label: s.label })),
-    row.subjectId,
-    (v) => {
-      row.subjectId = v
-      persist()
-    },
-    locked,
-  )
-  subjSel.title = 'Subject — who this rule looks at (and acts on)'
-
-  const predSel = makeSelect(
-    available(PREDICATES, unlocked).map((p) => ({ value: p.id, label: p.label })),
-    row.predId,
-    (v) => {
-      row.predId = v
-      persist()
-    },
-    locked,
-  )
-  predSel.title = 'Predicate — what must be true of the Subject'
-
-  // The Object dropdown (and its separator) is always built, but only *shown* for
-  // a Command that carries one (Use Skill). A Command change toggles its
-  // visibility — it never recreates a <select>, which is what made the native
-  // dropdown reopen flakily when an editor was rebuilt mid-change.
-  const objSep = sep('·')
-  const objSel = makeSelect(
-    SKILLS.map((s) => ({ value: s.id, label: s.label })),
-    row.skillId,
-    (v) => {
-      const found = SKILLS.find((s) => s.id === v)
-      if (found !== undefined) {
-        row.skillId = found.id
-        persist()
-      }
-    },
-    locked,
-  )
-  objSel.title = 'Object — which skill to use'
-  const showObject = (on: boolean): void => {
-    objSep.style.display = on ? '' : 'none'
-    objSel.style.display = on ? '' : 'none'
-  }
-  // Tolerant on a persisted command: a stale/absent id must not throw here (this
-  // runs during the editor render in enterGame, outside the tick try/catch — see
-  // the defensive compile path). An unknown command just hides the Object dropdown;
-  // makeSelect shows the raw id, and the compiler treats it as a plain attack.
-  showObject(COMMANDS.find((c) => c.id === row.command)?.hasObject ?? false)
-
-  const cmdSel = makeSelect(
-    COMMANDS.map((c) => ({ value: c.id, label: c.label })),
-    row.command,
-    (v) => {
-      row.command = commandById(v).id
-      persist()
-      showObject(commandById(row.command).hasObject)
-    },
-    locked,
-  )
-  cmdSel.title = 'Command — what to do'
-
-  return ruleCard([subjSel, sep('·'), predSel, sep('→', 'arrow'), cmdSel, objSep, objSel], {
-    index: i,
-    count: rows.length,
-    locked,
-    enabled: row.enabled,
-    onToggle: (on) => {
-      row.enabled = on
-      commit()
-    },
-    onUp: () => { move(i, -1); },
-    onDown: () => { move(i, 1); },
-    onDelete: () => {
-      rows.splice(i, 1)
-      commit()
-    },
-  })
-  /* eslint-enable no-param-reassign */
-}
 
 function makeHint(text: string): HTMLSpanElement {
   const hint = document.createElement('span')
@@ -711,7 +607,9 @@ function renderRunBar(): void {
         ? 'Delve cleared!'
         : delve.status === 'stuck'
           ? 'The delve got stuck — read the journal'
-          : 'Your golems were wiped — read the journal'
+          : delve.status === 'left'
+            ? 'Your golems withdrew to town'
+            : 'Your golems were wiped — read the journal'
     runBarEl.append(back, makeHint(msg))
   }
 }
@@ -983,6 +881,7 @@ function addGolem(): void {
     name: `Golem ${roster.length + 1}`,
     stats: { ...ZERO_STATS },
     rows: freshGolemRows(),
+    program: DEFAULT_COMBAT_PROGRAM,
   })
   activeHero = roster.length - 1
   renderTabs()
@@ -1060,90 +959,17 @@ function renderCores(): void {
 }
 
 // Built with DOM APIs (not innerHTML) — safe, and keeps live event handlers.
+// The Workshop authors behaviour as CODE now (the slot Procedure editor was retired).
+// These two keep their names — many call sites refresh "the editor" — but each just
+// syncs its code editor(s) to the active golem / party.
 function renderEditor(): void {
-  const hero = roster[activeHero] as Hero | undefined
-  addBtn.disabled = editingLocked() || hero === undefined
-  editorEl.replaceChildren()
-  enabledLis = []
-  if (hero === undefined) return // no golem forged yet — nothing to author
-  hero.rows.forEach((row, i) => {
-    const li = createRow(row, i)
-    editorEl.appendChild(li)
-    if (row.enabled) enabledLis.push(li)
-  })
-}
-
-// One row of the exploration Procedure — a single Protocol: Subject · Predicate →
-// Move. Party-wide (no hero tabs); shares the two-line ruleCard with the combat
-// editor.
-function createExRow(row: ExProtocolRow, i: number): HTMLLIElement {
-  /* eslint-disable no-param-reassign -- same as createRow: the editor binds each
-     dropdown to its exploration row, edited in place then persist()/commit(). */
-  const locked = editingLocked()
-
-  const subjSel = makeSelect(
-    available(EX_SUBJECTS, unlocked).map((s) => ({ value: s.id, label: s.label })),
-    row.subjectId,
-    (v) => {
-      row.subjectId = v
-      persist()
-    },
-    locked,
-  )
-  subjSel.title = 'Subject — what in the dungeon this rule looks at'
-
-  const predSel = makeSelect(
-    available(EX_PREDICATES, unlocked).map((p) => ({ value: p.id, label: p.label })),
-    row.predId,
-    (v) => {
-      row.predId = v
-      persist()
-    },
-    locked,
-  )
-  predSel.title = 'Predicate — what must be true'
-
-  const moveSel = makeSelect(
-    available(EX_MOVES, unlocked).map((m) => ({ value: m.id, label: m.label })),
-    row.moveId,
-    (v) => {
-      row.moveId = v
-      persist()
-    },
-    locked,
-  )
-  moveSel.title = 'Move — what your golems do'
-
-  return ruleCard([subjSel, sep('·'), predSel, sep('→', 'arrow'), moveSel], {
-    index: i,
-    count: exploration.length,
-    locked,
-    enabled: row.enabled,
-    onToggle: (on) => {
-      row.enabled = on
-      commit()
-    },
-    onUp: () => { exMove(i, -1); },
-    onDown: () => { exMove(i, 1); },
-    onDelete: () => {
-      exploration.splice(i, 1)
-      commit()
-    },
-  })
-  /* eslint-enable no-param-reassign */
-}
-
-function exMove(i: number, dir: number): void {
-  const j = i + dir
-  if (j < 0 || j >= exploration.length) return
-  ;[exploration[i], exploration[j]] = [exploration[j], exploration[i]]
-  commit()
+  enabledLis = [] // no slot rows to highlight anymore; keeps highlightFiringProtocol a no-op
+  renderCodeBrain()
 }
 
 function renderExEditor(): void {
-  exAddBtn.disabled = editingLocked()
-  exEditorEl.replaceChildren()
-  exploration.forEach((row, i) => { exEditorEl.appendChild(createExRow(row, i)) })
+  renderExCodeBrain()
+  renderLibBrain()
 }
 
 // Map a delve-log kind to one of the existing log-entry colour classes.
@@ -1215,24 +1041,6 @@ function frame(): void {
   highlightFiringProtocol()
   setMusicState(musicTrack()) // cheap no-op unless the track should change
 }
-
-addBtn.addEventListener('click', () => {
-  if (editingLocked() || activeHero >= roster.length) return
-  roster[activeHero].rows.push({
-    subjectId: 'enemy_near',
-    predId: 'always',
-    command: 'attack',
-    skillId: 'mend',
-    enabled: true,
-  })
-  commit()
-})
-
-exAddBtn.addEventListener('click', () => {
-  if (editingLocked()) return
-  exploration.push({ subjectId: 'unexplored', predId: 'always', moveId: 'head', enabled: true })
-  commit()
-})
 
 playBtn.addEventListener('click', goToSlots)
 slotsBackBtn.addEventListener('click', goToTitle)

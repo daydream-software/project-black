@@ -91,6 +91,14 @@ export interface Combatant extends Stats {
   reactions?: ReactionRef[]
   /** Render hint: draw larger / mark as a boss. */
   isBoss?: boolean
+  /**
+   * The player-authored CODE brain (Inscription program source) — set when this golem
+   * is run by a program instead of slot `procedure`. **Serialisable: a string, never a
+   * closure** (the DelveState round-trips through JSON); compiled + cached at runtime.
+   * Absent ⇒ the `procedure` (slot) path runs. Wired via `setProgramDecider` (DI), so
+   * sim.ts never imports the language module (no cycle). See docs/INSCRIPTION-LANG.md.
+   */
+  program?: string
 }
 
 // The pure combat primitives (poolFor / attackDamage / healAmount / overdraw /
@@ -306,12 +314,23 @@ export function resolveTarget(state: State, self: Combatant, units: Combatant[])
   return subject.pick(subject.candidates(self, units).filter((u) => predicate.holds(u)))
 }
 
+/** A decider for code-programmed golems (the Inscription interpreter), injected via
+ *  `setProgramDecider` so sim.ts never imports the language module — no cycle, and the
+ *  pure sim stays decoupled from the editor stack. */
+type ProgramDecider = (self: Combatant, units: Combatant[]) => Decision
+let programDecider: ProgramDecider | null = null
+export function setProgramDecider(fn: ProgramDecider): void {
+  programDecider = fn
+}
+
 /**
  * THE core function: run a unit's procedure. Scan its protocols top-to-bottom;
  * the first whose State resolves to a target wins, and that target is what the
- * Maneuver acts on. Falls back to attacking the nearest enemy.
+ * Maneuver acts on. Falls back to attacking the nearest enemy. A golem carrying a
+ * `program` (code brain) is delegated to the registered program decider instead.
  */
 export function decide(self: Combatant, units: Combatant[]): Decision {
+  if (self.program !== undefined && programDecider !== null) return programDecider(self, units)
   for (let i = 0; i < self.procedure.length; i += 1) {
     const protocol = self.procedure[i]
     const target = resolveTarget(protocol.state, self, units)
@@ -381,6 +400,7 @@ type UnitSpec = Stats & {
   procedure: Procedure
   reactions?: ReactionRef[]
   isBoss?: boolean
+  program?: string
 }
 
 /** A monster's design-time definition: its full authored intelligence — a stat block,
@@ -450,8 +470,8 @@ export function makeWarden(): Combatant {
 /** Build a hero golem from an AUTHORED stat block + its Procedure — the generic,
  *  player-facing builder the point-buy editor feeds. (makeWarrior/makeHealer below
  *  are the fixed reference blocks used as test fixtures and the starting party.) */
-export function makeGolem(spec: { id: string; name: string; stats: Stats; procedure: Procedure }): Combatant {
-  return makeUnit({ id: spec.id, name: spec.name, side: 'hero', ...spec.stats, procedure: spec.procedure })
+export function makeGolem(spec: { id: string; name: string; stats: Stats; procedure: Procedure; program?: string }): Combatant {
+  return makeUnit({ id: spec.id, name: spec.name, side: 'hero', ...spec.stats, procedure: spec.procedure, program: spec.program })
 }
 
 /** The two reference stat blocks (compact 0–12 scale): a Sentinel (Bulwark — Ward +
