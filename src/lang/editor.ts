@@ -4,11 +4,11 @@
 // `editor-cm.ts` and exposes the SAME `CodeEditorHandle`, so swapping is one import.
 
 export interface CodeEditorHandle {
-  setValue(src: string): void
-  getValue(): string
-  setReadOnly(ro: boolean): void
+  setValue: (src: string) => void
+  getValue: () => string
+  setReadOnly: (ro: boolean) => void
   /** Show an inline error (line/col optional) or clear it when null. */
-  setError(err: { message: string; line?: number; col?: number } | null): void
+  setError: (err: { message: string; line?: number; col?: number } | null) => void
 }
 
 /** Mount a plain `<textarea>` editor into `parent`. `onChange` fires on every edit. */
@@ -25,7 +25,7 @@ export function mountTextarea(
   ta.setAttribute('autocomplete', 'off')
   ta.setAttribute('autocapitalize', 'off')
   ta.placeholder = placeholder
-  ta.addEventListener('input', () => onChange(ta.value))
+  ta.addEventListener('input', () => { onChange(ta.value); })
   // Tab inserts spaces instead of leaving the field (code-editor ergonomics).
   ta.addEventListener('keydown', (e) => {
     if (e.key === 'Tab') {
@@ -33,21 +33,24 @@ export function mountTextarea(
       const start = ta.selectionStart
       const end = ta.selectionEnd
       ta.value = `${ta.value.slice(0, start)}    ${ta.value.slice(end)}`
-      ta.selectionStart = ta.selectionEnd = start + 4
+      ta.selectionStart = start + 4
+      ta.selectionEnd = start + 4
       onChange(ta.value)
     }
   })
   parent.appendChild(ta)
+  const errBox = errorEl // a const alias: configuring the passed error element is the job
 
   return {
     setValue(src) { if (ta.value !== src) ta.value = src },
     getValue() { return ta.value },
     setReadOnly(ro) { ta.readOnly = ro; ta.classList.toggle('locked', ro) },
     setError(err) {
-      if (err === null) { errorEl.hidden = true; errorEl.textContent = ''; return }
-      const where = err.line !== undefined ? ` (line ${err.line}${err.col !== undefined ? `, col ${err.col}` : ''})` : ''
-      errorEl.hidden = false
-      errorEl.textContent = `⚠ ${err.message}${where}`
+      if (err === null) { errBox.hidden = true; errBox.textContent = ''; return }
+      const col = err.col === undefined ? '' : `, col ${err.col}`
+      const where = err.line === undefined ? '' : ` (line ${err.line}${col})`
+      errBox.hidden = false
+      errBox.textContent = `⚠ ${err.message}${where}`
     },
   }
 }

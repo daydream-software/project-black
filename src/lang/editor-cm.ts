@@ -4,7 +4,7 @@
 // language-aware parts — a stream highlighter from the keyword set, a CompletionSource
 // over the unlocked namespace, and a linter from checkProgram — are ours; CM is the shell.
 
-import { EditorState, Compartment } from '@codemirror/state'
+import { EditorState, Compartment, type Extension } from '@codemirror/state'
 import { EditorView, keymap, lineNumbers, highlightActiveLine, placeholder as cmPlaceholder } from '@codemirror/view'
 import { defaultKeymap, history, historyKeymap, indentWithTab } from '@codemirror/commands'
 import { StreamLanguage, HighlightStyle, syntaxHighlighting, indentUnit } from '@codemirror/language'
@@ -23,17 +23,22 @@ const KEYWORDS = new Set([
 const BUILTINS = new Set(['len', 'set', 'record', 'attack', 'use', 'flee', 'wait', 'move', 'rest', 'retreat', 'leave', 'explore'])
 
 // --- Highlighting: a tiny stream tokenizer (mirrors the lexer's categories) ---
+// CodeMirror's `stream.match` returns `string[] | boolean | null`; `matched` reduces it
+// to a plain boolean so the conditions are well-typed.
+function matched(r: string[] | boolean | null): boolean {
+  return r !== null && r !== false
+}
 const inscription = StreamLanguage.define({
   token(stream) {
     if (stream.eatSpace()) return null
-    if (stream.match('#')) { stream.skipToEnd(); return 'comment' }
-    if (stream.match(/^[0-9]+(\.[0-9]+)?/)) return 'number'
-    if (stream.match(/^"([^"\\]|\\.)*"/) || stream.match(/^'([^'\\]|\\.)*'/)) return 'string'
-    if (stream.match(/^[A-Za-z_]\w*/)) {
+    if (stream.eat('#') !== undefined) { stream.skipToEnd(); return 'comment' }
+    if (matched(stream.match(/^[0-9]+(?:\.[0-9]+)?/u))) return 'number'
+    if (matched(stream.match(/^"(?:[^"\\]|\\.)*"/u)) || matched(stream.match(/^'(?:[^'\\]|\\.)*'/u))) return 'string'
+    if (matched(stream.match(/^[A-Za-z_]\w*/u))) {
       const w = stream.current()
       if (KEYWORDS.has(w)) return 'keyword'
       if (BUILTINS.has(w)) return 'operatorKeyword' // builtins (attack/use/move/…)
-      if (/^[A-Z]/.test(w)) return 'typeName' // Skills / RoomType enums
+      if (/^[A-Z]/u.test(w)) return 'typeName' // Skills / RoomType enums
       return 'variableName'
     }
     stream.next()
@@ -99,6 +104,22 @@ function membersFor(chain: string[], kind: 'combat' | 'exploration'): string[] |
   return [...MEMBERS.unit, ...MEMBERS.collection, ...MEMBERS.room, ...MEMBERS.exit]
 }
 
+interface MatchToken { from: number; to: number; text: string }
+
+/** Completions for a `a.b.member` chain (the segment after the last dot); null when the
+ *  chain's type is unknown. */
+function memberCompletion(token: MatchToken, kind: 'combat' | 'exploration'): CompletionResult | null {
+  const parts = token.text.split('.')
+  const member = parts.pop() ?? ''
+  const opts = membersFor(parts, kind)
+  if (opts === null) return null
+  return {
+    from: token.to - member.length,
+    options: opts.map((label) => ({ label, type: 'property' })),
+    validFor: /\w*/u,
+  }
+}
+
 function makeCompletions(kind: 'combat' | 'exploration') {
   return (ctx: CompletionContext): CompletionResult | null => {
     // Computed per-call so newly-bought unlocks appear without a re-mount.
@@ -106,30 +127,22 @@ function makeCompletions(kind: 'combat' | 'exploration') {
     const keywordOpts = [...KEYWORDS]
       .filter((k) => !(k in KEYWORD_GATE) || u.has(KEYWORD_GATE[k]))
       .map((label) => ({ label, type: 'keyword' }))
-    const token = ctx.matchBefore(/[\w.]+/)
-    const text = token?.text ?? ''
-    if (text.includes('.')) {
-      const parts = text.split('.')
-      const member = parts.pop() ?? ''
-      const opts = membersFor(parts, kind)
-      if (opts === null) return null
-      return {
-        from: (token as { to: number }).to - member.length,
-        options: opts.map((label) => ({ label, type: 'property' })),
-        validFor: /\w*/,
-      }
+    const token = ctx.matchBefore(/[\w.]+/u)
+    if (token === null) {
+      if (!ctx.explicit) return null
+    } else if (token.text.includes('.')) {
+      return memberCompletion(token, kind)
     }
-    if (token === null && !ctx.explicit) return null
     return {
       from: token?.from ?? ctx.pos,
       options: [...globalsFor(kind).map((label) => ({ label, type: 'variable' })), ...keywordOpts],
-      validFor: /\w*/,
+      validFor: /\w*/u,
     }
   }
 }
 
 // --- Linter: compile-time check → an inline diagnostic -----------------------
-function makeLinter(entry: string | null) {
+function makeLinter(entry: string | null): Extension {
   return linter((view): Diagnostic[] => {
     const r = checkProgram(view.state.doc.toString(), entry)
     if (r.ok) return []
@@ -199,10 +212,12 @@ export function mountCodeMirror(
       view.dispatch({ effects: editable.reconfigure([EditorState.readOnly.of(ro), EditorView.editable.of(!ro)]) })
     },
     setError(err) {
-      if (err === null) { errorEl.hidden = true; errorEl.textContent = ''; return }
-      const where = err.line !== undefined ? ` (line ${err.line}${err.col !== undefined ? `, col ${err.col}` : ''})` : ''
-      errorEl.hidden = false
-      errorEl.textContent = `⚠ ${err.message}${where}`
+      const errBox = errorEl // a const alias: configuring the passed error element is the job
+      if (err === null) { errBox.hidden = true; errBox.textContent = ''; return }
+      const col = err.col === undefined ? '' : `, col ${err.col}`
+      const where = err.line === undefined ? '' : ` (line ${err.line}${col})`
+      errBox.hidden = false
+      errBox.textContent = `⚠ ${err.message}${where}`
     },
   }
 }
