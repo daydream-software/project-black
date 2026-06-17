@@ -319,11 +319,13 @@ engramNewBtn.addEventListener('click', () => {
 engramRenameBtn.addEventListener('click', () => {
   const e = activeEngram()
   if (e === undefined || editingLocked()) return
-  const name = window.prompt('Engram name', e.name)?.trim()
-  if (name === undefined || name === '') return
-  e.name = name
-  if (activeEngramKind === 'libs') syncLibraries()
-  renderEngramManager(); renderEngramLoaders(); persist()
+  promptModal('Rename engram', e.name, (raw) => {
+    const name = raw?.trim()
+    if (name === undefined || name === '') return
+    e.name = name
+    if (activeEngramKind === 'libs') syncLibraries()
+    renderEngramManager(); renderEngramLoaders(); persist()
+  })
 })
 engramDeleteBtn.addEventListener('click', () => {
   if (editingLocked() || activeEngram() === undefined) return
@@ -380,19 +382,23 @@ loadExEl.addEventListener('change', () => {
   renderExCodeBrain(); persist()
 })
 saveCombatBtn.addEventListener('click', () => {
-  const hero = roster[activeHero] as Hero | undefined
+  const hero = roster.at(activeHero)
   if (hero === undefined || editingLocked()) return
-  const name = window.prompt('Save combat engram as', uniqueEngramName('combat'))?.trim()
-  if (name === undefined || name === '') return
-  engrams.combat = upsertEngram(engrams.combat, name, hero.program ?? '')
-  renderEngramLoaders(); persist()
+  promptModal('Save combat engram as', uniqueEngramName('combat'), (raw) => {
+    const name = raw?.trim()
+    if (name === undefined || name === '') return
+    engrams.combat = upsertEngram(engrams.combat, name, hero.program ?? '')
+    renderEngramLoaders(); persist()
+  })
 })
 saveExBtn.addEventListener('click', () => {
   if (editingLocked()) return
-  const name = window.prompt('Save exploration engram as', uniqueEngramName('exploration'))?.trim()
-  if (name === undefined || name === '') return
-  engrams.exploration = upsertEngram(engrams.exploration, name, explorationProgram)
-  renderEngramLoaders(); persist()
+  promptModal('Save exploration engram as', uniqueEngramName('exploration'), (raw) => {
+    const name = raw?.trim()
+    if (name === undefined || name === '') return
+    engrams.exploration = upsertEngram(engrams.exploration, name, explorationProgram)
+    renderEngramLoaders(); persist()
+  })
 })
 
 // Upgrade the Workshop's combat + exploration editors to CodeMirror (lazy chunk; the
@@ -427,6 +433,11 @@ const titleChangelogBtn = requireElement('title-changelog', HTMLButtonElement)
 const modalChangelogEl = requireElement('modal-changelog', HTMLDivElement)
 const changelogBodyEl = requireElement('changelog-body', HTMLDivElement)
 const changelogVersionEl = requireElement('changelog-version', HTMLSpanElement)
+const modalPromptEl = requireElement('modal-prompt', HTMLDivElement)
+const promptTitleEl = requireElement('prompt-title', HTMLHeadingElement)
+const promptInputEl = requireElement('prompt-input', HTMLInputElement)
+const promptOkBtn = requireElement('prompt-ok', HTMLButtonElement)
+const promptCancelBtn = requireElement('prompt-cancel', HTMLButtonElement)
 
 musicBtn.addEventListener('click', () => {
   void toggleMusic().then((muted) => {
@@ -1288,6 +1299,34 @@ titleChangelogBtn.addEventListener('click', openChangelog)
 modalChangelogEl.addEventListener('click', (e) => {
   const t = e.target
   if (t === modalChangelogEl || (t instanceof HTMLElement && t.closest('[data-close-modal]') !== null)) closeChangelog()
+})
+
+// --- A small in-app input dialog (replaces window.prompt for naming engrams) ----
+// Callback-style (not promise-returning) so the callers stay plain sync handlers.
+let promptCallback: ((value: string | null) => void) | null = null
+/** Show the input modal seeded with `initial`; calls `onResult` with the entered text on
+ *  OK, or null on Cancel / Escape / backdrop. One dialog at a time. */
+function promptModal(title: string, initial: string, onResult: (value: string | null) => void): void {
+  promptTitleEl.textContent = title
+  promptInputEl.value = initial
+  modalPromptEl.hidden = false
+  promptInputEl.focus()
+  promptInputEl.select()
+  promptCallback = onResult
+}
+function closePrompt(value: string | null): void {
+  if (promptCallback === null) return
+  modalPromptEl.hidden = true
+  const cb = promptCallback
+  promptCallback = null
+  cb(value)
+}
+promptOkBtn.addEventListener('click', () => { closePrompt(promptInputEl.value) })
+promptCancelBtn.addEventListener('click', () => { closePrompt(null) })
+modalPromptEl.addEventListener('click', (e) => { if (e.target === modalPromptEl) closePrompt(null) })
+promptInputEl.addEventListener('keydown', (e) => {
+  if (e.key === 'Enter') { e.preventDefault(); closePrompt(promptInputEl.value) }
+  else if (e.key === 'Escape') { e.preventDefault(); closePrompt(null) }
 })
 
 // The Workshop & Library are entered by clicking their buildings in the town scene.

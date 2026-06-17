@@ -137,6 +137,22 @@
         </div>
       </div>
     </div>
+
+    <!-- A small reusable input dialog (replaces window.prompt for naming engrams). -->
+    <div id="modal-prompt" class="modal" hidden>
+      <div class="modal-panel panel prompt-panel">
+        <header class="modal-head">
+          <h2 id="prompt-title">Name</h2>
+        </header>
+        <div class="modal-body">
+          <input id="prompt-input" class="prompt-input" type="text" autocomplete="off" autocapitalize="off" spellcheck="false" />
+          <div class="prompt-actions">
+            <button id="prompt-cancel" class="link-btn">Cancel</button>
+            <button id="prompt-ok" class="big-btn">OK</button>
+          </div>
+        </div>
+      </div>
+    </div>
     <script type="module" src="/src/main.ts"></script>
   </body>
 </html>

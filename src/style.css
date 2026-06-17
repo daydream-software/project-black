@@ -313,6 +313,36 @@ body {
   line-height: 1.45;
 }
 
+/* --- The small input dialog (engram naming) --- */
+.prompt-panel {
+  max-width: 420px;
+}
+
+.prompt-input {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 9px 11px;
+  font-size: 14px;
+  font-family: ui-monospace, "SF Mono", "Cascadia Code", Menlo, monospace;
+  background: #0c1116;
+  color: #e6eef2;
+  border: 1px solid #2a3340;
+  border-radius: 6px;
+}
+
+.prompt-input:focus {
+  outline: none;
+  border-color: #6ee07f;
+}
+
+.prompt-actions {
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
+  gap: 12px;
+  margin-top: 16px;
+}
+
 /* Floating panel (the Journal): movable + resizable, NO backdrop — the world
    stays visible and interactive behind it. */
 .float-panel {
