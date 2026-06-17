@@ -1,7 +1,8 @@
 # Combat System — the stat model
 
-> The canonical "what & why" is [VISION.md](VISION.md); the rule *language* is
-> [VOCABULARY.md](VOCABULARY.md). This file defines the **stats** — the numeric
+> The canonical "what & why" is [VISION.md](VISION.md); the rule *language* is now
+> the code-based [INSCRIPTION-LANG.md](INSCRIPTION-LANG.md) (which superseded the slot
+> grammar in [VOCABULARY.md](VOCABULARY.md)). This file defines the **stats** — the numeric
 > substrate that combat, exploration cadence and balance all ride on. It is a
 > design reference, not an implementation log; **all six stats are now wired**
 > in `src/sim.ts` (see [Where the code is today](#where-the-code-is-today)).
@@ -16,13 +17,13 @@ the stats are and what each one governs**.
 
 Two principles drive the whole model:
 
-1. **Stats drive cadence.** In an AFK game you *watch* rather than steer, so the
+1. **Stats drive cadence.** It's idle-but-watched — you *watch* rather than steer, so the
    tempo of combat and exploration — set by the stats — *is* the core feel. We
    therefore derive stats **backwards from target cadence** (decide how long a
    trash fight / a room-hop / a boss *should* take, then solve for the numbers),
    instead of guessing constants and balancing after the fact.
 2. **Stats govern cadence & attrition; mechanics govern walls.** Raw stat growth
-   (from loot / grind) makes you clear faster and delve deeper — the AFK reward.
+   (from loot / grind) makes you clear faster and delve deeper — the idle-but-watched reward.
    But a **wall** is a *mechanic* whose answer is a **programmed response**, not a
    stat threshold. This is how [Design rule #1](VISION.md) stays structural:
    waiting longer buys cadence, never a breakthrough. *(How exactly stat-growth
@@ -268,7 +269,7 @@ This replaces today's fixed order (heroes then enemies, round-robin).
 |---|---|---|
 | Might | `might` → `attackDamage = max(1, might − target.ward)` | ✅ wired |
 | Ward | `ward` → flat reduction in `attackDamage`, floored at `MIN_DAMAGE = 1` | ✅ wired |
-| Fortitude | `fortitude` → `maxHp = poolFor(fortitude) = fortitude × HP_PER_FORTITUDE` (4) | ✅ wired |
+| Fortitude | `fortitude` → `maxHp = poolFor(fortitude) = fortitude × HP_PER_FORTITUDE` (5) | ✅ wired |
 | Attunement | `attunement` → `healAmount` (**Mend** potency); `Defend` still halves a hit | ✅ wired |
 | Poise | `poise` → Strain budget: each `Mend` adds `MEND_STRAIN`; `overdraw()` past Poise bites the caster's Fortitude. Persists across the delve, cools at the tower. | ✅ wired |
 | Celerity | `celerity` → **CTB scheduler**: per-unit `charge`; `recovery(cel) = round(SCHED_BASE / max(1,cel))`; the least-charge unit acts next (ties by index). Higher Celerity = more turns (12:10:8 → 6:5:4). | ✅ wired |
@@ -284,10 +285,15 @@ bounded and a healer-less party gets nothing. The heal skill is **Mend** (the
 `mend` SkillId; "Cure" is retired). **Celerity** now drives an FFX-style **CTB
 scheduler** (`step`/`upcomingTurns` share `nextActor`; round-robin is gone),
 surfaced as a **turn-order carousel** in combat (`docs/progress/ctb-carousel.png`)
-— the slow Warden shows up far less often than the fast Mender. The Warden was
-re-tuned (Fortitude 11→18) to survive the fast Mender's front-load so the slice-4
-discriminator still holds under CTB. Exact cadence-target tuning (action counts,
-`MEND_STRAIN`/Poise) remains the deferred balance pass.
+— the slow Warden shows up far less often than the fast Mender. The Hex Warden (the
+slice-4 wall) currently carries `Might 6 / Ward 0 / Fortitude 12 / Celerity 4`
+(`content/monsters/hex-warden.ts`); a separate level-1 boss (the **Ruin Keeper**,
+`content/monsters/ruin-keeper.ts`) is the beatable first wall the progression gate
+checks against. A first balance pass shipped against the **level-1 Celerity cliff**
+(a golem authored with Celerity 0 was softlocked): golems now get **flat floors on
+top of their authored stats** (`sim.ts`, ~line 490 — `0`-Celerity golems still act),
+and level-1 monsters were slowed so a fresh party can clear it. Exact cadence-target
+tuning (action counts, `MEND_STRAIN`/Poise) remains the deferred balance pass.
 
 The slice-4 `counterHeal` trait (Hex Warden) is an **ad-hoc mechanic**, not a stat
 — exactly the kind of thing the wall taxonomy (deferred) will systematise.

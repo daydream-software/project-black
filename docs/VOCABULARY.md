@@ -1,4 +1,16 @@
-# Vocabulary — the language you program units in
+# Vocabulary — the rule grammar (conceptual reference)
+
+> **Status (2026-06-16): the slot *authoring UI* this doc describes was retired.**
+> Golems are now programmed in code — the **Inscription Language**
+> ([INSCRIPTION-LANG.md](INSCRIPTION-LANG.md)) — not by composing dropdowns. This file
+> stays as the **canonical reference for the rule *grammar*** (the **Procedure /
+> Protocol / State / Maneuver** vocabulary, still canonical per CLAUDE.md): the
+> concepts the code language expresses, and the `decide()` semantics it preserves
+> (first match wins, filter-then-pick, subject = target). The §"Planned data model"
+> and §"Currently shipped subset" sections below are **historical** — that refactor
+> shipped, then the editor moved to code. `protocol.ts` still holds this Protocol
+> model + compiler internally (monsters run Procedures; the language compiles to it),
+> but a player no longer authors slots.
 
 A unit's behaviour is an ordered list of rules. Each rule is:
 
@@ -12,7 +24,7 @@ A unit's behaviour is an ordered list of rules. Each rule is:
 - **Maneuver** = `Command` + `Object` (a composite action, mirroring the State).
   Commands: `Attack`, `Use Skill`, `Use Item`, `Flee`. `Attack`/`Flee` take no
   Object; `Use Skill`/`Use Item` name which one (the skill/item **is** the Object).
-  e.g. `Attack`, `Use Skill · Cure`, `Use Skill · Fire`, `Use Item · Potion`, `Flee`.
+  e.g. `Attack`, `Use Skill · Mend`, `Use Skill · Fire`, `Use Item · Potion`, `Flee`.
 - Grammar symmetry: the State's **Subject** is *who* is acted on; the Maneuver's
   **Object** is *what* is wielded.
 - Rules are scanned top-to-bottom; the **first State that holds wins** (priority
@@ -83,8 +95,8 @@ the **State's subject** (the matched unit). The four commands:
 | **Fire / Ice / Lightning** | Enemy | elemental; weaknesses later | ⏳ |
 | **Finisher** | Enemy | bonus vs low-HP targets | ⏳ |
 | **Defend** | Self | halves incoming until next turn | ✅ |
-| **Cure** | Self / Ally | heal | ✅ |
-| **Greater Cure** | Self / Ally | bigger heal | ⏳ |
+| **Mend** | Self / Ally | heal (was "Cure"; renamed) | ✅ |
+| **Greater Mend** | Self / Ally | bigger heal | ⏳ |
 | **Revive** | Ally (downed) | | ⏳ |
 | **Cleanse** | Self / Ally | remove a status | ⏳ |
 | **Shield / Barrier** | Self / Ally | prevent incoming damage | ⏳ |
@@ -94,7 +106,7 @@ the **State's subject** (the matched unit). The four commands:
 | **Flee** | Self | disengage | ⏳ |
 | **Wait** | Self | skip to build a resource | ⏳ |
 
-> A Maneuver whose skill doesn't fit the State's subject (e.g. `Cure` on an
+> A Maneuver whose skill doesn't fit the State's subject (e.g. `Mend` on an
 > `Enemy` subject) simply does nothing — a "dead" rule. The editor can warn, but
 > composition stays free.
 
@@ -172,15 +184,21 @@ filter-then-pick:** candidates of the subject class are filtered by the predicat
 *then* the pick (`any`/`nearest`/`lowestHp`) selects among those that pass; an
 empty result means the State does not hold.
 
-## Currently shipped subset (slices 1–3)
+## The combat vocabulary that exists today
 
-A 2-hero party (Sentinel, Mender — internally still `makeWarrior`/`makeHealer`)
-fights a group of three slimes; each unit runs
-its **own** Procedure, units act in turn order, and the fight resolves to
-victory/defeat.
+> Historical note: this started as a fixed 2-hero party (slices 1–3); the team is now
+> **player-authored point-buy golems** (no predefined units — see
+> [COMBAT-SYSTEM.md](COMBAT-SYSTEM.md)), and behaviour is authored in code
+> ([INSCRIPTION-LANG.md](INSCRIPTION-LANG.md) §3 maps each item below to its code form,
+> e.g. `Ally · lowest HP` → `senses.allies.lowest_hp`). Each golem runs its **own**
+> Procedure; units act on the **CTB** schedule (Celerity-ordered, not round-robin).
+
+The vocabulary items wired in `src/content/` (the catalog the language and the sim
+share):
 
 - **Subjects:** `Self`, `Ally · any`, `Ally · lowest HP`, `Enemy · nearest`,
-  `Enemy · lowest HP`.
+  `Enemy · lowest HP`, `Enemy · most HP` (the last ships **locked** — bought with
+  Insight at the Library).
 - **Predicates:** `Always`, `HP < 30%`, `HP < 50%`, `HP = 100%`.
-- **Maneuvers:** `Attack`, `Use Skill · Cure`, `Use Skill · Defend`, `Flee`
-  (modelled, no effect yet).
+- **Maneuvers:** `Attack`, `Use Skill · Mend` (Mend ships **locked**),
+  `Use Skill · Defend`, `Flee` (modelled, no effect yet).

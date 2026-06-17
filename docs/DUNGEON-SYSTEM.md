@@ -49,10 +49,12 @@ healthy, avoid corridor packs when hurt, beeline the boss only when ready”). Y
   enemy-free path, or accepts the fight). Routing is the new strategic surface.
 - **Flee is always possible**, any room/corridor — it ends combat (and per existing
   rules, sends the delve back).
-- **Traps live in corridors** (the deferred `DelveEvent`): a corridor **owns** a trap
-  reaction (the ownership model we’d left open — *cells/corridors own reactions, units
-  don’t*). Entering/traversing a corridor emits a delve event; the corridor’s trap
-  reacts. Mirrors combat reactions (id-dispatched, serialisable refs).
+- **Traps live in corridors** *(SHIPPED — `content/exploration/traps/spike-trap.ts`)*:
+  a corridor **owns** a trap reaction (the ownership model we’d left open —
+  *cells/corridors own reactions, units don’t*). Traversing a corridor fires the
+  corridor’s trap. Mirrors combat reactions (id-dispatched, serialisable refs). *(The
+  general `DelveEvent` bus is still informal — traps fire on traversal directly rather
+  than through a combat-reaction-style event union.)*
 
 ### Fog of war + the type peek
 
@@ -86,10 +88,19 @@ This is the **content** model — everything by-id, glob-assembled, serialisable
 the combat content: a level is a content file declaring its topology + slots + pool;
 monsters/buffs/loot/traps are content referenced by id.
 
-## Exploration vocabulary (the routing decisions) — proposed
+## Exploration vocabulary (the routing decisions)
 
-The grammar stays `WHEN <Subject + Predicate> → DO <Move>`. The rework enriches it so
-routing is programmable (to refine in the vocab slice):
+> Authoring moved to **code** ([INSCRIPTION-LANG.md](INSCRIPTION-LANG.md) §4): the
+> exploration brain is an `Engram.exploration_turn:` block returning a Move, not a
+> slot list. The conceptual `WHEN <Subject + Predicate> → DO <Move>` grammar below
+> still describes the *semantics* the code expresses (and the `decideExploration`
+> engine path still consumes the same Subjects/Predicates/Moves from
+> `content/exploration/` as the empty-program fallback + for monster-free routing).
+> **Shipped** content today: Subjects `target`/`unexplored`/`exit`/`loot-room`/`buff-room`;
+> Predicates `always`/`known`/`party-hp-lt-30`/`party-hp-lt-50`; Moves `head`/`retreat`/`rest`.
+> The richer items below (corridor-with-enemies routing, `avoid`) are **not built yet**.
+
+The rework enriches the grammar so routing is programmable:
 
 - **Subjects** (the “what” a rule targets, peeked-or-known): `Connected room · of type
   [fight/loot/buff/boss/???]`, `Connected room · unexplored`, `Boss room` (once known),
@@ -104,13 +115,15 @@ These give real programs: “WHEN connected `loot` room known AND HP>60% → hea
 it”, “WHEN corridor with enemies AND HP<40% → avoid”, “WHEN `boss` known AND HP>80% →
 head toward (shortest)”, “else → explore unknown”.
 
-## Combat integration
+## Combat integration *(SHIPPED)*
 
-A `fight`/`boss` room builds its encounter from the **level’s monster pool** (chosen
-by the seeded fill), not a hardcoded `'pack'`/`'warden'`. This kills the current
-`delve.ts` hardcode and gives **real per-level bosses + varied packs** for free — the
-monsters are already content (`content/monsters/`); this just makes *which spawn where*
-content too (the level pool + the room’s rolled encounter).
+A `fight`/`boss` room builds its encounter from the **level’s monster pool**, not a
+hardcoded `'pack'`/`'warden'`. `delve.ts`’s `rollEncounter` draws 2–3 monsters from
+`level.monsterPool` for a `fight` and uses `level.boss` for a `boss` room (both by id
+into `content/monsters/`). Two levels exist: **The Ruin** (`lvl-1`, boss
+**Ruin Keeper** — the beatable first wall) and **The Vault** (`lvl-2`, boss the
+**Hex Warden** — moved off level 1). So per-level bosses + varied packs are real;
+adding a monster or a level is content, never an engine edit.
 
 ## Economy tie-in (see ROADMAP slice 10/11)
 
@@ -142,16 +155,24 @@ déplacement qui change.”
 
 ## Slice plan (riskiest unknown first — see CLAUDE.md method)
 
+> **Status: slices 1–6 all LANDED on `main` + deployed (2026-06-15).** The whole
+> room-graph rework shipped; what stays deferred is called out per-slice below
+> (corridor *enemies* + the loot economy). Each slice was proven in-browser.
+
 Each slice proven in-browser, not just by tests.
 
-1. **Graph map model + hybrid generation** *(the foundation; replaces the cell grid)*.
-   Pure `dungeon.ts` rewrite: a level’s authored topology/slots/pool → a seeded
-   **room graph** (typed nodes, corridor edges), serialisable. Connectivity + the
-   authored mandatory rooms guaranteed (tests pin determinism + the skeleton).
-2. **Delve over the graph** — `delve.ts` navigates rooms/corridors; fog + 1-hop type
-   peek; room fights from the pool; flee. (Combat sim unchanged.)
-3. **Routing exploration vocabulary** — the new Subjects/Predicates/Moves (content),
-   making avoidance + type-routing programmable; the editor offers them.
+1. **Graph map model + hybrid generation** *(DONE — the foundation; replaced the cell grid)*.
+   Lives in `src/mapgraph.ts` (NOT `dungeon.ts` — that was the retired grid):
+   `generateGraph(level, seed)` turns a level’s authored topology/slots/pool into a
+   seeded **room graph** (typed nodes, corridor edges), serialisable. Connectivity +
+   the authored mandatory rooms guaranteed (`mapgraph.test.ts` pins determinism + the
+   skeleton).
+2. **Delve over the graph** *(DONE)* — `delve.ts` navigates rooms/corridors; fog + 1-hop
+   type peek; room fights from the pool; flee. (Combat sim unchanged.)
+3. **Routing exploration vocabulary** *(DONE — type-routing; corridor-enemy avoidance
+   still deferred)* — the new Subjects/Predicates/Moves (content, `content/exploration/`)
+   make type-routing programmable. Authoring is now **code** (the slot editor it
+   originally targeted was retired — see the §"Exploration vocabulary" banner).
 4. **Room-type content** *(DONE)* — `buff` rooms grant a run-scoped boon on entry
    (rolled from the level's `buffPool`, seeded); buffs are standalone content
    (`content/exploration/buffs/`, glob → `BUFFS`/`BUFFS_BY_ID`, the trap/reaction twin).
@@ -177,10 +198,12 @@ Each slice proven in-browser, not just by tests.
      (so a "head for loot" rule reaches it) — but the frontier explorer still ignores it,
      so reaching a secret room stays a deliberate, programmed choice. Render unified: the
      minimap's "known" now IS `navigation.isKnown`, so display + routing can't disagree.
-5. **Corridor traps (`DelveEvent`)** — corridor-owned trap reactions, the delve event
-   bus (the combat-reaction twin).
-6. **Rendering adaptation** — first-person scrying + room-graph minimap over the new
-   model.
+5. **Corridor traps** *(DONE)* — corridor-owned trap reactions
+   (`content/exploration/traps/spike-trap.ts`), fired on traversal. (A formal
+   `DelveEvent` bus mirroring combat reactions was *not* needed — traps fire directly.)
+6. **Rendering adaptation** *(DONE)* — first-person scrying + a fixed-size, fogged,
+   room-graph minimap centred on the current room (✓ = cleared/resolved, not merely
+   entered) over the new model.
 
 Riskiest first = (1) the graph + hybrid generation: it’s the substrate everything else
 hangs on, and the biggest departure from today’s code.

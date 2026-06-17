@@ -54,7 +54,7 @@ touches the pure sim)**; sprites are generated in code.
 - **Prove changes by running the app** (browser screenshot), not by green tests
   alone. Tests must fail when logic breaks — cover boundaries, and mutation-check
   (flip the logic, see red, restore).
-- Keep game logic in `src/sim.ts`/`delve.ts`/`dungeon.ts` as **pure,
+- Keep game logic in `src/sim.ts`/`delve.ts`/`mapgraph.ts` as **pure,
   deterministic** functions; the renderer (`src/render.ts`) is a pure view. This
   keeps tests honest and keeps a delve reproducible so the journal is trustworthy.
   (There is **no offline progress** — a delve resumes in real time, not by

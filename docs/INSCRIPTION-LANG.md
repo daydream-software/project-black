@@ -1,7 +1,7 @@
 # Inscription Language — code-based golem brains (DESIGN, not implemented)
 
 > **Status (2026-06-16): BUILT — slices 1–4 + editor (A) + migration (B).** `src/lang/`,
-> 156 tests green, typecheck + build clean, **in-app verified** (Playwright: clean boot,
+> 171 tests green, typecheck + build clean, **in-app verified** (Playwright: clean boot,
 > 3 CodeMirror editors mount, edit→save round-trip, "Fill from slots" generates code).
 > Combat + exploration interpreters drive the real engine via DI hooks; `import lib`
 > works (shared library); the Workshop has combat / exploration / library code editors

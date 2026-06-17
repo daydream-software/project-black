@@ -7,7 +7,7 @@
 
 You are not a hero — you **program** the heroes' brains: how they **fight** and
 how they **delve**, each a **Procedure** (an ordered list of **Protocols** — one
-rule each) in one `WHEN State → DO X` grammar. The game is a **programmable, AFK, procedural
+rule each) in one `WHEN State → DO X` grammar. The game is a **programmable, idle-but-watched, procedural
 dungeon-crawler roguelite** (Nevergrind Online's pacing × Gladiabots × FF12
 gambits): from **town** you program and manage, then **descend**; the party
 **auto-delves** a seeded dungeon (navigate, fight packs, loot, hunt the target);
@@ -20,9 +20,11 @@ A wall falls only to a better program/build — never to waiting.
    no separate "build phase" bolted onto a "fight phase" (the seam that killed
    earlier attempts).
 2. **Intense ↔ relaxed.** Calm tinkering with logic, punctuated by tense runs.
-3. **AFK delivers the reward; the program unlocks progress.**
-   > **Design rule #1:** staying AFK must *never* beat a wall by waiting — only by
-   > improving the Procedure. Waiting longer gives loot, not breakthroughs.
+3. **Automation you watch, not idle-farming; the program unlocks progress.**
+   > **Design rule #1:** staying idle must *never* beat a wall by waiting — only by
+   > improving the Procedure. Waiting longer gives loot, not breakthroughs. (There is
+   > **no offline progress** — a delve runs in real time while open and waits where
+   > it left off.)
 4. **Grows over time.** New conditions, actions, enemies, mechanics stack as
    modular content.
 5. **Static & tiny.** Ships on GitHub Pages, no server. Solo + local co-op first;
@@ -82,7 +84,7 @@ rule), and landing the branch on `main`.
 
 ## Planned slices — toward the dungeon-crawler ([VISION.md](VISION.md))
 
-The vision pivoted (2026-06-09) to a **programmable, AFK, procedural
+The vision pivoted (2026-06-09) to a **programmable, idle-but-watched, procedural
 dungeon-crawler roguelite**. Slices 1–6 + the run-loop POC built the combat brain,
 the autonomous-run spine, save/catch-up and a live deploy — the forerunners. These
 slices grow that into the game: a second **exploration** brain, a procedural
@@ -260,14 +262,45 @@ capped). Dungeons are re-playable config-driven levels (varied per seed).
 of levels, their configs / order / gating, which vocab unlocks at what cost; gear /
 the capped common currency (slice 11+); theme/fiction & resource naming.
 
-> **Balance/tuning (a late pass, not a blocker):** slice 10's loop is verified
-> system-wise (via injection), but the starting party can't reliably clear level 1
-> (boss = the **Hex Warden**, a *wall* from slice 4 — too hard for a first level).
-> So a real player can't yet earn Insight by playing. That's **tuning** — done in a
-> dedicated balance pass once the content exists (you don't tune one level in
-> isolation only to re-tune it against the full progression). It gates a *player
-> playtest*, not further development. Cheap when we get to it (a basic level-1 boss
-> instead of the Warden).
+> **Balance/tuning — a first pass SHIPPED (2026-06-16).** The slice-10 worry (a fresh
+> party couldn't clear level 1 because its boss was the slice-4 **Hex Warden**) is
+> resolved: level 1 (**The Ruin**) now has a beatable attack-only boss, the
+> **Ruin Keeper**, and the Hex Warden moved to level 2 (**The Vault**). A
+> **level-1 Celerity-cliff** softlock (a golem authored with Celerity 0 never acted)
+> was fixed with flat stat-floors on golems + slowed level-1 monsters. A real player
+> can now build → clear level 1 → earn Insight, verified in-app. Exact cadence-target
+> tuning across the full progression remains the deferred late pass.
+
+## Post-slice-10 — the Inscription Language (authoring becomes code) ✅ *(done & verified)*
+
+The biggest change since the dungeon-graph rework, **landed on `main` + deployed
+(2026-06-16)**: the slot-dropdown Procedure editor was **retired** and golem brains are
+now **authored in code** — the **Inscription Language**, a small Python subset run by a
+pure tree-walking interpreter (`src/lang/`). Design + build state live in
+[INSCRIPTION-LANG.md](INSCRIPTION-LANG.md); this is the build-order summary.
+
+- **The interpreter** (`lang/lexer.ts` → `parser.ts` → `interp.ts`): a reactive,
+  per-turn policy `senses → action` (no program counter ⇒ no VM state in the save ⇒
+  determinism is free). Fuel-bounded; runtime errors are per-turn recoverable. Combat
+  (`lang/combat.ts`) + exploration (`lang/explore.ts`) bind the namespace and drive the
+  pure `sim`/`delve` via **DI hooks** (`setProgramDecider` / `setExplorationProgramDecider`) — the
+  sim never imports the language. The slot **engine** (`protocol.ts`) stays as the sim's
+  internal model: monsters run Procedures, and an empty program falls back to it.
+- **The editor** (`lang/editor-cm.ts`): a lazy-loaded **CodeMirror 6** surface in the
+  **Workshop** with a language mode, an unlocked-namespace completion source, and a
+  linter (syntax + gate errors) — the one scoped exception to "no runtime deps".
+- **Engrams** (`47d87b9`): named, reusable programs authored in the **Library** and
+  copied onto golems in the Workshop (copy-on-assign). The entry point is a declarative
+  `Engram.combat_turn:` / `Engram.exploration_turn:` block (NOT `def` — which frees `def`
+  to be a gated feature).
+- **Insight-gated progression** (`gate.ts`, `52c9fa1`): the language starts **minimal**
+  — `if`/loops/`def`/`import`/comprehensions **and** `Skills.Mend` are LOCKED; spend
+  Insight at the Library to unlock. A program using a locked construct fails LOUD
+  (delve → `stuck`, no silent fallback). Verified end-to-end in-app: clear level 1 →
+  +1 Insight → buy `lang-if` → `if` compiles while `for` stays locked, persisting across
+  reload.
+- **Save VERSION 4**: existing slot saves migrate slots→source text on load
+  (`lang/migrate.ts`); new golems seed a default program.
 
 ### Slice 11 — Exploration depth + the chain lever + room variety
 Richer exploration vocabulary (threat estimation; loot / rest / elite / boss
