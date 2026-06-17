@@ -1,6 +1,19 @@
 {
   "versions": [
     {
+      "version": "0.1.1",
+      "date": "2026-06-17",
+      "title": "New stuff!",
+      "New": [
+        "in-app input modal for engram naming + gate lint in the build",
+        "generate changelog.json + CHANGELOG.md from git (npm run changelog)",
+        "the journal is record()-only — the engrams' voice",
+        "in-game \"What's New\" panel on version change"
+      ],
+      "Fixes": [],
+      "Improvements": []
+    },
+    {
       "version": "0.1.0",
       "date": "2026-06-17",
       "title": "The first build",

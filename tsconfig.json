@@ -12,7 +12,8 @@
     "noFallthroughCasesInSwitch": true,
     "noEmit": true,
     "isolatedModules": true,
-    "skipLibCheck": true
+    "skipLibCheck": true,
+    "types": ["node"]
   },
-  "include": ["src"]
+  "include": ["src", "scripts"]
 }

@@ -1,7 +1,7 @@
 {
   "name": "project-black",
   "private": true,
-  "version": "0.1.0",
+  "version": "0.1.1",
   "type": "module",
   "scripts": {
     "dev": "vite",
@@ -12,6 +12,7 @@
     "changelog": "vite-node scripts/gen-changelog.ts"
   },
   "devDependencies": {
+    "@types/node": "^25.9.3",
     "eslint": "^9.39.4",
     "eslint-config-love": "^154.0.0",
     "typescript": "^5.6.3",
