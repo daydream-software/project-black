@@ -753,6 +753,24 @@ canvas {
   color: #ff6b6b;
 }
 
+/* `record(...)` debug lines from a golem's brain — a muted, console-like entry. */
+.entry.note {
+  border-left-color: #5a6072;
+  border-left-style: dashed;
+  background: #101018;
+  opacity: 0.92;
+}
+
+.entry.note .rule {
+  color: #8b90a0;
+  font-style: italic;
+}
+
+.entry.note .detail {
+  font-family: ui-monospace, "SF Mono", "Cascadia Code", Menlo, monospace;
+  color: #aeb6c7;
+}
+
 .entry .turn {
   color: #8b90a0;
 }

@@ -95,6 +95,20 @@ describe('exploration program navigator', () => {
     expect(tally.cleared ?? 0).toBeGreaterThanOrEqual(18) // reliably clears lvl-1 attack-only
   })
 
+  it('record(...) in an exploration brain surfaces as journal note entries', () => {
+    const RECORDING =
+      'Engram.exploration_turn:\n' +
+      '    record("at", senses.room.sigil)\n' +
+      '    return explore()\n'
+    const s = fresh(RECORDING)
+    const d = decideExploration(s)
+    expect(d.notes?.length).toBe(1)
+    expect(d.notes?.[0]).toMatch(/^at /)
+    // stepping folds the recorded line into the journal as a `note` entry
+    const after = stepDelve(s)
+    expect(after.log.some((e) => e.kind === 'note' && e.detail.startsWith('at '))).toBe(true)
+  })
+
   it('an explicit leave() ends the delve as left', () => {
     let s = startDelve([makeWarrior([]), makeHealer([])], 1234, undefined, LEVELS[0],
       'def exploration_turn(senses):\n    return leave()\n')

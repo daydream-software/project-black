@@ -20,7 +20,7 @@ const KEYWORDS = new Set([
   'def', 'return', 'if', 'elif', 'else', 'for', 'while', 'in', 'and', 'or', 'not',
   'None', 'True', 'False', 'break', 'continue', 'pass', 'global', 'import', 'Engram',
 ])
-const BUILTINS = new Set(['len', 'set', 'print', 'attack', 'use', 'flee', 'wait', 'move', 'rest', 'retreat', 'leave', 'explore'])
+const BUILTINS = new Set(['len', 'set', 'record', 'attack', 'use', 'flee', 'wait', 'move', 'rest', 'retreat', 'leave', 'explore'])
 
 // --- Highlighting: a tiny stream tokenizer (mirrors the lexer's categories) ---
 const inscription = StreamLanguage.define({
@@ -72,7 +72,7 @@ const KEYWORD_GATE: Record<string, string> = {
 }
 
 function globalsFor(kind: 'combat' | 'exploration'): string[] {
-  const shared = ['len', 'set', 'print', 'wait', 'Memory', 'True', 'False', 'None']
+  const shared = ['len', 'set', 'record', 'wait', 'Memory', 'True', 'False', 'None']
   return kind === 'combat'
     ? ['me', 'senses', 'attack', 'use', 'flee', 'Skills', ...shared]
     : ['senses', 'party', 'explore', 'move', 'rest', 'retreat', 'leave', 'RoomType', ...shared]

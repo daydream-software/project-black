@@ -90,7 +90,7 @@ export type DelveStatus = 'delving' | 'cleared' | 'dead' | 'stuck' | 'left'
 
 export interface DelveLogEntry {
   turn: number
-  kind: 'explore' | 'enter' | 'combat' | 'clear' | 'end' | 'trap' | 'boon'
+  kind: 'explore' | 'enter' | 'combat' | 'clear' | 'end' | 'trap' | 'boon' | 'note'
   reason: string
   detail: string
 }
@@ -166,6 +166,9 @@ export interface ExDecision {
   /** Updated, serialisable party Memory when a code navigator decided this step
    *  (opaque JSON owned by the language module). Absent on the slot path. */
   memory?: unknown
+  /** Lines the exploration brain emitted via `record(...)` this turn — folded into
+   *  the journal as `note` entries (debug console). Absent on the slot path. */
+  notes?: string[]
 }
 
 /** A code navigator for the party (the Inscription exploration interpreter), injected
@@ -237,6 +240,15 @@ function logged(s: DelveState, turn: number, e: Omit<DelveLogEntry, 'turn'>): De
   return [...s.log, { turn, ...e }].slice(-60)
 }
 
+/** Fold a turn's `record(...)` lines into the journal as `note` entries, BEFORE the
+ *  turn's own action entry — so the brain's debug lines read above what it then did.
+ *  Returns `s` unchanged when there are no notes. */
+function withNotes(s: DelveState, turn: number, notes: readonly string[] | undefined): DelveState {
+  if (notes === undefined || notes.length === 0) return s
+  const entries: DelveLogEntry[] = notes.map((line) => ({ turn, kind: 'note', reason: 'record', detail: line }))
+  return { ...s, log: [...s.log, ...entries].slice(-60) }
+}
+
 /** The concrete type of a room id, or undefined if it isn't in the graph. */
 function roomType(s: DelveState, id: string): RoomType | undefined {
   return s.graph.rooms.find((r) => r.id === id)?.type
@@ -275,9 +287,11 @@ function applyEnemyBuffs(battle: GameState, buffIds: string[]): GameState {
 
 /** Mid-fight: advance the battle one action; on a finish, resolve the room — a wipe
  *  (dead), a pack cleared, or the objective slain (delve cleared). */
-function advanceCombat(s: DelveState, turn: number, current: GameState): DelveState {
+function advanceCombat(s0: DelveState, turn: number, current: GameState): DelveState {
   const battle = step(current)
   const party = battle.units.filter((u) => u.side === 'hero').map((u) => ({ ...u }))
+  // a code brain's `record(...)` lines this combat step → journal `note` entries
+  const s = withNotes(s0, turn, battle.stepNotes)
   if (battle.outcome === 'ongoing') {
     return { ...s, battle, turn, log: logged(s, turn, { kind: 'combat', reason: 'fighting', detail: battle.log.at(-1)?.detail ?? '' }) }
   }
@@ -348,8 +362,10 @@ function springTraps(party: Combatant[], corridor: Corridor | undefined, turn: n
 function advanceMove(s0: DelveState, turn: number): DelveState {
   const decision = decideExploration(s0)
   // A code navigator returns updated Memory; fold it in so it persists across turns (and
-  // into the save). The slot path leaves `memory` untouched.
-  const s: DelveState = decision.memory !== undefined ? { ...s0, memory: decision.memory } : s0
+  // into the save). The slot path leaves `memory` untouched. Then fold this turn's
+  // `record(...)` lines into the journal (before the move's own entry).
+  const withMem: DelveState = decision.memory !== undefined ? { ...s0, memory: decision.memory } : s0
+  const s = withNotes(withMem, turn, decision.notes)
   if (decision.leave === true) {
     // the party chooses to withdraw (retreat at the entrance, or an explicit leave()) —
     // end the delve and head back to town, distinct from being stuck or wiped.

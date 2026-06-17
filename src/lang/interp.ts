@@ -34,7 +34,7 @@ export type LangValue =
 export interface HostObject {
   host: true
   get(name: string): LangValue
-  /** Optional human/gibberish rendering for `print`. */
+  /** Optional human/gibberish rendering for `record`. */
   repr?(): string
 }
 export class Builtin {
@@ -442,7 +442,7 @@ export class Interp {
   }
 }
 
-/** The standard builtins shared by every host context (len, set, print, min/max). */
+/** The standard builtins shared by every host context (len, set, record, min/max). */
 export function baseBuiltins(interp: Interp): Record<string, LangValue> {
   return {
     len: new Builtin((a) => {
@@ -460,11 +460,24 @@ export function baseBuiltins(interp: Interp): Record<string, LangValue> {
       if (v instanceof Set) return new Set(v)
       throw new RuntimeError('set() expects a list')
     }, 'set'),
-    print: new Builtin((a) => {
+    // `record(...)` writes one line to the delve JOURNAL — the in-fiction debug console
+    // (renamed from `print`; never gated — debugging must never cost Insight). The decider
+    // drains `interp.output` after the turn and the delve folds each line in as a `note`.
+    record: new Builtin((a) => {
       interp.output.push(a.map((v) => reprValue(v)).join(' '))
       return null
-    }, 'print'),
+    }, 'record'),
   }
+}
+
+/** Max `record(...)` lines kept from a single turn — a backstop so a `record` inside a
+ *  loop (once `lang-loops` unlocks) can't flood the journal or bloat the save blob. */
+export const MAX_NOTES_PER_TURN = 20
+
+/** Cap a turn's recorded lines, replacing the overflow with a "… N more" marker. */
+export function capNotes(lines: readonly string[]): string[] {
+  if (lines.length <= MAX_NOTES_PER_TURN) return [...lines]
+  return [...lines.slice(0, MAX_NOTES_PER_TURN), `… ${lines.length - MAX_NOTES_PER_TURN} more`]
 }
 
 // --- Serialisation (for delve-scoped Memory round-tripping through the save) ------
@@ -492,7 +505,7 @@ export function jsonToValue(j: Json): LangValue {
   return null
 }
 
-/** A debug rendering of a value (drives `print` + the future console). */
+/** A debug rendering of a value (drives `record` → the journal). */
 export function reprValue(v: LangValue): string {
   if (v === null) return 'None'
   if (v === true) return 'True'

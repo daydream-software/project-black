@@ -13,7 +13,7 @@ import {
   neighbours, isHidden, isKnown, isExplored, stepTowardFrontier, stepTowardRoom, partyHpPct,
 } from '../content/exploration/navigation'
 import {
-  compile, Interp, baseBuiltins, Builtin, isHost, valueToJson, jsonToValue, libraries,
+  compile, Interp, baseBuiltins, Builtin, isHost, valueToJson, jsonToValue, libraries, capNotes,
   type LangValue, type HostObject, type Json,
 } from './interp'
 
@@ -182,7 +182,7 @@ export function decideExplorationFromProgram(s: DelveState): ExDecision {
     const senses = sensesHost(s)
     const result = interp.run(program, 'exploration_turn', [senses], { ...exploreGlobals(s, interp, memory), senses }, libraries())
     const a = actionOf(result)
-    return { reason: 'inscription', step: a.step, leave: a.leave, memory: persist() }
+    return { reason: 'inscription', step: a.step, leave: a.leave, memory: persist(), notes: capNotes(interp.output) }
   } catch (e) {
     if (e instanceof ProgramError) throw e
     throw new ProgramError(`exploration: ${(e as Error).message}`)

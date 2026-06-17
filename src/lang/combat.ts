@@ -9,7 +9,7 @@ import { checkGates, unlocked } from './gate'
 import { livingAllies, livingEnemies, pickLowestHp, pickHighestHp, pickFirst } from '../content/combat/targeting'
 import { SKILLS_BY_ID } from '../content/skills'
 import {
-  compile, Interp, baseBuiltins, Builtin, isHost, libraries,
+  compile, Interp, baseBuiltins, Builtin, isHost, libraries, capNotes,
   type LangValue, type HostObject,
 } from './interp'
 
@@ -93,7 +93,7 @@ function unitId(v: LangValue): string | null {
 }
 
 /** The combat namespace for one decision: host objects + action builtins + the
- *  `len`/`set`/`print` base. `senses` is passed as the entry arg, not injected here. */
+ *  `len`/`set`/`record` base. `senses` is passed as the entry arg, not injected here. */
 function combatGlobals(self: Combatant, interp: Interp): Record<string, LangValue> {
   return {
     ...baseBuiltins(interp),
@@ -137,6 +137,7 @@ export function decideCombatFromProgram(self: Combatant, units: Combatant[]): De
   // Genuine failures throw ProgramError (caught by the delve loop → stuck). A program that
   // returns no action (None / wait()) is NOT an error — it falls back to attacking.
   let result: ReturnType<Interp['run']>
+  let notes: string[] = []
   try {
     const program = compile(src)
     const gate = checkGates(program.module, unlocked()) // runtime enforcement (e.g. via import)
@@ -146,12 +147,13 @@ export function decideCombatFromProgram(self: Combatant, units: Combatant[]): De
     // (for a legacy 1-param `def combat_turn(senses):` — run() picks based on arity).
     const senses = sensesHost(self, units)
     result = interp.run(program, 'combat_turn', [senses], { ...combatGlobals(self, interp), senses }, libraries())
+    notes = capNotes(interp.output) // the `record(...)` lines this turn → the journal
   } catch (e) {
     if (e instanceof ProgramError) throw e
     throw new ProgramError(`${self.name}: ${(e as Error).message}`)
   }
   if (result instanceof CombatAction) {
-    return { protocolIndex: -1, maneuver: result.maneuver, targetId: result.targetId, reason: 'inscription' }
+    return { protocolIndex: -1, maneuver: result.maneuver, targetId: result.targetId, reason: 'inscription', notes }
   }
-  return fallback(self, units, 'inscription: no action — attack')
+  return { ...fallback(self, units, 'inscription: no action — attack'), notes }
 }

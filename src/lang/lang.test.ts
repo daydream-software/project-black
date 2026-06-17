@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeAll } from 'vitest'
 import { lex } from './lexer'
 import { parse } from './parser'
-import { compile, Interp, baseBuiltins, type LangValue } from './interp'
+import { compile, Interp, baseBuiltins, capNotes, MAX_NOTES_PER_TURN, type LangValue } from './interp'
 import { decideCombatFromProgram } from './combat'
 import { combatRowsToSource, toEntryForm } from './migrate'
 import {
@@ -173,6 +173,42 @@ describe('combatRowsToSource migration', () => {
   })
   it('generates the `Engram.combat_turn:` entry form', () => {
     expect(combatRowsToSource(rows).startsWith('Engram.combat_turn:')).toBe(true)
+  })
+})
+
+// --- record(...) → the journal (the in-fiction debug console) ----------------
+describe('record(...) → journal notes (combat)', () => {
+  it('drains a turn’s record() lines into Decision.notes', () => {
+    const h = hero('Engram.combat_turn:\n    record("scanning", 7)\n    return attack(senses.enemies.first)\n')
+    const d = decideCombatFromProgram(h, [h, makeWarden()])
+    expect(d.notes).toEqual(['scanning 7'])
+  })
+
+  it('a brain with no record() yields no notes', () => {
+    const h = hero(ATTACK_LOWEST)
+    expect(decideCombatFromProgram(h, [h, makeWarden()]).notes).toEqual([])
+  })
+
+  it('step() folds notes into the battle log as `note` entries — action stays LAST', () => {
+    setProgramDecider(decideCombatFromProgram)
+    const program = 'Engram.combat_turn:\n    record("scanning")\n    return attack(senses.enemies.first)\n'
+    let s = makeBattle([makeGolem({ id: 'hero-1', name: 'S', stats: SENTINEL_STATS, procedure: [], program })], 'warden')
+    // step until the hero takes a turn (CTB order; the warden has no program → no notes)
+    let i = 0
+    while (s.stepNotes === undefined && s.outcome === 'ongoing' && i < 30) { s = step(s); i += 1 }
+    expect(s.stepNotes).toEqual(['scanning'])
+    expect(s.log.some((e) => e.kind === 'note' && e.detail === 'scanning')).toBe(true)
+    // the mirror invariant: notes go BEFORE the action, so `.at(-1)` stays the action —
+    // the delve journal mirrors `battle.log.at(-1)` and must never mirror a note line.
+    expect(s.log.at(-1)?.kind).not.toBe('note')
+  })
+
+  it('caps a turn’s notes with a “… N more” marker', () => {
+    const many = Array.from({ length: MAX_NOTES_PER_TURN + 5 }, (_, i) => `line ${i}`)
+    const capped = capNotes(many)
+    expect(capped).toHaveLength(MAX_NOTES_PER_TURN + 1)
+    expect(capped.at(-1)).toBe('… 5 more')
+    expect(capNotes(['a', 'b'])).toEqual(['a', 'b']) // under the cap, untouched
   })
 })
 

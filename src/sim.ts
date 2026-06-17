@@ -306,6 +306,9 @@ export interface Decision {
   /** The resolved target (the State's subject), or null if nothing applies. */
   targetId: string | null
   reason: string
+  /** Lines the brain emitted via `record(...)` this turn — folded into the log as
+   *  `note` entries (debug console). Optional: only code brains produce them. */
+  notes?: string[]
 }
 
 // --- Target resolution: the engine's only job here is orchestration ---------
@@ -381,7 +384,7 @@ export function maneuverKind(m: Maneuver): 'attack' | 'heal' | 'defend' | 'flee'
 export type Outcome = 'ongoing' | 'victory' | 'defeat'
 
 /** Log/CSS family. `counter` is the enemy's reactive punish, not a maneuver. */
-export type LogKind = 'attack' | 'heal' | 'defend' | 'flee' | 'counter'
+export type LogKind = 'attack' | 'heal' | 'defend' | 'flee' | 'counter' | 'note'
 
 export interface LogEntry {
   turn: number
@@ -404,6 +407,9 @@ export interface GameState {
   cursor: number
   log: LogEntry[]
   outcome: Outcome
+  /** The `record(...)` lines the actor emitted on THIS step (overwritten each step,
+   *  last-step-only). The delve folds them into its journal. Transient. */
+  stepNotes?: string[]
 }
 
 
@@ -703,8 +709,16 @@ export function step(state: GameState): GameState {
   // slice-4 counter-heal wall is just a `heal` listener. `action`/`damage` have no
   // listeners yet, but emitting them is what makes the system generic (a new reaction
   // file just works); the fold is a no-op when nothing is registered.
+  // `record(...)` lines the brain emitted this turn → `note` entries, placed BEFORE the
+  // action so `log.at(-1)` stays the action (the delve mirror relies on that). `stepNotes`
+  // carries them up so the delve can fold them into its journal too.
+  const noteEntries: LogEntry[] = (decision.notes ?? []).map((line) => ({
+    turn, round, actorId: actor.id, actorName: actor.name, kind: 'note',
+    targetName: null, protocolIndex: -1, reason: 'record', detail: line,
+  }))
+
   const reactionEntries = reactionsForAction(actor, decision.maneuver, target, hpBefore, kind, units, { turn, round })
-  const entries = [mainEntry, ...reactionEntries]
+  const entries = [...noteEntries, mainEntry, ...reactionEntries]
 
   return {
     units,
@@ -713,6 +727,7 @@ export function step(state: GameState): GameState {
     cursor: idx,
     log: [...state.log, ...entries].slice(-50),
     outcome: outcomeOf(units),
+    stepNotes: decision.notes,
   }
 }
 
