@@ -43,9 +43,8 @@ function maneuverExpr(command: ProtocolRow['command'], skillId: SkillId): string
 export function combatRowsToSource(rows: ProtocolRow[]): string {
   const lines = ['Engram.combat_turn:']
   for (const row of rows) {
-    if (!row.enabled) continue
+    if (!row.enabled || !(row.subjectId in SUBJECT_EXPR)) continue
     const subject = SUBJECT_EXPR[row.subjectId]
-    if (subject === undefined) continue
     const cond = predCond(row.predId)
     const guard = cond === null ? 't' : `t and ${cond}`
     lines.push(`    t = ${subject}`)
@@ -61,8 +60,8 @@ export function combatRowsToSource(rows: ProtocolRow[]): string {
  *  program, or a helper `def`, is untouched. */
 export function toEntryForm(src: string): string {
   return src
-    .replace(/^def combat_turn\(senses\):/m, 'Engram.combat_turn:')
-    .replace(/^def exploration_turn\(senses\):/m, 'Engram.exploration_turn:')
+    .replace(/^def combat_turn\(senses\):/mu, 'Engram.combat_turn:')
+    .replace(/^def exploration_turn\(senses\):/mu, 'Engram.exploration_turn:')
 }
 
 /** The tier-1 exploration navigator template (engine-driven frontier nav) — the

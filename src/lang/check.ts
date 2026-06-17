@@ -12,6 +12,16 @@ export interface CheckResult {
   col?: number
 }
 
+/** Read a thrown lex/parse error's message + optional line/col defensively (the catch
+ *  binding is `unknown`; no cast). */
+function errInfo(e: unknown): { message: string; line?: number; col?: number } {
+  const message = e instanceof Error ? e.message : 'error'
+  const obj: object = typeof e === 'object' && e !== null ? e : {}
+  const line = 'line' in obj && typeof obj.line === 'number' ? obj.line : undefined
+  const col = 'col' in obj && typeof obj.col === 'number' ? obj.col : undefined
+  return { message, line, col }
+}
+
 /** Check a program. Empty source is valid (the slot path runs instead). `entry` null =
  *  a LIBRARY (just check syntax, no required entry function). */
 export function checkProgram(src: string, entry: string | null = 'combat_turn'): CheckResult {
@@ -28,7 +38,6 @@ export function checkProgram(src: string, entry: string | null = 'combat_turn'):
     if (!gate.ok) return gate
     return { ok: true }
   } catch (e) {
-    const err = e as { message: string; line?: number; col?: number }
-    return { ok: false, message: err.message, line: err.line, col: err.col }
+    return { ok: false, ...errInfo(e) }
   }
 }

@@ -53,7 +53,9 @@ export class LangFunc {
 }
 
 export function isHost(v: LangValue): v is HostObject {
-  return typeof v === 'object' && v !== null && 'host' in v && v.host === true
+  // The only LangValue object carrying a `host` key is HostObject (host: true), so the
+  // key's presence is the guard — no value compare needed.
+  return typeof v === 'object' && v !== null && 'host' in v
 }
 
 // --- Environment -------------------------------------------------------------
@@ -69,7 +71,7 @@ export class Env {
   }
   // globalEnv is set to `this` in the constructor when null, so it's never actually null;
   // this getter encodes that so call sites need no `!`/cast.
-  private get globalScope(): Env { return this.globalEnv ?? this }
+  get globalScope(): Env { return this.globalEnv ?? this }
   declareGlobal(name: string): void {
     this.globalNames.add(name)
   }
@@ -205,48 +207,53 @@ export class Interp {
     for (const stmt of body) this.exec(stmt, env)
   }
 
+  // Split into simple statements (here) and control/compound (execControl) so each
+  // dispatch stays under the complexity cap — same behaviour, grouped by kind.
   private exec(stmt: Stmt, env: Env): void {
     this.burn()
     switch (stmt.k) {
-      case 'func':
-        env.set(stmt.name, new LangFunc(stmt.params, stmt.body, env, stmt.name))
-        return
-      case 'entry': // entry blocks are registered at the top level (run); inert if nested
-        env.set(stmt.entry, new LangFunc([], stmt.body, env, stmt.entry))
-        return
-      case 'return':
-        throw new ReturnSignal(stmt.value === null ? null : this.eval(stmt.value, env))
-      case 'expr':
-        this.eval(stmt.value, env)
-        return
-      case 'assign':
-        this.assign(stmt.target, this.eval(stmt.value, env), env)
-        return
-      case 'if':
-        if (truthy(this.eval(stmt.test, env))) this.execBlock(stmt.body, env)
-        else this.execBlock(stmt.orelse, env)
-        return
-      case 'while':
-        while (truthy(this.eval(stmt.test, env))) {
-          this.burn()
-          try { this.execBlock(stmt.body, env) }
-          catch (e) { if (e instanceof BreakSignal) break; if (e instanceof ContinueSignal) continue; throw e }
-        }
-        return
-      case 'for': {
-        for (const item of this.iterate(this.eval(stmt.iter, env))) {
-          this.burn()
-          env.set(stmt.var, item)
-          try { this.execBlock(stmt.body, env) }
-          catch (e) { if (e instanceof BreakSignal) break; if (e instanceof ContinueSignal) continue; throw e }
-        }
-        return
-      }
+      case 'func': env.set(stmt.name, new LangFunc(stmt.params, stmt.body, env, stmt.name)); return
+      // entry blocks are registered at the top level (run); inert if nested
+      case 'entry': env.set(stmt.entry, new LangFunc([], stmt.body, env, stmt.entry)); return
+      case 'return': throw new ReturnSignal(stmt.value === null ? null : this.eval(stmt.value, env))
+      case 'expr': this.eval(stmt.value, env); return
+      case 'assign': this.assign(stmt.target, this.eval(stmt.value, env), env); return
+      case 'pass': return
+      default: this.execControl(stmt, env)
+    }
+  }
+
+  /** Control-flow / compound statements (if / loops / break / continue / global / import). */
+  private execControl(stmt: Stmt, env: Env): void {
+    switch (stmt.k) {
+      case 'if': this.execBlock(truthy(this.eval(stmt.test, env)) ? stmt.body : stmt.orelse, env); return
+      case 'while': case 'for': this.execLoop(stmt, env); return
       case 'break': throw new BreakSignal()
       case 'continue': throw new ContinueSignal()
-      case 'pass': return
       case 'global': for (const n of stmt.names) env.declareGlobal(n); return
-      case 'import': this.importLibrary(stmt.name, env); 
+      case 'import': this.importLibrary(stmt.name, env); return
+      // exec() only routes control/compound kinds here; simple kinds never reach this.
+      default: throw new RuntimeError(`cannot execute statement '${stmt.k}'`)
+    }
+  }
+
+  /** A `while` / `for` loop, with break/continue handled identically for both. */
+  private execLoop(stmt: Extract<Stmt, { k: 'while' } | { k: 'for' }>, env: Env): void {
+    const run = (): boolean => { // run the body once; false ⇒ break out
+      this.burn()
+      try { this.execBlock(stmt.body, env) } catch (e) {
+        if (e instanceof BreakSignal) return false
+        if (!(e instanceof ContinueSignal)) throw e
+      }
+      return true
+    }
+    if (stmt.k === 'while') {
+      while (truthy(this.eval(stmt.test, env))) { if (!run()) break }
+      return
+    }
+    for (const item of iterate(this.eval(stmt.iter, env))) {
+      env.set(stmt.var, item)
+      if (!run()) break
     }
   }
 
@@ -255,9 +262,9 @@ export class Interp {
    *  close over the importing GLOBAL scope, so they can use the same host builtins
    *  (attack/use/move/…) and `me`/`senses` the main program sees. */
   private importLibrary(name: string, env: Env): void {
+    if (!(name in this.libraries)) throw new RuntimeError(`no library '${name}'`)
     const src = this.libraries[name]
-    if (src === undefined) throw new RuntimeError(`no library '${name}'`)
-    const genv = env.globalEnv!
+    const genv = env.globalScope
     const libEnv = new Env(genv, genv)
     for (const stmt of compile(src).module.body) {
       if (stmt.k === 'func') libEnv.set(stmt.name, new LangFunc(stmt.params, stmt.body, libEnv, stmt.name))
@@ -279,18 +286,6 @@ export class Interp {
     throw new RuntimeError('invalid assignment target')
   }
 
-  private iterate(v: LangValue): LangValue[] {
-    if (Array.isArray(v)) return v
-    if (v instanceof Set) return [...v]
-    if (v instanceof Map) return [...v.keys()]
-    if (typeof v === 'string') return [...v]
-    if (isHost(v)) {
-      const items = v.get('__iter__')
-      if (Array.isArray(items)) return items
-    }
-    throw new RuntimeError('object is not iterable')
-  }
-
   private eval(e: Expr, env: Env): LangValue {
     this.burn()
     switch (e.k) {
@@ -310,18 +305,18 @@ export class Interp {
       case 'unary': {
         const v = this.eval(e.operand, env)
         if (e.op === 'not') return !truthy(v)
-        if (e.op === '-') return -(this.num(v))
-        return this.num(v)
+        if (e.op === '-') return -num(v)
+        return num(v)
       }
       case 'bool_op': {
         const l = this.eval(e.left, env)
         if (e.op === 'and') return truthy(l) ? this.eval(e.right, env) : l
         return truthy(l) ? l : this.eval(e.right, env)
       }
-      case 'compare': return this.compare(e.op, this.eval(e.left, env), this.eval(e.right, env))
-      case 'binary': return this.binary(e.op, this.eval(e.left, env), this.eval(e.right, env))
-      case 'attr': return this.getAttr(this.eval(e.obj, env), e.name)
-      case 'index': return this.getIndex(this.eval(e.obj, env), this.eval(e.index, env))
+      case 'compare': return compare(e.op, this.eval(e.left, env), this.eval(e.right, env))
+      case 'binary': return binary(e.op, this.eval(e.left, env), this.eval(e.right, env))
+      case 'attr': return getAttr(this.eval(e.obj, env), e.name)
+      case 'index': return getIndex(this.eval(e.obj, env), this.eval(e.index, env))
       case 'call': {
         const fn = this.eval(e.fn, env)
         const args = e.args.map((a) => this.eval(a, env))
@@ -332,7 +327,7 @@ export class Interp {
 
   private comprehension(e: Extract<Expr, { k: 'comp' }>, env: Env): LangValue {
     const out: LangValue[] = []
-    for (const item of this.iterate(this.eval(e.iter, env))) {
+    for (const item of iterate(this.eval(e.iter, env))) {
       this.burn()
       const inner = new Env(env, env.globalEnv)
       inner.set(e.var, item)
@@ -342,116 +337,138 @@ export class Interp {
     return e.kind === 'set' ? new Set(out) : out
   }
 
-  private num(v: LangValue): number {
-    if (typeof v === 'number') return v
-    throw new RuntimeError('expected a number')
-  }
-  private binary(op: string, a: LangValue, b: LangValue): LangValue {
-    if (op === '+' && typeof a === 'string' && typeof b === 'string') return a + b
-    const x = this.num(a)
-    const y = this.num(b)
-    switch (op) {
-      case '+': return x + y
-      case '-': return x - y
-      case '*': return x * y
-      case '/': return x / y
-      case '//': return Math.floor(x / y)
-      case '%': return ((x % y) + y) % y
-      case '**': return x ** y
-    }
-    throw new RuntimeError(`bad operator ${op}`)
-  }
-  private compare(op: string, a: LangValue, b: LangValue): LangValue {
-    if (op === '==') return langEq(a, b)
-    if (op === '!=') return !langEq(a, b)
-    if (op === 'in' || op === 'not in') {
-      const found = this.contains(b, a)
-      return op === 'in' ? found : !found
-    }
-    const x = this.num(a)
-    const y = this.num(b)
-    switch (op) {
-      case '<': return x < y
-      case '<=': return x <= y
-      case '>': return x > y
-      case '>=': return x >= y
-    }
-    throw new RuntimeError(`bad comparison ${op}`)
-  }
-  private contains(container: LangValue, item: LangValue): boolean {
-    if (Array.isArray(container)) return container.some((c) => langEq(c, item))
-    if (container instanceof Set) return container.has(item)
-    if (container instanceof Map) return container.has(item)
-    if (typeof container === 'string' && typeof item === 'string') return container.includes(item)
-    throw new RuntimeError('argument is not a container')
-  }
+}
 
-  private getIndex(obj: LangValue, idx: LangValue): LangValue {
-    if (obj instanceof Map) {
-      if (!obj.has(idx)) throw new RuntimeError(`key not found`)
-      return obj.get(idx) as LangValue
-    }
-    if (Array.isArray(obj) && typeof idx === 'number') {
-      const v = obj[idx < 0 ? obj.length + idx : idx]
-      if (v === undefined) throw new RuntimeError('index out of range')
+// --- Value operations (pure; the interpreter's dynamic dispatch over LangValue) ---
+// Free functions, not Interp methods: they take no `this`, only their operands.
+
+function iterate(v: LangValue): LangValue[] {
+  if (Array.isArray(v)) return v
+  if (v instanceof Set) return [...v]
+  if (v instanceof Map) return [...v.keys()]
+  if (typeof v === 'string') return Array.from(v)
+  if (isHost(v)) {
+    const items = v.get('__iter__')
+    if (Array.isArray(items)) return items
+  }
+  throw new RuntimeError('object is not iterable')
+}
+
+function num(v: LangValue): number {
+  if (typeof v === 'number') return v
+  throw new RuntimeError('expected a number')
+}
+
+function binary(op: string, a: LangValue, b: LangValue): LangValue {
+  if (op === '+' && typeof a === 'string' && typeof b === 'string') return a + b
+  const x = num(a)
+  const y = num(b)
+  switch (op) {
+    case '+': return x + y
+    case '-': return x - y
+    case '*': return x * y
+    case '/': return x / y
+    case '//': return Math.floor(x / y)
+    case '%': return ((x % y) + y) % y
+    case '**': return x ** y
+  }
+  throw new RuntimeError(`bad operator ${op}`)
+}
+
+function compare(op: string, a: LangValue, b: LangValue): LangValue {
+  if (op === '==') return langEq(a, b)
+  if (op === '!=') return !langEq(a, b)
+  if (op === 'in' || op === 'not in') {
+    const found = contains(b, a)
+    return op === 'in' ? found : !found
+  }
+  const x = num(a)
+  const y = num(b)
+  switch (op) {
+    case '<': return x < y
+    case '<=': return x <= y
+    case '>': return x > y
+    case '>=': return x >= y
+  }
+  throw new RuntimeError(`bad comparison ${op}`)
+}
+
+function contains(container: LangValue, item: LangValue): boolean {
+  if (Array.isArray(container)) return container.some((c) => langEq(c, item))
+  if (container instanceof Set) return container.has(item)
+  if (container instanceof Map) return container.has(item)
+  if (typeof container === 'string' && typeof item === 'string') return container.includes(item)
+  throw new RuntimeError('argument is not a container')
+}
+
+/** Resolve a (possibly negative) sequence index, bounds-checked. */
+function seqIndex(len: number, idx: number): number {
+  const i = idx < 0 ? len + idx : idx
+  if (i < 0 || i >= len) throw new RuntimeError('index out of range')
+  return i
+}
+
+function getIndex(obj: LangValue, idx: LangValue): LangValue {
+  if (obj instanceof Map) {
+    const v = obj.get(idx) // values are LangValue (never undefined) ⇒ undefined = absent key
+    if (v === undefined) throw new RuntimeError('key not found')
+    return v
+  }
+  if (Array.isArray(obj) && typeof idx === 'number') return obj[seqIndex(obj.length, idx)]
+  if (typeof obj === 'string' && typeof idx === 'number') return obj[seqIndex(obj.length, idx)]
+  throw new RuntimeError('object is not subscriptable')
+}
+
+function getAttr(obj: LangValue, name: string): LangValue {
+  if (isHost(obj)) return obj.get(name)
+  if (Array.isArray(obj)) return listMethod(obj, name)
+  if (obj instanceof Set) return setMethod(obj, name)
+  if (obj instanceof Map) return dictMethod(obj, name)
+  throw new RuntimeError(`no attribute '${name}'`)
+}
+
+function listMethod(list: LangValue[], name: string): Builtin {
+  switch (name) {
+    case 'append': return new Builtin((a) => { list.push(a[0]); return null }, 'append')
+    case 'pop': return new Builtin((a) => {
+      const i = a.length > 0 ? num(a[0]) : list.length - 1
+      const [v] = list.splice(i < 0 ? list.length + i : i, 1)
+      return v ?? null
+    }, 'pop')
+    case 'contains': return new Builtin((a) => list.some((c) => langEq(c, a[0])), 'contains')
+  }
+  throw new RuntimeError(`list has no attribute '${name}'`)
+}
+
+function setMethod(set: Set<LangValue>, name: string): Builtin {
+  switch (name) {
+    case 'add': return new Builtin((a) => { set.add(a[0]); return null }, 'add')
+    case 'discard': return new Builtin((a) => { set.delete(a[0]); return null }, 'discard')
+  }
+  throw new RuntimeError(`set has no attribute '${name}'`)
+}
+
+function dictMethod(map: Map<LangValue, LangValue>, name: string): Builtin {
+  switch (name) {
+    case 'get': return new Builtin((a) => { const v = map.get(a[0]); return v === undefined ? (a[1] ?? null) : v }, 'get')
+    case 'setdefault': return new Builtin((a) => {
+      if (!map.has(a[0])) map.set(a[0], a[1] ?? null)
+      return map.get(a[0]) ?? null
+    }, 'setdefault')
+    case 'pop': return new Builtin((a) => {
+      const v = map.get(a[0])
+      if (v === undefined) return a[1] ?? null
+      map.delete(a[0])
       return v
-    }
-    if (typeof obj === 'string' && typeof idx === 'number') {
-      const c = obj[idx < 0 ? obj.length + idx : idx]
-      if (c === undefined) throw new RuntimeError('index out of range')
-      return c
-    }
-    throw new RuntimeError('object is not subscriptable')
+    }, 'pop')
+    case 'update': return new Builtin((a) => {
+      const other = a[0]
+      if (other instanceof Map) for (const [k, v] of other) map.set(k, v)
+      return null
+    }, 'update')
+    case 'keys': return new Builtin(() => [...map.keys()], 'keys')
   }
-
-  private getAttr(obj: LangValue, name: string): LangValue {
-    if (isHost(obj)) return obj.get(name)
-    if (Array.isArray(obj)) return this.listMethod(obj, name)
-    if (obj instanceof Set) return this.setMethod(obj, name)
-    if (obj instanceof Map) return this.dictMethod(obj, name)
-    throw new RuntimeError(`no attribute '${name}'`)
-  }
-  private listMethod(list: LangValue[], name: string): Builtin {
-    switch (name) {
-      case 'append': return new Builtin((a) => { list.push(a[0]); return null }, 'append')
-      case 'pop': return new Builtin((a) => {
-        const i = a.length > 0 ? this.num(a[0]) : list.length - 1
-        const [v] = list.splice(i < 0 ? list.length + i : i, 1)
-        return v ?? null
-      }, 'pop')
-      case 'contains': return new Builtin((a) => list.some((c) => langEq(c, a[0])), 'contains')
-    }
-    throw new RuntimeError(`list has no attribute '${name}'`)
-  }
-  private setMethod(set: Set<LangValue>, name: string): Builtin {
-    switch (name) {
-      case 'add': return new Builtin((a) => { set.add(a[0]); return null }, 'add')
-      case 'discard': return new Builtin((a) => { set.delete(a[0]); return null }, 'discard')
-    }
-    throw new RuntimeError(`set has no attribute '${name}'`)
-  }
-  private dictMethod(map: Map<LangValue, LangValue>, name: string): Builtin {
-    switch (name) {
-      case 'get': return new Builtin((a) => map.has(a[0]) ? (map.get(a[0]) as LangValue) : (a[1] ?? null), 'get')
-      case 'setdefault': return new Builtin((a) => {
-        if (!map.has(a[0])) map.set(a[0], a[1] ?? null)
-        return map.get(a[0]) as LangValue
-      }, 'setdefault')
-      case 'pop': return new Builtin((a) => {
-        if (!map.has(a[0])) return a[1] ?? null
-        const v = map.get(a[0]) as LangValue
-        map.delete(a[0])
-        return v
-      }, 'pop')
-      case 'update': return new Builtin((a) => {
-        const other = a[0]
-        if (other instanceof Map) for (const [k, v] of other) map.set(k, v)
-        return null
-      }, 'update')
-      case 'keys': return new Builtin(() => [...map.keys()], 'keys')
-    }
-    throw new RuntimeError(`dict has no attribute '${name}'`)
-  }
+  throw new RuntimeError(`dict has no attribute '${name}'`)
 }
 
 /** The standard builtins shared by every host context (len, set, record, min/max). */
@@ -466,8 +483,8 @@ export function baseBuiltins(interp: Interp): Record<string, LangValue> {
       throw new RuntimeError('object has no len()')
     }, 'len'),
     set: new Builtin((a) => {
+      if (a.length === 0) return new Set<LangValue>()
       const v = a[0]
-      if (v === undefined) return new Set<LangValue>()
       if (Array.isArray(v)) return new Set(v)
       if (v instanceof Set) return new Set(v)
       throw new RuntimeError('set() expects a list')
@@ -510,23 +527,35 @@ export function valueToJson(v: LangValue): Json {
 export function jsonToValue(j: Json): LangValue {
   if (j === null || typeof j === 'boolean' || typeof j === 'number' || typeof j === 'string') return j
   if (Array.isArray(j)) return j.map(jsonToValue)
-  const set = (j as Record<string, Json>).__set
+  // j is now a Json object: `{ [k: string]: Json }`, so member access needs no cast.
+  const set = j.__set
   if (Array.isArray(set)) return new Set(set.map(jsonToValue))
-  const dict = (j as Record<string, Json>).__dict
-  if (Array.isArray(dict)) return new Map((dict as Json[][]).map((pair) => [jsonToValue(pair[0]), jsonToValue(pair[1])]))
+  const dict = j.__dict
+  if (Array.isArray(dict)) {
+    const entries: Array<[LangValue, LangValue]> = []
+    for (const pair of dict) if (Array.isArray(pair)) entries.push([jsonToValue(pair[0]), jsonToValue(pair[1])])
+    return new Map(entries)
+  }
   return null
+}
+
+function reprColl(v: LangValue[] | Set<LangValue> | Map<LangValue, LangValue>): string {
+  if (Array.isArray(v)) return `[${v.map(reprValue).join(', ')}]`
+  if (v instanceof Set) return `{${[...v].map(reprValue).join(', ')}}`
+  return `{${[...v].map(([k, val]) => `${reprValue(k)}: ${reprValue(val)}`).join(', ')}}`
+}
+
+function reprObject(v: LangValue): string {
+  if (isHost(v) && v.repr !== undefined) return v.repr()
+  if (v instanceof Builtin || v instanceof LangFunc) return `<function ${v.name}>`
+  return '<object>'
 }
 
 /** A debug rendering of a value (drives `record` → the journal). */
 export function reprValue(v: LangValue): string {
   if (v === null) return 'None'
-  if (v === true) return 'True'
-  if (v === false) return 'False'
+  if (typeof v === 'boolean') return v ? 'True' : 'False'
   if (typeof v === 'number' || typeof v === 'string') return String(v)
-  if (Array.isArray(v)) return `[${v.map(reprValue).join(', ')}]`
-  if (v instanceof Set) return `{${[...v].map(reprValue).join(', ')}}`
-  if (v instanceof Map) return `{${[...v].map(([k, val]) => `${reprValue(k)}: ${reprValue(val)}`).join(', ')}}`
-  if (isHost(v) && v.repr !== undefined) return v.repr()
-  if (v instanceof Builtin || v instanceof LangFunc) return `<function ${v.name}>`
-  return '<object>'
+  if (Array.isArray(v) || v instanceof Set || v instanceof Map) return reprColl(v)
+  return reprObject(v)
 }

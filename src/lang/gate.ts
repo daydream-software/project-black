@@ -33,14 +33,19 @@ export function unlocked(): ReadonlySet<string> {
 
 /** Check `module` against `allowed`; return the FIRST locked construct (or ok). */
 export function checkGates(module: Module, allowed: ReadonlySet<string>): GateResult {
-  let hit: GateResult | null = null
+  // A holder (not a bare `let`): the closures below mutate it, which TS can't track on a
+  // local — the holder keeps `hit` typed `GateResult | null` at the final read.
+  const found: { hit: GateResult | null } = { hit: null }
   const fail = (id: string, line?: number, col?: number): void => {
-    if (hit === null) hit = { ok: false, message: `${FEATURE_LABEL[id] ?? id} is locked — study it at the Library`, line, col }
+    found.hit ??= { ok: false, message: `${FEATURE_LABEL[id] ?? id} is locked — study it at the Library`, line, col }
   }
 
   const walkExpr = (e: Expr): void => {
-    if (hit !== null) return
+    if (found.hit !== null) return
     switch (e.k) {
+      // literals / names / None carry nothing to gate (exhaustive no-op; first so the
+      // last case can end without a `return`)
+      case 'num': case 'str': case 'bool': case 'none': case 'name': return
       case 'comp':
         if (!allowed.has('lang-comprehensions')) { fail('lang-comprehensions'); return }
         walkExpr(e.iter); walkExpr(e.element); if (e.cond !== null) walkExpr(e.cond); return
@@ -51,14 +56,16 @@ export function checkGates(module: Module, allowed: ReadonlySet<string>): GateRe
       case 'call': walkExpr(e.fn); e.args.forEach(walkExpr); return
       case 'list': case 'set': e.items.forEach(walkExpr); return
       case 'dict': e.pairs.forEach(([k, v]) => { walkExpr(k); walkExpr(v) })
-      // no default: literals / names / None carry nothing to gate (no-op)
     }
   }
 
   const walkBody = (body: Stmt[]): void => { for (const s of body) walkStmt(s) }
   const walkStmt = (s: Stmt): void => {
-    if (hit !== null) return
+    if (found.hit !== null) return
     switch (s.k) {
+      // break / continue / pass / global carry nothing to gate (exhaustive no-op; first
+      // so the last case can end without a `return`)
+      case 'break': case 'continue': case 'pass': case 'global': return
       case 'if':
         if (!allowed.has('lang-if')) { fail('lang-if', s.line, s.col); return }
         walkExpr(s.test); walkBody(s.body); walkBody(s.orelse); return
@@ -76,10 +83,9 @@ export function checkGates(module: Module, allowed: ReadonlySet<string>): GateRe
       case 'return': if (s.value !== null) walkExpr(s.value); return
       case 'assign': walkExpr(s.target); walkExpr(s.value); return
       case 'expr': walkExpr(s.value)
-      // no default: break / continue / pass / global carry nothing to gate (no-op)
     }
   }
 
   walkBody(module.body)
-  return hit ?? { ok: true }
+  return found.hit ?? { ok: true }
 }

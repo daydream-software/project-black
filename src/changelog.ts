@@ -20,14 +20,20 @@ export const CHANGELOG: VersionEntry[] = data.versions
 
 const SEEN_KEY = 'pb:lastSeenVersion'
 
+/** A dotted-version part as a number (missing / non-numeric ⇒ 0). */
+function part(s: string | undefined): number {
+  const n = Number.parseInt(s ?? '0', 10)
+  return Number.isNaN(n) ? 0 : n
+}
+
 /** Compare dotted-numeric versions → -1 / 0 / 1 (missing parts count as 0). Pure. */
 export function compareVersions(a: string, b: string): number {
   const pa = a.split('.')
   const pb = b.split('.')
   const n = Math.max(pa.length, pb.length)
   for (let i = 0; i < n; i += 1) {
-    const x = Number.parseInt(pa[i] ?? '0', 10) || 0
-    const y = Number.parseInt(pb[i] ?? '0', 10) || 0
+    const x = part(pa[i])
+    const y = part(pb[i])
     if (x !== y) return x < y ? -1 : 1
   }
   return 0

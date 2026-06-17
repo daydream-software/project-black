@@ -18,7 +18,8 @@ import {
 class CombatAction implements HostObject {
   host = true as const
   constructor(public maneuver: Maneuver, public targetId: string | null) {}
-  get(name: string): LangValue { throw new Error(`action has no attribute '${name}'`) }
+  // arrow property (not a method): the player never reads an action's attributes.
+  get = (name: string): LangValue => { throw new Error(`${this.maneuver.command} action has no attribute '${name}'`) }
 }
 
 /** Wrap one Combatant as a host object: the readable, perceivable facts + a private
@@ -69,12 +70,19 @@ function collectionHost(list: Combatant[]): HostObject {
 /** The `Skills` enum: PascalCase member (`Skills.Mend`) → the SkillId string (`'mend'`),
  *  built from the content registry. A skill carrying an `unlock` id is GATED — absent from
  *  the enum until that id is in `unlocked()` (so `Skills.Mend` is locked until bought). */
+/** Narrow a runtime value to a SkillId (validates, not a cast). `SkillId` is a closed
+ *  union, so the membership test below must list its members. */
+function asSkillId(v: LangValue): SkillId {
+  if (v === 'mend' || v === 'defend') return v
+  throw new Error('expected a skill — use Skills.Mend / Skills.Defend')
+}
+
 function skillsEnum(): HostObject {
   const byMember = new Map<string, SkillId>()
   for (const [id, def] of SKILLS_BY_ID) {
     if (def.unlock !== undefined && !unlocked().has(def.unlock)) continue
     const member = id.charAt(0).toUpperCase() + id.slice(1)
-    byMember.set(member, id as SkillId)
+    byMember.set(member, asSkillId(id))
   }
   return {
     host: true,
@@ -88,7 +96,7 @@ function skillsEnum(): HostObject {
 
 function unitId(v: LangValue): string | null {
   if (v === null) return null
-  if (isHost(v)) return v.get('__id__') as string
+  if (isHost(v)) { const id = v.get('__id__'); return typeof id === 'string' ? id : null }
   throw new Error('expected a unit target')
 }
 
@@ -100,7 +108,7 @@ function combatGlobals(self: Combatant, interp: Interp): Record<string, LangValu
     me: unitHost(self),
     Skills: skillsEnum(),
     attack: new Builtin((a) => new CombatAction({ command: 'attack' }, unitId(a[0])), 'attack'),
-    use: new Builtin((a) => new CombatAction({ command: 'useSkill', skill: a[0] as SkillId }, unitId(a[1])), 'use'),
+    use: new Builtin((a) => new CombatAction({ command: 'useSkill', skill: asSkillId(a[0]) }, unitId(a[1])), 'use'),
     flee: new Builtin(() => new CombatAction({ command: 'flee' }, null), 'flee'),
     wait: new Builtin(() => null, 'wait'),
   }
@@ -136,8 +144,6 @@ export function decideCombatFromProgram(self: Combatant, units: Combatant[]): De
   if (src === undefined) return fallback(self, units, 'no program — attack')
   // Genuine failures throw ProgramError (caught by the delve loop → stuck). A program that
   // returns no action (None / wait()) is NOT an error — it falls back to attacking.
-  let result: ReturnType<Interp['run']>
-  let notes: string[] = []
   try {
     const program = compile(src)
     const gate = checkGates(program.module, unlocked()) // runtime enforcement (e.g. via import)
@@ -146,14 +152,14 @@ export function decideCombatFromProgram(self: Combatant, units: Combatant[]): De
     // `senses` is ambient (for `Engram.combat_turn:` 0-param entries) AND passed as the arg
     // (for a legacy 1-param `def combat_turn(senses):` — run() picks based on arity).
     const senses = sensesHost(self, units)
-    result = interp.run(program, 'combat_turn', [senses], { ...combatGlobals(self, interp), senses }, libraries())
-    notes = capNotes(interp.output) // the `record(...)` lines this turn → the journal
+    const result = interp.run(program, 'combat_turn', [senses], { ...combatGlobals(self, interp), senses }, libraries())
+    const notes = capNotes(interp.output) // the `record(...)` lines this turn → the journal
+    if (result instanceof CombatAction) {
+      return { protocolIndex: -1, maneuver: result.maneuver, targetId: result.targetId, reason: 'inscription', notes }
+    }
+    return { ...fallback(self, units, 'inscription: no action — attack'), notes }
   } catch (e) {
     if (e instanceof ProgramError) throw e
-    throw new ProgramError(`${self.name}: ${(e as Error).message}`)
+    throw new ProgramError(`${self.name}: ${e instanceof Error ? e.message : String(e)}`)
   }
-  if (result instanceof CombatAction) {
-    return { protocolIndex: -1, maneuver: result.maneuver, targetId: result.targetId, reason: 'inscription', notes }
-  }
-  return { ...fallback(self, units, 'inscription: no action — attack'), notes }
 }
