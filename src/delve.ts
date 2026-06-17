@@ -364,7 +364,7 @@ function advanceMove(s0: DelveState, turn: number): DelveState {
   // A code navigator returns updated Memory; fold it in so it persists across turns (and
   // into the save). The slot path leaves `memory` untouched. Then fold this turn's
   // `record(...)` lines into the journal (before the move's own entry).
-  const withMem: DelveState = decision.memory !== undefined ? { ...s0, memory: decision.memory } : s0
+  const withMem: DelveState = decision.memory === undefined ? s0 : { ...s0, memory: decision.memory }
   const s = withNotes(withMem, turn, decision.notes)
   if (decision.leave === true) {
     // the party chooses to withdraw (retreat at the entrance, or an explicit leave()) —
@@ -374,27 +374,28 @@ function advanceMove(s0: DelveState, turn: number): DelveState {
   if (decision.step === '') {
     return { ...s, turn, status: 'stuck', log: logged(s, turn, { kind: 'end', reason: 'no path forward', detail: 'the party is stuck' }) }
   }
+  // a move to our OWN room is a rest, not a step; anything else traverses a corridor.
+  return decision.step === s.pos ? advanceRest(s, turn, decision.reason) : advanceTraverse(s, turn, decision.step, decision.reason)
+}
 
-  const next = decision.step
-  if (next === s.pos) {
-    // a 'rest' — NOT a movement step: the party tends itself off-combat by running its
-    // own Mend rules to convergence (same Attunement/Poise/Strain budget as in combat).
-    // ("si c'est un repos, ce n'est pas un pas.")
-    const { units: party, mends } = restToConvergence(s.party)
-    // A rest that mends NOTHING changes nothing (same HP, pos, fog) — repeating it is an
-    // infinite no-op (e.g. a low-HP party that can't heal, or a fully-explored party at
-    // full HP that keeps retreating to the entrance). Count consecutive idle rests; past
-    // the cap, END the delve as STUCK so it returns to town instead of resting forever.
-    const idle = mends > 0 ? 0 : (s.idleRests ?? 0) + 1
-    if (idle >= IDLE_REST_CAP) {
-      return { ...s, party, turn, idleRests: idle, status: 'stuck', log: logged(s, turn, { kind: 'end', reason: decision.reason, detail: 'no progress — the party is stuck (cannot heal or reach more rooms)' }) }
-    }
-    const detail = mends > 0 ? `rest — ${mends} mend${mends > 1 ? 's' : ''}` : 'rest — nothing to mend'
-    return { ...s, party, turn, idleRests: idle, log: logged(s, turn, { kind: 'explore', reason: decision.reason, detail }) }
+/** A 'rest' (the move targets the party's own room): off-combat Mend to convergence —
+ *  same Attunement/Poise/Strain budget as in combat. A rest that mends NOTHING changes
+ *  nothing, so consecutive idle rests are capped: past `IDLE_REST_CAP` the delve ends as
+ *  STUCK (so a no-heal party doesn't rest forever) instead of looping. */
+function advanceRest(s: DelveState, turn: number, reason: string): DelveState {
+  const { units: party, mends } = restToConvergence(s.party)
+  const idle = mends > 0 ? 0 : (s.idleRests ?? 0) + 1
+  if (idle >= IDLE_REST_CAP) {
+    return { ...s, party, turn, idleRests: idle, status: 'stuck', log: logged(s, turn, { kind: 'end', reason, detail: 'no progress — the party is stuck (cannot heal or reach more rooms)' }) }
   }
+  const detail = mends > 0 ? `rest — ${mends} mend${mends > 1 ? 's' : ''}` : 'rest — nothing to mend'
+  return { ...s, party, turn, idleRests: idle, log: logged(s, turn, { kind: 'explore', reason, detail }) }
+}
 
+/** Cross a corridor into `next`: spring its traps (may wipe), collect a reward room, or
+ *  enter the room (which may start a fight). */
+function advanceTraverse(s: DelveState, turn: number, next: string, reason: string): DelveState {
   const explored = s.explored.includes(next) ? s.explored : [...s.explored, next]
-  // traverse the corridor: any traps it owns spring on the party on the way through
   const trapped = springTraps(s.party, corridorBetween(s.graph, s.pos, next), turn)
   const baseLog = [...s.log, ...trapped.entries].slice(-60)
   if (trapped.party.every((u) => u.hp <= 0)) {
@@ -402,11 +403,11 @@ function advanceMove(s0: DelveState, turn: number): DelveState {
     return { ...s, party: trapped.party, pos: next, explored, turn, status: 'dead', log: [...baseLog, wiped].slice(-60) }
   }
   const moved: DelveState = { ...s, party: trapped.party, pos: next, explored, turn, idleRests: 0 }
-  const reward = grantReward(moved, baseLog, decision.reason, turn)
+  const reward = grantReward(moved, baseLog, reason, turn)
   if (reward !== null) return reward
 
   const e = enterRoom(moved, next)
-  const entry: DelveLogEntry = { turn, kind: e.kind, reason: decision.reason, detail: e.detail }
+  const entry: DelveLogEntry = { turn, kind: e.kind, reason, detail: e.detail }
   return { ...moved, battle: e.battle, rng: e.rng, log: [...baseLog, entry].slice(-60) }
 }
 

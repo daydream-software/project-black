@@ -13,13 +13,16 @@ export interface ParsedCommit {
 }
 
 // `type(scope)!: summary` — scope and the breaking `!` are optional.
-const CONVENTIONAL = /^([a-z]+)(?:\(([^)]*)\))?(!)?:\s*(.+)$/i
+const CONVENTIONAL = /^(?<type>[a-z]+)(?:\((?<scope>[^)]*)\))?(?<breaking>!)?:\s*(?<summary>.+)$/iu
 
 /** Parse one commit SUBJECT line; null if it isn't Conventional-Commit shaped. */
 export function parseCommit(subject: string): ParsedCommit | null {
-  const m = CONVENTIONAL.exec(subject.trim())
-  if (m === null) return null
-  return { type: m[1].toLowerCase(), scope: m[2] ?? null, breaking: m[3] === '!', summary: m[4].trim() }
+  // TS types regex groups as `string`, but optional ones (`scope`/`breaking`) are
+  // undefined at runtime — annotate the values as `string | undefined` (a safe widening,
+  // no cast) so the null-handling below is honest.
+  const g: Record<string, string | undefined> | undefined = CONVENTIONAL.exec(subject.trim())?.groups
+  if (g === undefined) return null
+  return { type: (g.type ?? '').toLowerCase(), scope: g.scope ?? null, breaking: g.breaking === '!', summary: (g.summary ?? '').trim() }
 }
 
 // Which commit types become which PLAYER-FACING group. Only these reach changelog.json;
@@ -86,28 +89,36 @@ const TYPE_LABEL: Readonly<Record<string, string>> = {
 
 export interface DevSection { version: string; date: string; subjects: readonly string[] }
 
+/** One commit's CHANGELOG.md bullet text (scope prefix + summary + breaking marker). */
+function entryText(p: ParsedCommit): string {
+  return `${p.scope === null ? '' : `**${p.scope}:** `}${p.summary}${p.breaking ? ' ⚠️ BREAKING' : ''}`
+}
+
+/** One section's markdown lines (version heading + entries grouped by type label). */
+function renderDevSection(sec: DevSection): string[] {
+  const byLabel = new Map<string, string[]>()
+  const other: string[] = []
+  for (const subject of sec.subjects) {
+    const p = parseCommit(subject)
+    if (p === null) { other.push(subject); continue }
+    const label = TYPE_LABEL[p.type] ?? 'Other'
+    byLabel.set(label, [...byLabel.get(label) ?? [], entryText(p)])
+  }
+  const out = [`## ${sec.version}${sec.date === '' ? '' : ` — ${sec.date}`}`, '']
+  for (const label of Object.values(TYPE_LABEL)) {
+    const items = byLabel.get(label) ?? []
+    if (items.length > 0) out.push(`### ${label}`, ...items.map((t) => `- ${t}`), '')
+  }
+  if (other.length > 0) out.push('### Other', ...other.map((t) => `- ${t}`), '')
+  return out
+}
+
 /** Render the full developer CHANGELOG.md from sections (newest first). Pure + stable. */
 export function renderDevChangelog(sections: readonly DevSection[]): string {
-  const lines: string[] = ['# Changelog', '', '> Generated from Conventional Commits by `npm run changelog`. Do not edit by hand.', '']
-  for (const sec of sections) {
-    lines.push(`## ${sec.version}${sec.date === '' ? '' : ` — ${sec.date}`}`, '')
-    const byLabel = new Map<string, string[]>()
-    const other: string[] = []
-    for (const subject of sec.subjects) {
-      const p = parseCommit(subject)
-      if (p === null) { other.push(subject); continue }
-      const label = TYPE_LABEL[p.type] ?? 'Other'
-      const text = `${p.scope === null ? '' : `**${p.scope}:** `}${p.summary}${p.breaking ? ' ⚠️ BREAKING' : ''}`
-      const bucket = byLabel.get(label) ?? []
-      bucket.push(text)
-      byLabel.set(label, bucket)
-    }
-    for (const label of Object.values(TYPE_LABEL)) {
-      const items = byLabel.get(label)
-      if (items === undefined || items.length === 0) continue
-      lines.push(`### ${label}`, ...items.map((t) => `- ${t}`), '')
-    }
-    if (other.length > 0) lines.push('### Other', ...other.map((t) => `- ${t}`), '')
-  }
+  const lines = [
+    '# Changelog', '',
+    '> Generated from Conventional Commits by `npm run changelog`. Do not edit by hand.', '',
+    ...sections.flatMap(renderDevSection),
+  ]
   return `${lines.join('\n').trimEnd()}\n`
 }
