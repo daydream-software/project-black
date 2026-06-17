@@ -1144,16 +1144,19 @@ function renderExEditor(): void {
   renderEngramLoaders()
 }
 
-// Map a delve-log kind to one of the existing log-entry colour classes.
-const LOG_CLASS: Record<string, string> = { explore: 'defend', enter: 'flee', combat: 'attack', clear: 'heal', end: 'counter', boon: 'heal', note: 'note' }
-
+// The journal is the GOLEMS' VOICE: it shows ONLY what an engram logged via
+// `record(...)` (kind 'note'), never the engine's own narration. The engine entries
+// still live in `delve.log` (and the scrying view + end-screen convey the delve
+// visually) — they're just not the journal. Empty until a brain records something.
 function renderLog(): void {
-  const entries = (delve?.log ?? lastDelveLog).slice(-14).reverse()
+  const entries = (delve?.log ?? lastDelveLog).filter((e) => e.kind === 'note').slice(-40).reverse()
+  if (entries.length === 0) {
+    logEl.innerHTML =
+      '<p class="log-empty">Nothing recorded yet. Call <code>record(…)</code> in an engram to log what your golems sense — your lines show up here.</p>'
+    return
+  }
   logEl.innerHTML = entries
-    .map(
-      (e) =>
-        `<div class="entry ${LOG_CLASS[e.kind] ?? 'defend'}"><span class="turn">T${e.turn}</span> <span class="rule">${esc(e.reason)}</span><div class="detail">${esc(e.detail)}</div></div>`,
-    )
+    .map((e) => `<div class="entry note"><span class="turn">T${e.turn}</span> <span class="rec">${esc(e.detail)}</span></div>`)
     .join('')
 }
 

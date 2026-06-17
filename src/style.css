@@ -802,22 +802,28 @@ canvas {
   color: #ff6b6b;
 }
 
-/* `record(...)` debug lines from a golem's brain — a muted, console-like entry. */
+/* The journal is record()-only — a golem's own logged lines (the engrams' voice). */
 .entry.note {
-  border-left-color: #5a6072;
-  border-left-style: dashed;
-  background: #101018;
-  opacity: 0.92;
+  border-left-color: #6ee07f;
 }
 
-.entry.note .rule {
-  color: #8b90a0;
-  font-style: italic;
-}
-
-.entry.note .detail {
+.entry.note .rec {
   font-family: ui-monospace, "SF Mono", "Cascadia Code", Menlo, monospace;
-  color: #aeb6c7;
+  color: #cfd6e0;
+  word-break: break-word;
+}
+
+.log-empty {
+  color: #8b90a0;
+  font-size: 13px;
+  line-height: 1.5;
+  margin: 0;
+  padding: 4px 2px;
+}
+
+.log-empty code {
+  font-family: ui-monospace, "SF Mono", "Cascadia Code", Menlo, monospace;
+  color: #6ee07f;
 }
 
 .entry .turn {

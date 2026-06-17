@@ -69,6 +69,13 @@ export function toEntryForm(src: string): string {
  *  starting point when moving the party's delve navigation to code. */
 export function explorationTemplate(): string {
   // No-branch default so it runs under the minimal (no-`if`) language: explore the frontier,
-  // withdraw when done. `if`/`Memory` unlock smarter navigation later.
-  return ['Engram.exploration_turn:', '    return explore()', ''].join('\n')
+  // withdraw when done. `if`/`Memory` unlock smarter navigation later. The `record(...)`
+  // line seeds the journal (the golems' voice) — it logs the room type each turn, so a
+  // fresh delve's journal isn't empty and the idiom is visible from the start.
+  return [
+    'Engram.exploration_turn:',
+    '    record("at", senses.room.type)  # your record(...) lines fill the journal',
+    '    return explore()',
+    '',
+  ].join('\n')
 }

@@ -5,6 +5,7 @@ import {
 } from '../delve'
 import { decideExplorationFromProgram } from './explore'
 import { decideCombatFromProgram } from './combat'
+import { explorationTemplate } from './migrate'
 import { makeWarrior, makeHealer, makeGolem, setProgramDecider, ProgramError } from '../sim'
 import { setUnlocked } from './gate'
 import { LEVELS } from '../levels'
@@ -107,6 +108,21 @@ describe('exploration program navigator', () => {
     // stepping folds the recorded line into the journal as a `note` entry
     const after = stepDelve(s)
     expect(after.log.some((e) => e.kind === 'note' && e.detail.startsWith('at '))).toBe(true)
+  })
+
+  it('the default exploration template records to the journal under the MINIMAL language', () => {
+    // a brand-new profile has NO unlocks; the seeded `record(...)` must still run (it's
+    // ungated) so a fresh delve's journal isn't empty.
+    setUnlocked([])
+    try {
+      const stats = { might: 7, ward: 1, fortitude: 10, attunement: 0, poise: 0, celerity: 3 }
+      const g = makeGolem({ id: 'hero-1', name: 'Solo', stats, procedure: [], program: 'Engram.combat_turn:\n    return attack(senses.enemies.lowest_hp)\n' })
+      let s = startDelve([g], 3, undefined, LEVELS[0], explorationTemplate())
+      s = stepDelve(s) // first exploration turn → record("at", <room type>)
+      expect(s.log.some((e) => e.kind === 'note' && e.detail.startsWith('at '))).toBe(true)
+    } finally {
+      setUnlocked(['lang-if', 'lang-loops', 'lang-comprehensions', 'lang-def', 'lang-import', 'skill-mend'])
+    }
   })
 
   it('a combat brain’s record(...) lands in the delve journal (combat path)', () => {
