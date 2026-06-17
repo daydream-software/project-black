@@ -27,7 +27,7 @@ describe('lexer', () => {
     expect(kinds).toContain('DEDENT')
   })
   it('rejects tabs for indentation', () => {
-    expect(() => lex('if x:\n\ty\n')).toThrow(/tab/)
+    expect(() => lex('if x:\n\ty\n')).toThrow(/tab/u)
   })
 })
 
@@ -60,7 +60,7 @@ describe('interpreter', () => {
     expect(run('def main(s):\n    s.add(2)\n    return 2 in s\n', [new Set()])).toBe(true)
   })
   it('fuel overrun on an infinite loop throws', () => {
-    expect(() => run('def main(x):\n    while True:\n        x = x\n    return x\n', [1])).toThrow(/budget/)
+    expect(() => run('def main(x):\n    while True:\n        x = x\n    return x\n', [1])).toThrow(/budget/u)
   })
   it('import exposes a library as a callable namespace', () => {
     const lib = 'def bump(x):\n    return x + 100\n'
@@ -122,7 +122,7 @@ describe('combat program decider', () => {
   it('a locked construct (if, when not unlocked) throws ProgramError', () => {
     setUnlocked([]) // lock everything for this case
     const h = hero('Engram.combat_turn:\n    if me.hp_pct < 30:\n        return flee()\n    return attack(senses.enemies.first)\n')
-    expect(() => decideCombatFromProgram(h, [h, makeWarden()])).toThrow(/locked/)
+    expect(() => decideCombatFromProgram(h, [h, makeWarden()])).toThrow(/locked/u)
     setUnlocked(['lang-if', 'lang-loops', 'lang-comprehensions', 'lang-def', 'lang-import', 'skill-mend']) // restore
   })
 })

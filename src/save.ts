@@ -135,27 +135,30 @@ function isDelveState(x: unknown): x is DelveState {
   )
 }
 
-/** An optional field that, when present, must be an array (drops out of the
- *  complexity of the big validator while reading the same). */
-function isOptArray(v: unknown): boolean {
-  return v === undefined || Array.isArray(v)
-}
+// Small optional-field predicates: each keeps a `||` out of the big validator so it
+// stays under the complexity bar while reading the same.
+function isOptArray(v: unknown): boolean { return v === undefined || Array.isArray(v) }
+function isOptString(v: unknown): boolean { return v === undefined || typeof v === 'string' }
+function isOptNumber(v: unknown): boolean { return v === undefined || typeof v === 'number' }
+function isOptObj(v: unknown): boolean { return v === undefined || isObj(v) }
+function isMode(v: unknown): boolean { return v === 'camp' || v === 'delve' }
+// loose (object-or-null) so an INCOMPATIBLE in-progress delve (old grid format) doesn't
+// reject the whole profile; dropStaleDelve sanitises it to town.
+function isObjOrNull(v: unknown): boolean { return v === null || isObj(v) }
 
 /** The optional/additive meta fields + the mode/delve pair — validated apart so
  *  `isSaveData` stays under the complexity bar. */
 function isAuxFields(x: Record<string, unknown>): boolean {
   return (
     isOptArray(x.exploration) &&
-    (x.explorationProgram === undefined || typeof x.explorationProgram === 'string') &&
-    (x.library === undefined || typeof x.library === 'string') &&
-    (x.engrams === undefined || isObj(x.engrams)) &&
+    isOptString(x.explorationProgram) &&
+    isOptString(x.library) &&
+    isOptObj(x.engrams) &&
     isOptArray(x.clearedLevels) &&
-    (x.insight === undefined || typeof x.insight === 'number') &&
+    isOptNumber(x.insight) &&
     isOptArray(x.unlocked) &&
-    (x.mode === 'camp' || x.mode === 'delve') &&
-    // loose here (just object-or-null) so an INCOMPATIBLE in-progress delve (old grid
-    // format) doesn't reject the whole profile; dropStaleDelve sanitises it to town.
-    (x.delve === null || isObj(x.delve))
+    isMode(x.mode) &&
+    isObjOrNull(x.delve)
   )
 }
 

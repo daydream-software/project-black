@@ -374,16 +374,16 @@ describe('step — one unit-action of the simulation', () => {
     // round-robin (which would give every unit an equal share).
     const defend: Procedure = [{ state: { subject: subj('self'), predicate: pred('always') }, maneuver: DEFEND, label: 'defend' }]
     let s = initialState(defend, defend)
-    const count: Record<string, number> = {}
+    const count: Record<string, number | undefined> = {}
     for (let i = 0; i < 14; i += 1) {
       s = step(s)
       const n = s.log.at(-1)?.actorName ?? '?'
       count[n] = (count[n] ?? 0) + 1
     }
-    expect(count['Mender']).toBeGreaterThan(count['Sentinel'] ?? 0) // Celerity 7 > 6
-    expect(count['Sentinel']).toBeGreaterThan(count['Slime #1'] ?? 0) // golems >> slimes
+    expect(count.Mender).toBeGreaterThan(count.Sentinel ?? 0) // Celerity 7 > 6
+    expect(count.Sentinel).toBeGreaterThan(count['Slime #1'] ?? 0) // golems >> slimes
     // not round-robin: the fastest unit laps a slow slime several times over
-    expect(count['Mender']).toBeGreaterThanOrEqual(4 * (count['Slime #1'] ?? 1))
+    expect(count.Mender).toBeGreaterThanOrEqual(4 * (count['Slime #1'] ?? 1))
   })
 
   it('Mend on an enemy is a dead rule: turn is consumed, nothing changes', () => {

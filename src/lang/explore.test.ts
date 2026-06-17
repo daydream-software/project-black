@@ -77,7 +77,7 @@ describe('exploration program navigator', () => {
       'def exploration_turn(senses):\n    return retreat()\n')
     s = stepDelve(s)
     expect(s.status).toBe('left')
-    expect(s.log.at(-1)?.detail).toMatch(/withdrew/)
+    expect(s.log.at(-1)?.detail).toMatch(/withdrew/u)
   })
 
   it('a single decent golem clears lvl-1 attack-only with the MINIMAL language', () => {
@@ -86,7 +86,7 @@ describe('exploration program navigator', () => {
     const stats = { might: 7, ward: 1, fortitude: 10, attunement: 0, poise: 0, celerity: 3 }
     const COMBAT = 'Engram.combat_turn:\n    return attack(senses.enemies.lowest_hp)\n'
     const EXPLORE = 'Engram.exploration_turn:\n    return explore()\n'
-    const tally: Record<string, number> = {}
+    const tally: Record<string, number | undefined> = {}
     for (let seed = 1; seed <= 20; seed += 1) {
       const g = makeGolem({ id: 'hero-1', name: 'Solo', stats, procedure: [], program: COMBAT })
       let s = startDelve([g], seed, undefined, LEVELS[0], EXPLORE)
@@ -104,7 +104,7 @@ describe('exploration program navigator', () => {
     const s = fresh(RECORDING)
     const d = decideExploration(s)
     expect(d.notes?.length).toBe(1)
-    expect(d.notes?.[0]).toMatch(/^at /)
+    expect(d.notes?.[0]).toMatch(/^at /u)
     // stepping folds the recorded line into the journal as a `note` entry
     const after = stepDelve(s)
     expect(after.log.some((e) => e.kind === 'note' && e.detail.startsWith('at '))).toBe(true)
