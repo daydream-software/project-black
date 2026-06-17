@@ -33,9 +33,9 @@ export type LangValue =
 
 export interface HostObject {
   host: true
-  get(name: string): LangValue
+  get: (name: string) => LangValue
   /** Optional human/gibberish rendering for `record`. */
-  repr?(): string
+  repr?: () => string
 }
 export class Builtin {
   constructor(
@@ -53,44 +53,56 @@ export class LangFunc {
 }
 
 export function isHost(v: LangValue): v is HostObject {
-  return typeof v === 'object' && v !== null && (v as { host?: boolean }).host === true
+  return typeof v === 'object' && v !== null && 'host' in v && v.host === true
 }
 
 // --- Environment -------------------------------------------------------------
 
 export class Env {
-  private vars = new Map<string, LangValue>()
-  private globalNames = new Set<string>()
+  private readonly vars = new Map<string, LangValue>()
+  private readonly globalNames = new Set<string>()
   constructor(
     public parent: Env | null = null,
     public globalEnv: Env | null = null,
   ) {
     if (globalEnv === null) this.globalEnv = this
   }
+  // globalEnv is set to `this` in the constructor when null, so it's never actually null;
+  // this getter encodes that so call sites need no `!`/cast.
+  private get globalScope(): Env { return this.globalEnv ?? this }
   declareGlobal(name: string): void {
     this.globalNames.add(name)
   }
   get(name: string): LangValue {
-    if (this.globalNames.has(name)) return (this.globalEnv as Env).get(name)
-    if (this.vars.has(name)) return this.vars.get(name) as LangValue
+    if (this.globalNames.has(name)) return this.globalScope.get(name)
+    const local = this.vars.get(name) // values are LangValue (never undefined) ⇒ undefined = absent
+    if (local !== undefined) return local
     if (this.parent !== null) return this.parent.get(name)
     throw new RuntimeError(`name '${name}' is not defined`)
   }
   has(name: string): boolean {
     if (this.vars.has(name)) return true
-    return this.parent !== null && this.parent.has(name)
+    return this.parent?.has(name) ?? false
   }
   set(name: string, value: LangValue): void {
-    if (this.globalNames.has(name)) { (this.globalEnv as Env).vars.set(name, value); return }
+    if (this.globalNames.has(name)) { this.globalScope.vars.set(name, value); return }
     this.vars.set(name, value)
   }
 }
 
 // --- Control-flow signals (thrown, not returned) -----------------------------
+// They extend Error (so `throw`ing them is well-typed) but carry no stack cost beyond
+// the message; they're always caught at the loop/call boundary, never surfaced.
 
-class ReturnSignal { constructor(public value: LangValue) {} }
-class BreakSignal {}
-class ContinueSignal {}
+class ReturnSignal extends Error {
+  constructor(public value: LangValue) { super('return') }
+}
+class BreakSignal extends Error {
+  constructor() { super('break') }
+}
+class ContinueSignal extends Error {
+  constructor() { super('continue') }
+}
 
 // --- Truthiness / equality ---------------------------------------------------
 
@@ -177,7 +189,7 @@ export class Interp {
     if (fn instanceof LangFunc) {
       if (args.length !== fn.params.length) throw new RuntimeError(`${fn.name}() expects ${fn.params.length} args, got ${args.length}`)
       const env = new Env(fn.closure, fn.closure.globalEnv)
-      fn.params.forEach((p, i) => env.set(p, args[i]))
+      fn.params.forEach((p, i) => { env.set(p, args[i]); })
       try {
         for (const stmt of fn.body) this.exec(stmt, env)
       } catch (e) {
@@ -234,7 +246,7 @@ export class Interp {
       case 'continue': throw new ContinueSignal()
       case 'pass': return
       case 'global': for (const n of stmt.names) env.declareGlobal(n); return
-      case 'import': this.importLibrary(stmt.name, env); return
+      case 'import': this.importLibrary(stmt.name, env); 
     }
   }
 
@@ -245,7 +257,7 @@ export class Interp {
   private importLibrary(name: string, env: Env): void {
     const src = this.libraries[name]
     if (src === undefined) throw new RuntimeError(`no library '${name}'`)
-    const genv = env.globalEnv as Env
+    const genv = env.globalEnv!
     const libEnv = new Env(genv, genv)
     for (const stmt of compile(src).module.body) {
       if (stmt.k === 'func') libEnv.set(stmt.name, new LangFunc(stmt.params, stmt.body, libEnv, stmt.name))

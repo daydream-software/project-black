@@ -50,8 +50,8 @@ export function checkGates(module: Module, allowed: ReadonlySet<string>): GateRe
       case 'index': walkExpr(e.obj); walkExpr(e.index); return
       case 'call': walkExpr(e.fn); e.args.forEach(walkExpr); return
       case 'list': case 'set': e.items.forEach(walkExpr); return
-      case 'dict': e.pairs.forEach(([k, v]) => { walkExpr(k); walkExpr(v) }); return
-      default: return // literals / names / none
+      case 'dict': e.pairs.forEach(([k, v]) => { walkExpr(k); walkExpr(v) })
+      // no default: literals / names / None carry nothing to gate (no-op)
     }
   }
 
@@ -75,8 +75,8 @@ export function checkGates(module: Module, allowed: ReadonlySet<string>): GateRe
       case 'entry': walkBody(s.body); return
       case 'return': if (s.value !== null) walkExpr(s.value); return
       case 'assign': walkExpr(s.target); walkExpr(s.value); return
-      case 'expr': walkExpr(s.value); return
-      default: return // break / continue / pass / global
+      case 'expr': walkExpr(s.value)
+      // no default: break / continue / pass / global carry nothing to gate (no-op)
     }
   }
 

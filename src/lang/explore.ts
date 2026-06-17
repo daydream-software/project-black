@@ -129,7 +129,7 @@ function exploreGlobals(s: DelveState, interp: Interp, memory: LangValue): Recor
     ...baseBuiltins(interp),
     Memory: memory,
     RoomType: roomTypeEnum(),
-    party: { host: true, get: (n: string): LangValue => { if (n === 'hp_pct') return partyHpPct(s.party); throw new Error(`party has no attribute '${n}'`) } } as HostObject,
+    party: { host: true, get: (n: string): LangValue => { if (n === 'hp_pct') return partyHpPct(s.party); throw new Error(`party has no attribute '${n}'`) } },
     move: new Builtin((a) => new ExploreAction(exitRoom(a[0])), 'move'),
     // `explore()` — the no-branch navigator: step toward the nearest unexplored room, or
     // WITHDRAW when everything reachable is explored. Lets the minimal language (no `if`)

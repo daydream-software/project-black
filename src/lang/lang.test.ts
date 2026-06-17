@@ -12,7 +12,7 @@ import { setUnlocked } from './gate'
 
 // Most tests author `if`/Mend/loops, so unlock everything (the gate is exercised in its
 // own block + explore.test). The combat describe block also registers the decider.
-beforeAll(() => setUnlocked(['lang-if', 'lang-loops', 'lang-comprehensions', 'lang-def', 'lang-import', 'skill-mend']))
+beforeAll(() => { setUnlocked(['lang-if', 'lang-loops', 'lang-comprehensions', 'lang-def', 'lang-import', 'skill-mend']); })
 
 /** Run a single top-level `def main(...)` for the interpreter tests. */
 function run(src: string, args: LangValue[]): LangValue {
@@ -132,7 +132,7 @@ describe('combat program decider', () => {
 // a PROGRAM. The discriminating edit is deleting the mend line — exactly the in-app
 // proof: with it the Warden's heal-counter wins; without it the Titan wins the DPS race.
 describe('Hex Warden wall — code-brain parity', () => {
-  beforeAll(() => setProgramDecider(decideCombatFromProgram))
+  beforeAll(() => { setProgramDecider(decideCombatFromProgram); })
   const TITAN: Stats = { might: 6, ward: 1, fortitude: 7, attunement: 3, poise: 0, celerity: 4 } // 21 pts
   const MENDS = 'def combat_turn(senses):\n    if me.hp_pct < 50:\n        return use(Skills.Mend, me)\n    return attack(senses.enemies.first)\n'
   const ATTACKS = 'def combat_turn(senses):\n    return attack(senses.enemies.first)\n'

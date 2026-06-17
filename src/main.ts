@@ -264,7 +264,7 @@ function onEngramChange(src: string): void {
   if (activeEngramKind === 'libs') syncLibraries()
   persist()
 }
-let engramEditor: CodeEditorHandle = mountTextarea(engramMountEl, engramErrorEl, onEngramChange)
+const engramEditor: CodeEditorHandle = mountTextarea(engramMountEl, engramErrorEl, onEngramChange)
 
 function renderEngramManager(): void {
   const locked = editingLocked()
