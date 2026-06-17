@@ -28,6 +28,7 @@ import {
   type SlotInfo,
   type EngramStore,
   type NamedEngram,
+  type SaveData,
 } from './save'
 import { makeHero, makeHeroBack, makeSlime } from './sprites'
 import { render, renderDelve } from './render'
@@ -245,8 +246,9 @@ const activeEngramEntry = (): 'combat_turn' | 'exploration_turn' | null =>
 
 function uniqueEngramName(kind: EngramKind): string {
   const base = kind === 'libs' ? 'lib' : kind
+  const taken = new Set(engrams[kind].map((e) => e.name))
   let n = 1
-  while (engrams[kind].some((e) => e.name === `${base}${n}`)) n += 1
+  while (taken.has(`${base}${n}`)) n += 1
   return `${base}${n}`
 }
 function starterFor(kind: EngramKind): string {
@@ -266,16 +268,26 @@ function onEngramChange(src: string): void {
 }
 const engramEditor: CodeEditorHandle = mountTextarea(engramMountEl, engramErrorEl, onEngramChange)
 
-function renderEngramManager(): void {
-  const locked = editingLocked()
+function selectEngramKind(kind: EngramKind): void {
+  activeEngramKind = kind
+  activeEngramIndex = 0
+  renderEngramManager()
+}
+
+function renderEngramTabs(): void {
   engramTabsEl.replaceChildren()
   for (const k of ENGRAM_KINDS) {
     const tab = document.createElement('button')
     tab.className = k.kind === activeEngramKind ? 'tab active' : 'tab'
     tab.textContent = `${k.label} (${engrams[k.kind].length})`
-    tab.addEventListener('click', () => { activeEngramKind = k.kind; activeEngramIndex = 0; renderEngramManager() })
+    tab.addEventListener('click', () => { selectEngramKind(k.kind) })
     engramTabsEl.appendChild(tab)
   }
+}
+
+function renderEngramManager(): void {
+  const locked = editingLocked()
+  renderEngramTabs()
   const list = activeEngramList()
   if (activeEngramIndex >= list.length) activeEngramIndex = Math.max(0, list.length - 1)
   engramSelectEl.replaceChildren()
@@ -323,22 +335,23 @@ engramDeleteBtn.addEventListener('click', () => {
 
 // --- Workshop loaders (copy-on-assign onto golems) --------------------------
 function fillLoader(sel: HTMLSelectElement, list: NamedEngram[]): void {
-  sel.replaceChildren()
+  const box = sel // a const alias: filling the passed <select> is the job
+  box.replaceChildren()
   const ph = document.createElement('option')
   ph.value = ''
   ph.textContent = list.length > 0 ? 'Load engram…' : '(none yet)'
-  sel.appendChild(ph)
+  box.appendChild(ph)
   list.forEach((e, i) => {
     const o = document.createElement('option')
     o.value = String(i)
     o.textContent = e.name
-    sel.appendChild(o)
+    box.appendChild(o)
   })
-  sel.value = ''
+  box.value = ''
 }
 function renderEngramLoaders(): void {
   const locked = editingLocked()
-  const hasHero = roster[activeHero] !== undefined
+  const hasHero = roster.at(activeHero) !== undefined
   fillLoader(loadCombatEl, engrams.combat)
   fillLoader(loadExEl, engrams.exploration)
   loadCombatEl.disabled = locked || !hasHero || engrams.combat.length === 0
@@ -355,13 +368,13 @@ function upsertEngram(list: NamedEngram[], name: string, src: string): NamedEngr
 }
 loadCombatEl.addEventListener('change', () => {
   const hero = roster[activeHero] as Hero | undefined
-  const e = engrams.combat[Number(loadCombatEl.value)]
+  const e = engrams.combat.at(Number(loadCombatEl.value))
   if (hero === undefined || e === undefined || editingLocked()) return
   hero.program = e.src // copy-on-assign
   renderCodeBrain(); persist()
 })
 loadExEl.addEventListener('change', () => {
-  const e = engrams.exploration[Number(loadExEl.value)]
+  const e = engrams.exploration.at(Number(loadExEl.value))
   if (e === undefined || editingLocked()) return
   explorationProgram = e.src // copy-on-assign
   renderExCodeBrain(); persist()
@@ -596,11 +609,7 @@ function enterSlot(index: number): void {
   exploration = saved.exploration ?? DEFAULT_EX_ROWS.map((r) => ({ ...r }))
   explorationProgram = saved.explorationProgram ?? ''
   library = saved.library ?? ''
-  engrams = {
-    combat: saved.engrams?.combat ?? [],
-    exploration: saved.engrams?.exploration ?? [],
-    libs: saved.engrams?.libs ?? [],
-  }
+  engrams = loadEngrams(saved)
   migrateLibrary() // fold legacy single `library` into engrams.libs as "lib"
   syncLibraries()
   migrateToCode()
@@ -608,18 +617,27 @@ function enterSlot(index: number): void {
   insight = saved.insight ?? 0
   unlocked = saved.unlocked ?? []
   setUnlocked(unlocked)
-  if (saved.delve === null) {
-    delve = null
-    mode = 'camp'
-  } else {
-    // Resume the delve as saved — no fast-forward (no offline progress).
-    // (Pre-10a delves lack levelId — default it so first-clear tracking has a key.)
-    delve = { ...saved.delve, levelId: saved.delve.levelId === '' ? LEVELS[0].id : saved.delve.levelId }
-    mode = 'delve'
-    maybeRecordClear() // a delve already saved as cleared still counts on resume
-  }
+  restoreDelve(saved)
   saveNow() // re-stamp savedAt (+ record a first clear if the saved delve was cleared)
   enterGame()
+}
+
+/** The per-profile engram store, defaulting each kind (pre-engrams saves lack it). */
+function loadEngrams(saved: SaveData): EngramStore {
+  return {
+    combat: saved.engrams?.combat ?? [],
+    exploration: saved.engrams?.exploration ?? [],
+    libs: saved.engrams?.libs ?? [],
+  }
+}
+
+/** Restore the saved delve into module state: resume as-saved (no offline progress), or
+ *  land in camp. (Pre-10a delves lack levelId — default it so first-clear tracking works.) */
+function restoreDelve(saved: SaveData): void {
+  if (saved.delve === null) { delve = null; mode = 'camp'; return }
+  delve = { ...saved.delve, levelId: saved.delve.levelId === '' ? LEVELS[0].id : saved.delve.levelId }
+  mode = 'delve'
+  maybeRecordClear() // a delve already saved as cleared still counts on resume
 }
 
 /** Leave the game back to the slot picker — PAUSE, not abandon: the in-progress
