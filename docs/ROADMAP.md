@@ -304,7 +304,13 @@ pure tree-walking interpreter (`src/lang/`). Design + build state live in
 - **`record(...)` → the journal** (`2026-06-17`): the language's debug builtin (renamed
   from `print`, never gated) writes a golem's own lines into the delve **journal** as
   `note` entries — the in-fiction debug console. The deciders drain it; `sim`/`delve`
-  fold it into the log (capped per turn).
+  fold it into the log (capped per turn). **The journal is now `record()`-only** — the
+  engrams' voice, not the engine's narration (which still lives in `delve.log` but isn't
+  shown; the scrying view + end-screen convey the delve). The default exploration engram
+  seeds one `record("at", room.type)` so a fresh journal traces navigation. Equivalence:
+  navigation is fully reconstructible from `senses` (`room.type`/`is_objective`/`cleared`);
+  the inherent gap is an action's *resolved* damage (a reactive per-turn policy records
+  before it resolves) — HP snapshots stand in.
 
 ### Slice 11 — Exploration depth + the chain lever + room variety
 Richer exploration vocabulary (threat estimation; loot / rest / elite / boss

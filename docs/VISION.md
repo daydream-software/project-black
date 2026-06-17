@@ -88,8 +88,10 @@ delve a goal and a natural length — not "explore until you die."
 ## Center of gravity
 
 The game you actually *play* is the **town** — writing the two Procedures and
-shaping the build. The dungeon is the **test bench**; the **journal/replay** is
-how you diagnose a wipe. The **deterministic, seeded simulation is load-bearing**:
+shaping the build. The dungeon is the **test bench**; the **journal** is how you
+diagnose a wipe — and it's the golems' own voice: it shows what your code chose to
+`record(...)`, not engine narration, so observability is itself something you
+program. The **deterministic, seeded simulation is load-bearing**:
 without it you can't reproduce a delve, diagnose it, or trust that a fix worked.
 (This is why `sim.ts`/`delve.ts` stay pure; the seeded PRNG arrives with procedural
 dungeons.)
