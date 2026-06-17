@@ -415,13 +415,16 @@ from that branch. Pushes to `main` auto-deploy.
 - **Feel & polish:** an animated **boss splash** synced to the music on entering a
   boss/target room; combat & exploration juice; the journal as a real, filterable
   **replay/debugger**.
-- **Changelog / "What's New":** the in-game **consumer SHIPPED (2026-06-17)** — the
-  build version is injected from `package.json` (`__APP_VERSION__`), and `main.ts`
-  surfaces `src/changelog.json` as a "What's New" panel on a version bump (last-seen
-  in a global `localStorage` key) + a title button (`src/changelog.ts`). **Still
-  deferred:** the *generator* (commits → `changelog.json` + a dev `CHANGELOG.md`) —
-  the JSON is hand-authored for now (no per-release tags ⇒ version-bucketing is
-  ambiguous). (Conventional Commits already adopted.)
+- **Changelog / "What's New" — SHIPPED (2026-06-17), both halves.** *Consumer:* the
+  build version is injected from `package.json` (`__APP_VERSION__`); `main.ts` surfaces
+  `src/changelog.json` as a "What's New" panel on a version bump (last-seen in a global
+  `localStorage` key) + a title button (`src/changelog.ts`). *Generator:* `npm run
+  changelog` (`scripts/gen-changelog.ts` + pure, tested `src/changelog-gen.ts`) turns
+  git tags `vX.Y.Z` + Conventional Commits into `changelog.json` (player: feat/fix/perf)
+  + `CHANGELOG.md` (dev: all types). It validates `package.json` == latest tag (fails
+  loud, never mutates), preserves hand-authored blocks (frozen), and logs skipped
+  commits. Release flow in `CONTRIBUTING.md`. (First *generated* player block lands at
+  v0.2.0 — the curated 0.1.0 is hand-authored.)
 - **Co-op:** local (shared screen) → online P2P via Trystero/PeerJS — never a
   server we maintain.
 - **Theme/setting:** to be decided (the "program your party" fiction suits

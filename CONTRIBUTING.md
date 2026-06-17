@@ -33,23 +33,35 @@ fix(sim): treat exactly 30% HP as not below 30%
 refactor(sim): composite State/Maneuver model
 ```
 
-## Why it matters: the changelog will feed the game
+## Why it matters: the changelog feeds the game
 
-> **Status: the in-game consumer SHIPPED; the generator is still by hand.** The game
-> reads **`src/changelog.json`** and shows a **"What's New"** panel after an update (it
-> compares the build version `__APP_VERSION__` to the player's last-seen version in
-> `localStorage`). What's *not* automated yet: producing `changelog.json` (and a dev
-> `CHANGELOG.md`) from the commit history — for now the JSON is **hand-authored**. We
-> still write Conventional Commits so that generator can land later (a `feat`/`fix`/`perf`
-> subject is the patch note the player reads — write it for them).
+The game reads **`src/changelog.json`** and shows a **"What's New"** panel after an
+update (it compares the build version `__APP_VERSION__` to the player's last-seen
+version in `localStorage`). Two artifacts come from the commit history:
 
-The version history feeds two artifacts:
+- **`src/changelog.json`** — player-facing only (`feat`→*New*, `fix`→*Fixes*,
+  `perf`→*Improvements*), per version. The schema the game consumes.
+- **`CHANGELOG.md`** — full, developer-facing (all types). Generated; do not hand-edit.
 
-- **`CHANGELOG.md`** — full, developer-facing (all types). *(planned — not yet generated)*
-- **`src/changelog.json`** — player-facing only (`feat`, `fix`, `perf`), grouped
-  as *New / Fixes / Improvements*, per version. *(shipped — currently hand-authored)*
+The generator is decoupled from the game — it just writes that fixed schema.
 
-The generator is decoupled from the game: whatever produces `changelog.json`
-(a script, git-cliff, …), the game just consumes that fixed schema. Deferring it is
-deliberate — without per-release git tags, bucketing commits into version blocks is
-ambiguous, so the consumer (the valuable half) shipped first.
+### Cutting a release (`npm run changelog`)
+
+Releases are marked by **git tags `vX.Y.Z`**; the generator buckets commits by the
+range between tags. To publish patch notes:
+
+1. Land your work as **Conventional Commits** — a `feat:`/`fix:`/`perf:` *subject* is
+   the patch note the player reads, so write it for them.
+2. **Bump `package.json` `version`** and **tag the same version**: `git tag vX.Y.Z`.
+   (They must match — `npm run changelog` **fails loudly** on a mismatch, because a
+   mismatch reopens the in-game panel forever. It validates; it never bumps for you.)
+3. Run **`npm run changelog`** — it regenerates `src/changelog.json` + `CHANGELOG.md`
+   from the tags. It prints how many commits it **skipped** (everything that isn't
+   `feat`/`fix`/`perf` is dev-only — `docs`, `refactor`, `chore`, … — so a player-facing
+   change must use one of those three types; e.g. balance tweaks → `fix:`/`perf:`).
+4. **Polish** the generated block in `changelog.json` if a subject reads too dev-y
+   (optionally add a `title`), then commit `changelog.json` + `CHANGELOG.md` + the bump.
+
+**Hand-authored blocks are frozen:** a version already in `changelog.json` is never
+overwritten by the generator (so the curated `0.1.0` block stays). To regenerate one,
+delete its block first. Push tags separately — they're a publish action.
