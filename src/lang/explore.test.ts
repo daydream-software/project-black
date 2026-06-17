@@ -109,6 +109,23 @@ describe('exploration program navigator', () => {
     expect(after.log.some((e) => e.kind === 'note' && e.detail.startsWith('at '))).toBe(true)
   })
 
+  it('a combat brain’s record(...) lands in the delve journal (combat path)', () => {
+    // exploration brain stays silent so the only `note` entries come from COMBAT —
+    // exercising advanceCombat's withNotes(battle.stepNotes) fold, which the in-app
+    // run (record in the exploration brain) didn't cover.
+    const stats = { might: 7, ward: 1, fortitude: 10, attunement: 0, poise: 0, celerity: 3 }
+    const COMBAT = 'Engram.combat_turn:\n    record("in combat")\n    return attack(senses.enemies.lowest_hp)\n'
+    const EXPLORE = 'Engram.exploration_turn:\n    return explore()\n'
+    const g = makeGolem({ id: 'hero-1', name: 'Solo', stats, procedure: [], program: COMBAT })
+    let s = startDelve([g], 3, undefined, LEVELS[0], EXPLORE)
+    let combatNote = false
+    for (let i = 0; i < 400 && s.status === 'delving' && !combatNote; i += 1) {
+      s = stepDelve(s)
+      combatNote = s.log.some((e) => e.kind === 'note' && e.detail === 'in combat')
+    }
+    expect(combatNote).toBe(true)
+  })
+
   it('an explicit leave() ends the delve as left', () => {
     let s = startDelve([makeWarrior([]), makeHealer([])], 1234, undefined, LEVELS[0],
       'def exploration_turn(senses):\n    return leave()\n')
