@@ -83,7 +83,7 @@ class Parser {
     if (!this.is(kind, value)) {
       const t = this.peek()
       const want = value ?? kind
-      throw new ParseError(`expected ${want}, got '${t.value || t.kind}'`, t.line, t.col)
+      throw new ParseError(`expected ${want}, got '${t.value === '' ? t.kind : t.value}'`, t.line, t.col)
     }
     return this.next()
   }
@@ -115,11 +115,16 @@ class Parser {
   }
 
   private statement(): Stmt {
+    // Compound statements own a keyword + an indented block; simple ones are one line.
     if (this.is('KEYWORD', 'Engram')) return this.entryBlock()
     if (this.is('KEYWORD', 'def')) return this.funcDef()
     if (this.is('KEYWORD', 'if')) return this.ifStmt()
     if (this.is('KEYWORD', 'for')) return this.forStmt()
     if (this.is('KEYWORD', 'while')) return this.whileStmt()
+    return this.simpleStatement()
+  }
+
+  private simpleStatement(): Stmt {
     if (this.is('KEYWORD', 'return')) {
       this.next()
       const value = this.is('NEWLINE') ? null : this.expression()
@@ -141,7 +146,10 @@ class Parser {
       this.endSimple()
       return { k: 'import', name, line: kw.line, col: kw.col }
     }
-    // assignment or expression statement
+    return this.assignOrExpr()
+  }
+
+  private assignOrExpr(): Stmt {
     const expr = this.expression()
     if (this.accept('OP', '=')) {
       const value = this.expression()
@@ -303,13 +311,8 @@ class Parser {
     return e
   }
   private atom(): Expr {
-    const t = this.peek()
-    if (t.kind === 'NUMBER') { this.next(); return { k: 'num', value: Number(t.value) } }
-    if (t.kind === 'STRING') { this.next(); return { k: 'str', value: t.value } }
-    if (this.accept('KEYWORD', 'True')) return { k: 'bool', value: true }
-    if (this.accept('KEYWORD', 'False')) return { k: 'bool', value: false }
-    if (this.accept('KEYWORD', 'None')) return { k: 'none' }
-    if (t.kind === 'NAME') { this.next(); return { k: 'name', id: t.value, line: t.line, col: t.col } }
+    const lit = this.literalAtom()
+    if (lit !== null) return lit
     if (this.accept('OP', '(')) {
       const e = this.expression()
       this.expect('OP', ')')
@@ -317,7 +320,20 @@ class Parser {
     }
     if (this.is('OP', '[')) return this.listOrComp()
     if (this.is('OP', '{')) return this.dictOrSet()
-    throw new ParseError(`unexpected '${t.value || t.kind}'`, t.line, t.col)
+    const t = this.peek()
+    throw new ParseError(`unexpected '${t.value === '' ? t.kind : t.value}'`, t.line, t.col)
+  }
+
+  /** A literal / name atom (number, string, True/False/None, name); null if none here. */
+  private literalAtom(): Expr | null {
+    const t = this.peek()
+    if (t.kind === 'NUMBER') { this.next(); return { k: 'num', value: Number(t.value) } }
+    if (t.kind === 'STRING') { this.next(); return { k: 'str', value: t.value } }
+    if (this.accept('KEYWORD', 'True')) return { k: 'bool', value: true }
+    if (this.accept('KEYWORD', 'False')) return { k: 'bool', value: false }
+    if (this.accept('KEYWORD', 'None')) return { k: 'none' }
+    if (t.kind === 'NAME') { this.next(); return { k: 'name', id: t.value, line: t.line, col: t.col } }
+    return null
   }
   private listOrComp(): Expr {
     this.expect('OP', '[')
