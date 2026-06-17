@@ -264,6 +264,55 @@ body {
   color: #62687a;
 }
 
+/* --- "What's New" changelog panel --- */
+.modal-head h2 .sub#changelog-version {
+  color: #6ee07f;
+}
+
+.changelog-entry + .changelog-entry {
+  margin-top: 22px;
+  padding-top: 18px;
+  border-top: 1px solid #23232f;
+}
+
+.changelog-entry h3 {
+  font-size: 16px;
+  text-transform: none;
+  letter-spacing: 0;
+  color: #e6e9f0;
+  margin: 0 0 10px;
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+}
+
+.changelog-date {
+  font-size: 12px;
+  font-weight: 400;
+  color: #62687a;
+}
+
+.changelog-entry h4 {
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: #6ee07f;
+  margin: 14px 0 6px;
+}
+
+.changelog-entry ul {
+  margin: 0;
+  padding-left: 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+.changelog-entry li {
+  color: #cfd6e0;
+  line-height: 1.45;
+}
+
 /* Floating panel (the Journal): movable + resizable, NO backdrop — the world
    stays visible and interactive behind it. */
 .float-panel {

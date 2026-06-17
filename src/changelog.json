@@ -1,0 +1,20 @@
+{
+  "versions": [
+    {
+      "version": "0.1.0",
+      "date": "2026-06-17",
+      "title": "The first build",
+      "New": [
+        "You're an Artificer: build golems and inscribe their cores in code — the Inscription Language drives how each one fights AND how the party delves.",
+        "Author named Engrams in the Library, then load them onto golems in the Workshop.",
+        "The language grows: spend Insight (earned on a level's first clear) to unlock if / loops / functions / imports and the Mend skill.",
+        "Descend into seeded room-graph dungeons — The Ruin and The Vault — with pack fights, loot, buff rooms, hidden rooms and corridor traps.",
+        "record(...) writes a golem's own debug lines straight into the delve journal."
+      ],
+      "Fixes": [
+        "Level 1 is now beatable from a fresh start: a gentler first boss (the Ruin Keeper), and an end to the level-1 Celerity softlock."
+      ],
+      "Improvements": []
+    }
+  ]
+}

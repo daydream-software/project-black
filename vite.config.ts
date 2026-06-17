@@ -1,9 +1,18 @@
+import { readFileSync } from 'node:fs'
 import { defineConfig } from 'vitest/config'
+
+// The build version, single-sourced from package.json and injected as a compile-time
+// constant (`__APP_VERSION__`). The in-game "What's New" panel compares it to the
+// player's last-seen version (changelog.ts) to decide whether to surface patch notes.
+const pkg = JSON.parse(readFileSync(new URL('./package.json', import.meta.url), 'utf-8')) as { version: string }
 
 export default defineConfig({
   // Relative base so the production build works on GitHub Pages regardless of
   // the repo name (project pages serve from /<repo>/, not /).
   base: './',
+  define: {
+    __APP_VERSION__: JSON.stringify(pkg.version),
+  },
   server: {
     // Bind all interfaces so the WSL dev server is reachable from the Windows
     // browser (plain localhost forwarding is flaky in WSL2).

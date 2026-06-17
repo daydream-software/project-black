@@ -15,6 +15,7 @@
           into the dark, and watch.
         </p>
         <button id="title-play" class="big-btn">▶ Play</button>
+        <button id="title-changelog" class="link-btn">✨ What's New</button>
       </div>
     </div>
 
@@ -122,6 +123,20 @@
         </div>
       </div>
     </main>
+
+    <!-- "What's New" — a top-level overlay so it can surface over the title on boot
+         after an update (and reopen from the title's button). Built/filled in main.ts. -->
+    <div id="modal-changelog" class="modal" hidden>
+      <div class="modal-panel panel">
+        <header class="modal-head">
+          <h2>What's New <span class="sub" id="changelog-version"></span></h2>
+          <button class="modal-close" data-close-modal title="Close">✕</button>
+        </header>
+        <div class="modal-body">
+          <div id="changelog-body"></div>
+        </div>
+      </div>
+    </div>
     <script type="module" src="/src/main.ts"></script>
   </body>
 </html>

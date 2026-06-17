@@ -34,6 +34,7 @@ import { render, renderDelve } from './render'
 import { buildingAt, type BuildingId } from './buildings'
 import foyerUrl from './assets/town-foyer.png'
 import { requireElement, require2dContext } from './dom'
+import { CHANGELOG, APP_VERSION, markSeen, shouldShowWhatsNew, type VersionEntry } from './changelog'
 import {
   buildExploration,
   procedureFor,
@@ -409,6 +410,10 @@ const slotListEl = requireElement('slot-list', HTMLDivElement)
 const playBtn = requireElement('title-play', HTMLButtonElement)
 const slotsBackBtn = requireElement('slots-back', HTMLButtonElement)
 const toSlotsBtn = requireElement('to-slots', HTMLButtonElement)
+const titleChangelogBtn = requireElement('title-changelog', HTMLButtonElement)
+const modalChangelogEl = requireElement('modal-changelog', HTMLDivElement)
+const changelogBodyEl = requireElement('changelog-body', HTMLDivElement)
+const changelogVersionEl = requireElement('changelog-version', HTMLSpanElement)
 
 musicBtn.addEventListener('click', () => {
   void toggleMusic().then((muted) => {
@@ -1216,6 +1221,54 @@ toSlotsBtn.addEventListener('click', backToSlots)
 // The Journal opens from its always-available button (it's readable mid-delve too).
 openJournalBtn.addEventListener('click', () => { setBuilding('journal'); })
 
+// --- "What's New" — patch notes, surfaced on a version bump + from the title ----
+// Built via DOM (textContent), never innerHTML — the strings are content, not authored
+// by the player, but the rule is blanket. The panel lists the full changelog; closing
+// marks this build seen (so it won't auto-open again until package.json bumps).
+function renderChangelogEntry(e: VersionEntry): HTMLElement {
+  const block = document.createElement('section')
+  block.className = 'changelog-entry'
+  const h3 = document.createElement('h3')
+  h3.textContent = e.title === '' ? `v${e.version}` : `v${e.version} — ${e.title}`
+  const date = document.createElement('span')
+  date.className = 'changelog-date'
+  date.textContent = e.date
+  h3.appendChild(date)
+  block.appendChild(h3)
+  for (const group of ['New', 'Fixes', 'Improvements'] as const) {
+    if (e[group].length === 0) continue // skip empty groups
+    const h4 = document.createElement('h4')
+    h4.textContent = group
+    block.appendChild(h4)
+    const ul = document.createElement('ul')
+    for (const line of e[group]) {
+      const li = document.createElement('li')
+      li.textContent = line
+      ul.appendChild(li)
+    }
+    block.appendChild(ul)
+  }
+  return block
+}
+
+let changelogOpen = false
+function openChangelog(): void {
+  changelogVersionEl.textContent = `v${APP_VERSION}`
+  changelogBodyEl.replaceChildren(...CHANGELOG.map(renderChangelogEntry))
+  modalChangelogEl.hidden = false
+  changelogOpen = true
+}
+function closeChangelog(): void {
+  modalChangelogEl.hidden = true
+  changelogOpen = false
+  markSeen() // this build's notes are seen — don't auto-open again until the next bump
+}
+titleChangelogBtn.addEventListener('click', openChangelog)
+modalChangelogEl.addEventListener('click', (e) => {
+  const t = e.target
+  if (t === modalChangelogEl || (t instanceof HTMLElement && t.closest('[data-close-modal]') !== null)) closeChangelog()
+})
+
 // The Workshop & Library are entered by clicking their buildings in the town scene.
 // Map a click to the renderer's CSS-pixel coordinate space (the backing store is
 // dpr× larger, but render.ts draws in CSS px), and hit-test the SAME rects the
@@ -1267,7 +1320,9 @@ modalJournalEl.addEventListener('click', (e) => {
 makeDraggable(modalJournalEl, modalJournalEl.querySelector('.float-drag'))
 
 document.addEventListener('keydown', (e) => {
-  if (e.key === 'Escape' && openBuilding !== null) setBuilding(null)
+  if (e.key !== 'Escape') return
+  if (changelogOpen) closeChangelog()
+  else if (openBuilding !== null) setBuilding(null)
 })
 
 // Startup: no auto-resume. Surface any pre-9 single-save as slot 0, then show the
@@ -1276,6 +1331,10 @@ document.addEventListener('keydown', (e) => {
 importLegacy()
 screen = 'title'
 renderScreens()
+
+// After an update (build version newer than last seen), surface the patch notes over
+// the title on boot. Reopen anytime from the title's "✨ What's New" button.
+if (shouldShowWhatsNew()) openChangelog()
 
 // Combat SFX: play one clip per *new* battle-log entry. The log grows within a
 // fight and resets (battle → null) between fights, so we track its length and
