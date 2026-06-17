@@ -524,16 +524,21 @@ export function valueToJson(v: LangValue): Json {
   return null
 }
 
-export function jsonToValue(j: Json): LangValue {
+// Accepts `unknown` (not just `Json`) so callers can pass opaque serialized state (the
+// delve's `memory`) without a cast — every shape is validated here defensively.
+export function jsonToValue(j: unknown): LangValue {
   if (j === null || typeof j === 'boolean' || typeof j === 'number' || typeof j === 'string') return j
-  if (Array.isArray(j)) return j.map(jsonToValue)
-  // j is now a Json object: `{ [k: string]: Json }`, so member access needs no cast.
-  const set = j.__set
-  if (Array.isArray(set)) return new Set(set.map(jsonToValue))
-  const dict = j.__dict
-  if (Array.isArray(dict)) {
+  if (Array.isArray(j)) return j.map((e) => jsonToValue(e))
+  if (typeof j === 'object') return jsonObject(j) // not null here — the first guard returned for null
+  return null
+}
+
+/** Decode a tagged Set/dict object form ({__set}/{__dict}); anything else ⇒ null. */
+function jsonObject(j: object): LangValue {
+  if ('__set' in j && Array.isArray(j.__set)) return new Set(j.__set.map((e) => jsonToValue(e)))
+  if ('__dict' in j && Array.isArray(j.__dict)) {
     const entries: Array<[LangValue, LangValue]> = []
-    for (const pair of dict) if (Array.isArray(pair)) entries.push([jsonToValue(pair[0]), jsonToValue(pair[1])])
+    for (const pair of j.__dict) if (Array.isArray(pair)) entries.push([jsonToValue(pair[0]), jsonToValue(pair[1])])
     return new Map(entries)
   }
   return null

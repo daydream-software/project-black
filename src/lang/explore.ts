@@ -22,11 +22,12 @@ import {
 class ExploreAction implements HostObject {
   host = true as const
   constructor(public step: string, public leave = false) {}
-  get(name: string): LangValue { throw new Error(`move has no attribute '${name}'`) }
+  // arrow property using `this` (the player never reads a move's attributes).
+  get = (name: string): LangValue => { throw new Error(`move to ${this.step} has no attribute '${name}'`) }
 }
 
 // --- Opaque per-delve sigils (gibberish glyphs; equality/hash only) -----------
-const GLYPHS = [...'⟁ᚦᛟᚷᚱᚨᛚᚲᚹᛜᛶᛞᛒᛗᛘᛤᚠᚾ']
+const GLYPHS = Array.from('⟁ᚦᛟᚷᚱᚨᛚᚲᚹᛜᛶᛞᛒᛗᛘᛤᚠᚾ')
 function hash32(s: string): number {
   let h = 2166136261 >>> 0
   for (let i = 0; i < s.length; i += 1) h = Math.imul(h ^ s.charCodeAt(i), 16777619) >>> 0
@@ -112,15 +113,17 @@ function roomTypeEnum(): HostObject {
   return {
     host: true,
     get(name: string): LangValue {
-      const v = members[name]
-      if (v === undefined) throw new Error(`unknown RoomType.${name}`)
-      return v
+      if (!(name in members)) throw new Error(`unknown RoomType.${name}`)
+      return members[name]
     },
   }
 }
 
 function exitRoom(v: LangValue): string {
-  if (isHost(v)) return v.get('__room__') as string
+  if (isHost(v)) {
+    const room = v.get('__room__')
+    if (typeof room === 'string') return room
+  }
   throw new Error('move() expects an exit')
 }
 
@@ -156,8 +159,8 @@ function actionOf(result: LangValue): { step: string; leave: boolean } {
 
 /** The party's Memory map, decoded from the (serialisable) delve state. */
 function decodeMemory(s: DelveState): Map<LangValue, LangValue> {
-  const v = jsonToValue((s.memory ?? { __dict: [] }) as Json)
-  return v instanceof Map ? v : new Map()
+  const v = jsonToValue(s.memory ?? { __dict: [] })
+  return v instanceof Map ? new Map<LangValue, LangValue>(v) : new Map<LangValue, LangValue>()
 }
 
 /**
@@ -185,6 +188,6 @@ export function decideExplorationFromProgram(s: DelveState): ExDecision {
     return { reason: 'inscription', step: a.step, leave: a.leave, memory: persist(), notes: capNotes(interp.output) }
   } catch (e) {
     if (e instanceof ProgramError) throw e
-    throw new ProgramError(`exploration: ${(e as Error).message}`)
+    throw new ProgramError(`exploration: ${e instanceof Error ? e.message : String(e)}`)
   }
 }
