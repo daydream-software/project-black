@@ -35,21 +35,21 @@ refactor(sim): composite State/Maneuver model
 
 ## Why it matters: the changelog will feed the game
 
-> **Status: planned, not built.** Neither `CHANGELOG.md` nor `src/changelog.json`
-> exists yet, and there is no in-game "What's New" panel. We adopt Conventional
-> Commits *now* so the history is ready to generate it later (a `feat`/`fix`/`perf`
-> subject is a future patch note — write it for the player). The plan:
+> **Status: the in-game consumer SHIPPED; the generator is still by hand.** The game
+> reads **`src/changelog.json`** and shows a **"What's New"** panel after an update (it
+> compares the build version `__APP_VERSION__` to the player's last-seen version in
+> `localStorage`). What's *not* automated yet: producing `changelog.json` (and a dev
+> `CHANGELOG.md`) from the commit history — for now the JSON is **hand-authored**. We
+> still write Conventional Commits so that generator can land later (a `feat`/`fix`/`perf`
+> subject is the patch note the player reads — write it for them).
 
-The version history will be generated from these commit messages:
+The version history feeds two artifacts:
 
-- **`CHANGELOG.md`** — full, developer-facing (all types).
+- **`CHANGELOG.md`** — full, developer-facing (all types). *(planned — not yet generated)*
 - **`src/changelog.json`** — player-facing only (`feat`, `fix`, `perf`), grouped
-  as *New / Fixes / Improvements*, per version.
-
-The game will show a **"What's New"** panel after an update: on load it compares the
-build version to the player's last-seen version (stored in `localStorage`) and
-lists the new player-facing entries. **So a clear `feat:` / `fix:` subject is
-literally the patch note the player reads** — write it for them.
+  as *New / Fixes / Improvements*, per version. *(shipped — currently hand-authored)*
 
 The generator is decoupled from the game: whatever produces `changelog.json`
-(a script, git-cliff, …), the game just consumes that fixed schema.
+(a script, git-cliff, …), the game just consumes that fixed schema. Deferring it is
+deliberate — without per-release git tags, bucketing commits into version blocks is
+ambiguous, so the consumer (the valuable half) shipped first.

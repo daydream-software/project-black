@@ -301,6 +301,10 @@ pure tree-walking interpreter (`src/lang/`). Design + build state live in
   reload.
 - **Save VERSION 4**: existing slot saves migrate slots→source text on load
   (`lang/migrate.ts`); new golems seed a default program.
+- **`record(...)` → the journal** (`2026-06-17`): the language's debug builtin (renamed
+  from `print`, never gated) writes a golem's own lines into the delve **journal** as
+  `note` entries — the in-fiction debug console. The deciders drain it; `sim`/`delve`
+  fold it into the log (capped per turn).
 
 ### Slice 11 — Exploration depth + the chain lever + room variety
 Richer exploration vocabulary (threat estimation; loot / rest / elite / boss
@@ -405,9 +409,13 @@ from that branch. Pushes to `main` auto-deploy.
 - **Feel & polish:** an animated **boss splash** synced to the music on entering a
   boss/target room; combat & exploration juice; the journal as a real, filterable
   **replay/debugger**.
-- **Changelog / "What's New":** generate a dev `CHANGELOG.md` + a player-facing
-  `src/changelog.json` (`feat`/`fix`/`perf`); show a "What's New" panel on version
-  change and via a "Patch notes" button. (Conventional Commits already adopted.)
+- **Changelog / "What's New":** the in-game **consumer SHIPPED (2026-06-17)** — the
+  build version is injected from `package.json` (`__APP_VERSION__`), and `main.ts`
+  surfaces `src/changelog.json` as a "What's New" panel on a version bump (last-seen
+  in a global `localStorage` key) + a title button (`src/changelog.ts`). **Still
+  deferred:** the *generator* (commits → `changelog.json` + a dev `CHANGELOG.md`) —
+  the JSON is hand-authored for now (no per-release tags ⇒ version-bucketing is
+  ambiguous). (Conventional Commits already adopted.)
 - **Co-op:** local (shared screen) → online P2P via Trystero/PeerJS — never a
   server we maintain.
 - **Theme/setting:** to be decided (the "program your party" fiction suits

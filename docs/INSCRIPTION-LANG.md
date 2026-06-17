@@ -74,7 +74,7 @@ design intends but a first cut can defer.
 | `for … in`, `while` (**fuel-bounded**), `break` / `continue` / `pass` | – | not needed for parity; gambits have no loops |
 | `def` (helper functions) | – | code reuse |
 | `global`, `import x` (player libraries, `x.f()`) | – | libs; itself an unlock (TFWR-style) |
-| `print(...)` | – | debug console / journal |
+| `record(...)` | ✓ | writes a line to the delve **journal** (shipped; renamed from `print`; **never gated** — debugging mustn't cost Insight) |
 
 **Not in the language, ever:** `random`/clock/IO (nondeterminism), real Python
 imports, anything touching the host. The interpreter owns the whole namespace.
@@ -306,7 +306,7 @@ by checking `ex.leads_to == RoomType.Fight` — richer than the old vocab allowe
 ### Baseline (used by §4)
 - **Opaque identity — `sigil`**: `room.sigil` and `enemy.sigil` are opaque,
   **delve-seeded gibberish** rendered as glyphs (`⟁ᚦᛟ·ᚷᚱ`); **equality/hash only**,
-  no order/position/distance derivable. `print(room.sigil)` is unusable on purpose
+  no order/position/distance derivable. `record(room.sigil)` is unusable on purpose
   and changes every delve — so no hardcoding a literal, no cross-delve catalogue.
   `room.sigil` is what the §4 map is keyed on.
 
@@ -398,8 +398,9 @@ isn't anchored on "4 small slices ≈ done" (the editor alone is ~80% — as not
 - **Error-reporting UX — ship EARLY (parity-relevant, not polish).** The slot editor
   has *zero* possible syntax errors; a code editor **regresses** the experience unless
   good syntax **and** runtime errors land with the **first CM editor slice**, via the
-  CM `linter` (inline squiggles). `print` (a debug console pane) belongs here too —
-  debugging is part of authoring, not an afterthought.
+  CM `linter` (inline squiggles). The debug-print belongs here too — **shipped as
+  `record(...)`**, which writes a golem's lines into the delve **journal** (rather than
+  a separate console pane); debugging is part of authoring, not an afterthought.
 
 The slice-1 interpreter POC can input the program through a bare `<textarea>`; the CM
 editor lands as its own (early) slice, bringing highlighting + autocomplete + errors
