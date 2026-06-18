@@ -1,0 +1,161 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <link rel="icon" type="image/svg+xml" href="./favicon.svg" />
+    <meta name="theme-color" content="#a78bfa" />
+    <title>Project Black — the delve</title>
+    <script type="module" crossorigin src="./assets/index-DrWnhSSx.js"></script>
+    <link rel="stylesheet" crossorigin href="./assets/index-BSon22H7.css">
+  </head>
+  <body>
+    <div id="screen-title" class="screen" hidden>
+      <div class="screen-inner title">
+        <h1 class="game-title">PROJECT&nbsp;BLACK</h1>
+        <p class="tagline">
+          You're an Artificer. You don't steer your golems — you <em>inscribe</em> their
+          cores: how they <em>fight</em> and how they <em>delve</em>. Then send them down
+          into the dark, and watch.
+        </p>
+        <button id="title-play" class="big-btn">▶ Play</button>
+        <button id="title-changelog" class="link-btn">✨ What's New</button>
+      </div>
+    </div>
+
+    <div id="screen-slots" class="screen" hidden>
+      <div class="screen-inner">
+        <h2 class="screen-head">Choose a save slot</h2>
+        <div id="slot-list" class="slot-list"></div>
+        <button id="slots-back" class="link-btn">← Title</button>
+      </div>
+    </div>
+
+    <!-- The game screen is a full-bleed world (canvas) with the UI floating over
+         it: #ui-overlay is click-through (pointer-events:none); each panel inside
+         re-enables pointer-events. This is what makes it read as one integrated
+         game instead of "canvas on the left, controls on the right". -->
+    <main id="screen-game" hidden>
+      <canvas id="game" width="960" height="540"></canvas>
+      <div id="ui-overlay">
+        <header id="hud" class="hud panel">
+          <span class="wordmark">PROJECT&nbsp;BLACK</span>
+          <div class="title-actions">
+            <span id="insight" class="insight-counter" title="Insight — earned on a level's first clear; spent at the Library"></span>
+            <button id="to-slots" class="link-btn" title="Save and return to the slot picker">← Slots</button>
+            <button id="music-toggle" class="music-toggle" title="Toggle music">♪ Music: off</button>
+          </div>
+        </header>
+
+        <!-- The Workshop & Library are entered by clicking their buildings in the
+             town scene (drawn on the canvas). The Journal stays a button — it's
+             readable mid-delve too, where there's no town scene to click. -->
+        <nav id="buildings" class="buildings">
+          <button id="open-journal" class="building-btn" title="Read your golems' decisions">📜 Journal</button>
+        </nav>
+
+        <!-- World-anchored actions (bottom-left): pick a level, descend / return. -->
+        <div id="world-controls" class="world-controls">
+          <div id="level-select" class="level-select"></div>
+          <div id="run-bar" class="run-bar"></div>
+        </div>
+
+        <!-- The Workshop — author both brains (full-screen modal, closed by default). -->
+        <div id="modal-workshop" class="modal" hidden>
+          <div class="modal-panel panel">
+            <header class="modal-head">
+              <h2>The Workshop <span class="sub">inscribe your golems' cores</span></h2>
+              <button class="modal-close" data-close-modal title="Back to the world">✕</button>
+            </header>
+            <div class="modal-body">
+              <div id="hero-tabs" class="tabs"></div>
+              <h3>Core <span class="sub">point-buy · this golem's six stats</span></h3>
+              <div id="core-budget" class="core-budget"></div>
+              <div id="stat-editor" class="stat-editor"></div>
+              <h3>Combat engram <span class="sub">this golem · load one from the Library, or tweak here</span></h3>
+              <div class="engram-load">
+                <select id="load-combat-engram" class="engram-select" title="Load a combat engram from the Library (copies it onto this golem)"></select>
+                <button id="save-combat-engram" class="link-btn" title="Save this golem's code as a named engram in the Library">⤒ Save as engram</button>
+              </div>
+              <div id="code-mount" class="code-mount"></div>
+              <div id="code-error" class="code-error" hidden></div>
+              <h3>Exploration engram <span class="sub">all golems · load one from the Library, or tweak here</span></h3>
+              <div class="engram-load">
+                <select id="load-ex-engram" class="engram-select" title="Load an exploration engram from the Library"></select>
+                <button id="save-ex-engram" class="link-btn" title="Save the party's exploration code as a named engram">⤒ Save as engram</button>
+              </div>
+              <div id="ex-code-mount" class="code-mount"></div>
+              <div id="ex-code-error" class="code-error" hidden></div>
+            </div>
+          </div>
+        </div>
+
+        <!-- The Library — spend Insight to study vocabulary (full-screen modal). -->
+        <div id="modal-library" class="modal" hidden>
+          <div class="modal-panel panel">
+            <header class="modal-head">
+              <h2>The Library <span class="sub">spend Insight to study new vocabulary</span></h2>
+              <button class="modal-close" data-close-modal title="Back to the world">✕</button>
+            </header>
+            <div class="modal-body">
+              <h3>Engrams <span class="sub">name &amp; author reusable code — load it onto golems in the Workshop</span></h3>
+              <div id="engram-tabs" class="tabs"></div>
+              <div class="engram-bar">
+                <select id="engram-select" class="engram-select"></select>
+                <button id="engram-new" class="link-btn">+ New</button>
+                <button id="engram-rename" class="link-btn">Rename</button>
+                <button id="engram-delete" class="link-btn">Delete</button>
+              </div>
+              <div id="engram-mount" class="code-mount"></div>
+              <div id="engram-error" class="code-error" hidden></div>
+              <h3>Study <span class="sub">spend Insight to unlock language &amp; vocabulary</span></h3>
+              <div id="trainer-list"></div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Journal — a floating, draggable, resizable panel (NOT a blocking modal):
+             you read it alongside the delve, which stays visible behind it. -->
+        <div id="modal-journal" class="float-panel panel" hidden>
+          <header class="modal-head float-drag">
+            <h2>Journal <span class="sub">drag to move · resize from a corner</span></h2>
+            <button class="modal-close" data-close-modal title="Close the journal">✕</button>
+          </header>
+          <div class="modal-body">
+            <div id="log"></div>
+          </div>
+        </div>
+      </div>
+    </main>
+
+    <!-- "What's New" — a top-level overlay so it can surface over the title on boot
+         after an update (and reopen from the title's button). Built/filled in main.ts. -->
+    <div id="modal-changelog" class="modal" hidden>
+      <div class="modal-panel panel">
+        <header class="modal-head">
+          <h2>What's New <span class="sub" id="changelog-version"></span></h2>
+          <button class="modal-close" data-close-modal title="Close">✕</button>
+        </header>
+        <div class="modal-body">
+          <div id="changelog-body"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- A small reusable input dialog (replaces window.prompt for naming engrams). -->
+    <div id="modal-prompt" class="modal" hidden>
+      <div class="modal-panel panel prompt-panel">
+        <header class="modal-head">
+          <h2 id="prompt-title">Name</h2>
+        </header>
+        <div class="modal-body">
+          <input id="prompt-input" class="prompt-input" type="text" autocomplete="off" autocapitalize="off" spellcheck="false" />
+          <div class="prompt-actions">
+            <button id="prompt-cancel" class="link-btn">Cancel</button>
+            <button id="prompt-ok" class="big-btn">OK</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </body>
+</html>
